@@ -13,3 +13,11 @@ The program simulates four settlements for 12 ticks in two scenarios: isolated
 (no links) and connected (all links). It prints population, stockpiles,
 prosperity, and research for each settlement, so the effect of transport links is
 visible and explainable.
+
+## Web prototype
+
+```sh
+/home/yria/dev/Diamond/target/debug/diamond check app/diamond.toml
+/home/yria/dev/Diamond/target/debug/diamond build app/diamond.toml --out .diamond/app-build
+/home/yria/dev/Diamond/target/debug/diamond serve .diamond/app-build --listen 127.0.0.1:3010
+```
