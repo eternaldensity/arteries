@@ -1,4 +1,5 @@
 schema_version = 1
+assets = { map0 = "assets/map-0.svg", map1 = "assets/map-1.svg", map2 = "assets/map-2.svg", map3 = "assets/map-3.svg", map4 = "assets/map-4.svg", map5 = "assets/map-5.svg", map6 = "assets/map-6.svg", map7 = "assets/map-7.svg", map8 = "assets/map-8.svg", map9 = "assets/map-9.svg", map10 = "assets/map-10.svg", map11 = "assets/map-11.svg", map12 = "assets/map-12.svg", map13 = "assets/map-13.svg", map14 = "assets/map-14.svg", map15 = "assets/map-15.svg" }
 name = "ArteriesWeb"
 server = "server"
 browser = "ui"

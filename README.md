@@ -30,6 +30,10 @@ Every seed produces a different 10 × 6 frontier:
 
 - terrain is generated from the seed (plains, forest, hills, mountains, water,
   coast, marsh);
+- terrain rendering is offloaded from the reactive component tree:
+  `tools/gen-maps.sh` runs the same Diamond terrain function and emits 16 static
+  SVG map assets, so the browser renders one image instead of hundreds of
+  terrain nodes; New World cycles through seeds 0–15;
 - a meandering river, a coastline, hills, and forest cover are laid over it;
 - three settlements start in different corners of the map with complementary
   endowments;
@@ -163,11 +167,16 @@ Dismantle a route to free a slot. The UI explains both caps when you reach them.
 
 ```text
 app/
-  diamond.toml     project manifest
+  diamond.toml     project manifest and map asset declarations
   shared.dia       types, procedural terrain, route geometry, economy, game state
   ui.dia           Root + MapCanvas reactive components
   app.css          map, dashboard, cards, responsive layout
   server.dia       minimal server entry
+  assets/map-*.svg generated terrain assets
+tools/
+  gen_terrain_main.dia  terrain data exporter
+  render_maps.py        SVG map renderer
+  gen-maps.sh           regenerate the map assets
 tests/
   ui-smoke.js      real-browser acceptance and exploration driver
 ```
@@ -184,6 +193,12 @@ materialised inspector state are all part of that budget discipline, not
 arbitrary restrictions.
 
 ## Testing
+
+Regenerate terrain assets after changing the terrain generator:
+
+```sh
+./tools/gen-maps.sh
+```
 
 Static checks and build:
 
@@ -219,9 +234,10 @@ weighted managed-value work**, and one user event shares that phase with every
 render it triggers. The full design (100–300 settlements, many routes, large
 maps) does not fit inside that browser-only model.
 
-The current compact caps are therefore not a design preference; they are the
-stable envelope for this architecture. A detailed analysis of the limits and the
-recommended workarounds is in
+Terrain rendering has already been offloaded to static SVG assets, removing the
+largest recurring render cost. The remaining and larger win is separating
+simulation processing from the browser event/render workflow. A detailed
+analysis of the limits and the recommended workarounds is in
 [`BUDGET_RESEARCH.md`](BUDGET_RESEARCH.md). The short version: move authoritative
 state and tick processing to PostgreSQL-backed server RPCs/jobs, split a cycle
 into staged requests, and keep the browser as a compact, region-level renderer.

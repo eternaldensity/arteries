@@ -1,4 +1,4 @@
-export component MapCanvas(patches: List<TerrainRow>, groups: List<RouteNodeGroup>, draft: List<RouteNode>, markers: List<MarkerInfo>, selected: Text):
+export component MapCanvas(seed: Int, groups: List<RouteNodeGroup>, draft: List<RouteNode>, markers: List<MarkerInfo>, selected: Text):
   output picked(value: Text)
 
   on pick(id: Text):
@@ -6,11 +6,22 @@ export component MapCanvas(patches: List<TerrainRow>, groups: List<RouteNodeGrou
 
   html:
     <div class="map-grid">
-      <each items={patches} as="row" key={int_text(row.y)}>
-        <each items={row.patches} as="patch" key={patch}>
-          <span class={"patch " + patch}></span>
-        </each>
-      </each>
+      <when test={seed == 0}><img class="map-image" src="asset:map0" alt=""></when>
+      <when test={seed == 1}><img class="map-image" src="asset:map1" alt=""></when>
+      <when test={seed == 2}><img class="map-image" src="asset:map2" alt=""></when>
+      <when test={seed == 3}><img class="map-image" src="asset:map3" alt=""></when>
+      <when test={seed == 4}><img class="map-image" src="asset:map4" alt=""></when>
+      <when test={seed == 5}><img class="map-image" src="asset:map5" alt=""></when>
+      <when test={seed == 6}><img class="map-image" src="asset:map6" alt=""></when>
+      <when test={seed == 7}><img class="map-image" src="asset:map7" alt=""></when>
+      <when test={seed == 8}><img class="map-image" src="asset:map8" alt=""></when>
+      <when test={seed == 9}><img class="map-image" src="asset:map9" alt=""></when>
+      <when test={seed == 10}><img class="map-image" src="asset:map10" alt=""></when>
+      <when test={seed == 11}><img class="map-image" src="asset:map11" alt=""></when>
+      <when test={seed == 12}><img class="map-image" src="asset:map12" alt=""></when>
+      <when test={seed == 13}><img class="map-image" src="asset:map13" alt=""></when>
+      <when test={seed == 14}><img class="map-image" src="asset:map14" alt=""></when>
+      <when test={seed == 15}><img class="map-image" src="asset:map15" alt=""></when>
       <each items={groups} as="group" key={group.key}>
         <each items={group.nodes} as="node" key={node.key}>
           <span class={"route-cell " + node.position + " " + node.css}></span>
@@ -31,7 +42,6 @@ export component MapCanvas(patches: List<TerrainRow>, groups: List<RouteNodeGrou
 
 export component Root:
   state game: Game = new_game(7)
-  state map_terrain: List<TerrainRow> = terrain_rows(game.world)
 
   derived world: World = game.world
   derived iv: InspectView = game.inspect
@@ -82,7 +92,6 @@ export component Root:
 
   on new_seed:
     game = game_new_seed(game)
-    map_terrain = terrain_rows(game.world)
 
   on upgrade(id: Text):
     game = game_upgrade(game, id)
@@ -165,7 +174,7 @@ export component Root:
           </div>
 
           <div class="map-frame">
-            <use component="MapCanvas" patches={map_terrain} groups={game.route_groups} draft={draft_route_nodes} markers={map_markers} selected={sel.selected} on-picked={pick}></use>
+            <use component="MapCanvas" seed={world.seed} groups={game.route_groups} draft={draft_route_nodes} markers={map_markers} selected={sel.selected} on-picked={pick}></use>
             <div class="compass"><span>N</span><span class="north-needle"></span></div>
           </div>
 

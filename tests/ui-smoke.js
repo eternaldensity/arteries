@@ -120,7 +120,7 @@ function assert(condition, message) {
     assert(s.towns.length === 3, 'expected 3 starting settlements');
     assert(s.inspector === 'Riverford', 'expected Riverford to be selected');
     assert(s.badge === 'idle', 'route desk should start idle');
-    assert((await page.locator('.patch').count()) > 0, 'no terrain was rendered');
+    assert((await page.locator('.map-image').count()) === 1, 'no terrain asset was rendered');
 
     // Any site can be inspected without starting or cancelling a survey.
     await page.locator('.map-grid button.site-marker').first().click();

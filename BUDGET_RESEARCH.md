@@ -144,9 +144,11 @@ user clicks “Run cycle”. The browser polls job status.
  100k fuel, so the stage split remains necessary.
 **Effort:** medium-high.
 
-### 5. Pre-generated static map assets / map atlas
+### 5. Pre-generated static map assets / map atlas (partially implemented)
 
-The map is the largest recurring DOM cost. Options:
+The map is the largest recurring DOM cost. This prototype now generates 16
+terrain SVGs at build time from the same Diamond terrain function and renders
+one `<img>` instead of per-cell terrain nodes. Options for extending that:
 
 - Generate SVG map assets at build time for a set of seeds and select one by
   seed. This is not fully procedural but removes terrain DOM.
@@ -157,9 +159,10 @@ The map is the largest recurring DOM cost. Options:
 - Render a **single CSS background** with a small number of broad terrain
   features instead of per-cell patches.
 
-**Pros:** Dramatically reduces render work.
-**Cons:** Dynamic seeds are awkward; loses interaction/terrain clarity; asset
-  plumbing is outside the current static build.
+**Pros:** Dramatically reduces render work; already frees a large part of the
+  render budget in this prototype.
+**Cons:** Dynamic seeds are awkward; the current static build has a finite
+  16-map set. A larger set or server-generated tiles would need asset plumbing.
 **Effort:** medium.
 
 ### 6. Raise or configure the budgets in a Diamond fork
@@ -209,6 +212,10 @@ Diamond only orchestrating UI and persistence.
 - Splitting inspector state, bounding history/log, reducing map patches, and
   caching upkeep helped, but each new panel/derived value could re-tip the
   budget. That is why the final browser build uses deliberately small caps.
+- Terrain DOM/patch calculation has now been removed from the render path in
+  favour of generated SVG assets. The remaining authoritative simulation and
+  UI state still live in the browser, which is why workflow separation is the
+  next architectural step.
 
 ## References
 

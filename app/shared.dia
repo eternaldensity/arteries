@@ -278,6 +278,9 @@ export fn max_routes() -> Int:
 export fn max_projects() -> Int:
   2
 
+export fn map_count() -> Int:
+  16
+
 export fn road_research() -> Int:
   45
 
@@ -795,7 +798,8 @@ fn make_sites(seed: Int) -> List<Site>:
     make_site(seed, i, nth_point(points, i))
 
 export fn new_world(seed: Int) -> World:
-  World(seed: seed, tick: 0, money: 160, towns: make_towns(seed), sites: make_sites(seed), routes: [], log: ["Seed " + int_text(seed) + ": a new frontier. Survey a route between two settlements."], history: [], tech_road: false, tech_river: false, tech_rail: false)
+  let safe_seed = mod_int(seed, map_count())
+  World(seed: safe_seed, tick: 0, money: 160, towns: make_towns(seed), sites: make_sites(seed), routes: [], log: ["Seed " + int_text(seed) + ": a new frontier. Survey a route between two settlements."], history: [], tech_road: false, tech_river: false, tech_rail: false)
 
 export fn seed_world(world: World, seed: Int) -> World:
   new_world(seed)
@@ -2619,7 +2623,7 @@ export fn auto_text(on: Bool) -> Text:
     false => "off"
 
 export fn game_new_seed(game: Game) -> Game:
-  let seed = game.world.seed + 1
+  let seed = mod_int(game.world.seed + 1, map_count())
   let world = new_world(seed)
   Game(world: world, sel: first_selection(world), notice: "Generated world " + int_text(seed) + ".", last_ok: true, route_groups: route_groups(world.routes), auto_upkeep: false, last_paid_tick: 0, upkeep_per_cycle: total_upkeep(world.routes), projects: [], inspect: inspect_view(world, "t0"))
 

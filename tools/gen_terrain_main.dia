@@ -1,0 +1,28 @@
+
+# Appended by tools/gen-maps.sh after stripping `export` from app/shared.dia.
+# Prints one line per seed: seed|row;row;row, where each row is comma-separated
+# terrain codes (1 plains, 2 forest, 3 hills, 4 mountain, 5 water, 6 coast,
+# 7 marsh).
+
+fn map_code(t: Terrain) -> Int:
+  match t:
+    Plains => 1
+    Forest => 2
+    Hills => 3
+    Mountain => 4
+    Water => 5
+    Coast => 6
+    Marsh => 7
+
+fn map_row_text(seed: Int, y: Int) -> Text:
+  let cells = for x in indices(map_w()):
+    int_text(map_code(terrain_at(seed, x, y)))
+  join_text(cells, ",")
+
+fn map_manifest_line(seed: Int) -> Text:
+  let rows = for y in indices(map_h()):
+    map_row_text(seed, y)
+  int_text(seed) + "|" + join_text(rows, ";")
+
+fn main() -> Text:
+  map_manifest_line(__SEED__)
