@@ -1,0 +1,21 @@
+schema_version = 1
+name = "ArteriesWeb"
+server = "server"
+browser = "ui"
+component = "Root"
+provides = []
+styles = ["app.css"]
+
+[modules.shared]
+path = "shared.dia"
+target = "shared"
+
+[modules.server]
+path = "server.dia"
+target = "server"
+imports = ["shared"]
+
+[modules.ui]
+path = "ui.dia"
+target = "browser"
+imports = ["shared"]

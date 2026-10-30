@@ -1,0 +1,4 @@
+main { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+section { margin: 1rem 0; }
+button { margin: 0.25rem; padding: 0.5rem 0.75rem; }
+pre { background: #f4f4f4; padding: 1rem; border-radius: 0.5rem; white-space: pre-wrap; }

@@ -1,0 +1,46 @@
+export component Root:
+  state world: World = connected_world()
+  derived report: Text = world_report("Current network", world)
+
+  on tick_once:
+    world = tick(world)
+
+  on run_twelve:
+    world = run_ticks(world, 12)
+
+  on toggle_ab:
+    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: not world.ab, ac: world.ac, bc: world.bc, bd: world.bd)
+
+  on toggle_ac:
+    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: world.ab, ac: not world.ac, bc: world.bc, bd: world.bd)
+
+  on toggle_bc:
+    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: world.ab, ac: world.ac, bc: not world.bc, bd: world.bd)
+
+  on toggle_bd:
+    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: world.ab, ac: world.ac, bc: world.bc, bd: not world.bd)
+
+  on reset_connected:
+    world = connected_world()
+
+  on reset_isolated:
+    world = base_world()
+
+  html:
+    <main>
+      <h1>Arteries: transport economy prototype</h1>
+      <p>Build or remove links, then run ticks to see prosperity and research change.</p>
+      <section>
+        <button type="button" on-click={toggle_ab}>Toggle A-B link</button>
+        <button type="button" on-click={toggle_ac}>Toggle A-C link</button>
+        <button type="button" on-click={toggle_bc}>Toggle B-C link</button>
+        <button type="button" on-click={toggle_bd}>Toggle B-D link</button>
+      </section>
+      <section>
+        <button type="button" on-click={tick_once}>Run 1 tick</button>
+        <button type="button" on-click={run_twelve}>Run 12 ticks</button>
+        <button type="button" on-click={reset_connected}>Reset connected</button>
+        <button type="button" on-click={reset_isolated}>Reset isolated</button>
+      </section>
+      <pre>{report}</pre>
+    </main>
