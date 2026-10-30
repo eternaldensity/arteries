@@ -106,30 +106,34 @@ export component Root:
       <section class="map">
         <h2>Landscape map</h2>
         <div class="map-canvas">
-          <when test={route_active(world.ab) == 1 and curved_routes == false}><div class="route route-ab straight"></div></when>
-          <when test={route_active(world.ac) == 1 and curved_routes == false}><div class="route route-ac straight"></div></when>
-          <when test={route_active(world.ad) == 1 and curved_routes == false}><div class="route route-ad straight"></div></when>
-          <when test={route_active(world.bc) == 1 and curved_routes == false}><div class="route route-bc straight"></div></when>
-          <when test={route_active(world.bd) == 1 and curved_routes == false}><div class="route route-bd straight"></div></when>
-          <when test={route_active(world.cd) == 1 and curved_routes == false}><div class="route route-cd straight"></div></when>
+          <div class="terrain-layer terrain-base"></div>
+          <div class="terrain-layer terrain-contours"></div>
+          <div class="terrain-feature river-main"></div>
+          <div class="terrain-feature river-branch"></div>
+          <div class="terrain-feature lake"></div>
+          <div class="terrain-feature mountain"></div>
+          <div class="terrain-feature forest"></div>
 
-          <when test={route_active(world.ab) == 1 and curved_routes}><div class="route route-ab curved"></div></when>
-          <when test={route_active(world.ac) == 1 and curved_routes}><div class="route route-ac curved"></div></when>
-          <when test={route_active(world.ad) == 1 and curved_routes}><div class="route route-ad curved"></div></when>
-          <when test={route_active(world.bc) == 1 and curved_routes}><div class="route route-bc curved"></div></when>
-          <when test={route_active(world.bd) == 1 and curved_routes}><div class="route route-bd curved"></div></when>
-          <when test={route_active(world.cd) == 1 and curved_routes}><div class="route route-cd curved"></div></when>
+          <when test={route_active(world.ab) == 1 and curved_routes == false}><div class="route-seg seg-ab-1"></div><div class="route-seg seg-ab-2"></div></when>
+          <when test={route_active(world.ac) == 1 and curved_routes == false}><div class="route-seg seg-ac-1"></div><div class="route-seg seg-ac-2"></div></when>
+          <when test={route_active(world.ad) == 1 and curved_routes == false}><div class="route-seg seg-ad-1"></div><div class="route-seg seg-ad-2"></div></when>
+          <when test={route_active(world.bc) == 1 and curved_routes == false}><div class="route-seg seg-bc-1"></div><div class="route-seg seg-bc-2"></div></when>
+          <when test={route_active(world.bd) == 1 and curved_routes == false}><div class="route-seg seg-bd-1"></div><div class="route-seg seg-bd-2"></div></when>
+          <when test={route_active(world.cd) == 1 and curved_routes == false}><div class="route-seg seg-cd-1"></div><div class="route-seg seg-cd-2"></div></when>
 
-          <div class="feature feature-river"></div>
-          <div class="feature feature-lake"></div>
-          <div class="feature feature-mountain"></div>
+          <when test={route_active(world.ab) == 1 and curved_routes}><div class="route-seg seg-ab-1 curved"></div><div class="route-seg seg-ab-2 curved"></div></when>
+          <when test={route_active(world.ac) == 1 and curved_routes}><div class="route-seg seg-ac-1 curved"></div><div class="route-seg seg-ac-2 curved"></div></when>
+          <when test={route_active(world.ad) == 1 and curved_routes}><div class="route-seg seg-ad-1 curved"></div><div class="route-seg seg-ad-2 curved"></div></when>
+          <when test={route_active(world.bc) == 1 and curved_routes}><div class="route-seg seg-bc-1 curved"></div><div class="route-seg seg-bc-2 curved"></div></when>
+          <when test={route_active(world.bd) == 1 and curved_routes}><div class="route-seg seg-bd-1 curved"></div><div class="route-seg seg-bd-2 curved"></div></when>
+          <when test={route_active(world.cd) == 1 and curved_routes}><div class="route-seg seg-cd-1 curved"></div><div class="route-seg seg-cd-2 curved"></div></when>
 
-          <div class="node node-a"><strong>Riverford</strong><br>plains</div>
-          <div class="node node-b"><strong>Hillcrest</strong><br>hills</div>
-          <div class="node node-c"><strong>Greenvale</strong><br>forest</div>
-          <div class="node node-d"><strong>Portmere</strong><br>coast</div>
+          <div class="node node-a"><strong>Riverford</strong><span>plains</span></div>
+          <div class="node node-b"><strong>Hillcrest</strong><span>hills</span></div>
+          <div class="node node-c"><strong>Greenvale</strong><span>forest</span></div>
+          <div class="node node-d"><strong>Portmere</strong><span>coast</span></div>
         </div>
-        <p class="legend">Routes cost 20 money, 2 timber, 1 stone to build; upkeep is 1 money per route per tick. Remove refunds 10 money and 1 timber.</p>
+        <p class="legend">Terrain: plains, forest, hills, river, coast, lake, mountain. Routes are multi-segment paths.</p>
       </section>
 
       <section class="settlements">
