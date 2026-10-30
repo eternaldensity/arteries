@@ -53,6 +53,12 @@ export component Root:
   on upgrade_cd:
     world = upgrade_cd(world)
 
+  on toggle_ae:
+    world = toggle_ae(world)
+
+  on toggle_ce:
+    world = toggle_ce(world)
+
   on reset_connected:
     world = connected_world()
 
@@ -83,6 +89,8 @@ export component Root:
           <button type="button" on-click={toggle_bc}>B-C: {route_text(world.bc)}</button>
           <button type="button" on-click={toggle_bd}>B-D: {route_text(world.bd)}</button>
           <button type="button" on-click={toggle_cd}>C-D: {route_text(world.cd)}</button>
+          <button type="button" on-click={toggle_ae}>A-E: {route_text(world.ae)}</button>
+          <button type="button" on-click={toggle_ce}>C-E: {route_text(world.ce)}</button>
           <button type="button" on-click={upgrade_ab}>Upgrade A-B</button>
           <button type="button" on-click={upgrade_ac}>Upgrade A-C</button>
           <button type="button" on-click={upgrade_ad}>Upgrade A-D</button>
@@ -132,6 +140,7 @@ export component Root:
           <div class="node node-b"><strong>Hillcrest</strong><span>hills</span></div>
           <div class="node node-c"><strong>Greenvale</strong><span>forest</span></div>
           <div class="node node-d"><strong>Portmere</strong><span>coast</span></div>
+          <div class="node node-e"><strong>Outpost</strong><span>ore</span></div>
         </div>
         <p class="legend">Terrain: plains, forest, hills, river, coast, lake, mountain. Routes are multi-segment paths.</p>
       </section>
@@ -160,6 +169,12 @@ export component Root:
           <p>Pop {world.d.pop} · Prosperity {world.d.prosperity} · Research {world.d.research}</p>
           <p>Grain {world.d.grain} · Timber {world.d.timber} · Stone {world.d.stone} · Ore {world.d.ore} · Tools {world.d.tools}</p>
           <p>Endowments: grain {world.d.gEnd}, timber {world.d.tEnd}, stone {world.d.sEnd}, ore {world.d.oEnd}</p>
+        </article>
+        <article class="settlement">
+          <h2>{world.e.name} <span class="status">{status(world.e)}</span></h2>
+          <p>Pop {world.e.pop} · Prosperity {world.e.prosperity} · Research {world.e.research}</p>
+          <p>Grain {world.e.grain} · Timber {world.e.timber} · Stone {world.e.stone} · Ore {world.e.ore} · Tools {world.e.tools}</p>
+          <p>Endowments: grain {world.e.gEnd}, timber {world.e.tEnd}, stone {world.e.sEnd}, ore {world.e.oEnd}</p>
         </article>
       </section>
 
