@@ -14,6 +14,12 @@ export type Town:
   prosperity: Int
   research: Int
 
+export enum RouteMode:
+  NoRoute
+  Path
+  Road
+  River
+
 export type Pair:
   a: Town
   b: Town
@@ -23,12 +29,12 @@ export type World:
   b: Town
   c: Town
   d: Town
-  ab: Bool
-  ac: Bool
-  ad: Bool
-  bc: Bool
-  bd: Bool
-  cd: Bool
+  ab: RouteMode
+  ac: RouteMode
+  ad: RouteMode
+  bc: RouteMode
+  bd: RouteMode
+  cd: RouteMode
   money: Int
 
 export fn min_int(x: Int, y: Int) -> Int:
@@ -89,10 +95,10 @@ export fn trade(a: Town, b: Town) -> Pair:
   let b2 = Town(name: b.name, gEnd: b.gEnd, tEnd: b.tEnd, sEnd: b.sEnd, oEnd: b.oEnd, grain: grainB, timber: timberTotal - timberA, stone: stoneTotal - stoneA, ore: oreTotal - oreA, tools: toolsTotal - toolsA, pop: b.pop, prosperity: b.prosperity, research: b.research)
   Pair(a: a2, b: b2)
 
-export fn trade_if(link: Bool, a: Town, b: Town) -> Pair:
-  match link:
-    true => trade(a, b)
-    false => Pair(a: a, b: b)
+export fn trade_if(route: RouteMode, a: Town, b: Town) -> Pair:
+  match route:
+    NoRoute => Pair(a: a, b: b)
+    _ => trade(a, b)
 
 export fn research(t: Town) -> Town:
   let variety = bool_int(t.timber > 0) + bool_int(t.stone > 0) + bool_int(t.ore > 0) + bool_int(t.tools > 0)
@@ -109,6 +115,13 @@ export fn grow(t: Town) -> Town:
   let stone2 = t.stone - can_grow
   let timber2 = t.timber - can_grow
   Town(name: t.name, gEnd: t.gEnd, tEnd: t.tEnd, sEnd: t.sEnd, oEnd: t.oEnd, grain: t.grain, timber: timber2, stone: stone2, ore: t.ore, tools: t.tools, pop: newPop, prosperity: t.prosperity, research: t.research)
+
+export fn route_active(route: RouteMode) -> Int:
+  match route:
+    NoRoute => 0
+    Path => 1
+    Road => 1
+    River => 1
 
 export fn tick(w: World) -> World:
   let a0 = consume(produce(w.a))
@@ -137,7 +150,7 @@ export fn tick(w: World) -> World:
   let bR = grow(research(b3))
   let cR = grow(research(c3))
   let dR = grow(research(d3))
-  let built = bool_int(w.ab) + bool_int(w.ac) + bool_int(w.ad) + bool_int(w.bc) + bool_int(w.bd) + bool_int(w.cd)
+  let built = route_active(w.ab) + route_active(w.ac) + route_active(w.ad) + route_active(w.bc) + route_active(w.bd) + route_active(w.cd)
   let money2 = w.money - built
   World(a: aR, b: bR, c: cR, d: dR, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, money: money2)
 
@@ -150,56 +163,56 @@ export fn run_ticks(w: World, n: Int) -> World:
 export fn build_ab(w: World) -> World:
   let can = w.money >= 20 and w.a.timber >= 2 and w.a.stone >= 1
   match can:
-    true => World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber - 2, stone: w.a.stone - 1, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: true, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money - 20)
+    true => World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber - 2, stone: w.a.stone - 1, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: Path, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money - 20)
     false => w
 
 export fn remove_ab(w: World) -> World:
-  World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber + 1, stone: w.a.stone, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: false, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money + 10)
+  World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber + 1, stone: w.a.stone, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: NoRoute, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money + 10)
 
 export fn build_ac(w: World) -> World:
   let can = w.money >= 20 and w.a.timber >= 2 and w.a.stone >= 1
   match can:
-    true => World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber - 2, stone: w.a.stone - 1, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: w.ab, ac: true, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money - 20)
+    true => World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber - 2, stone: w.a.stone - 1, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: w.ab, ac: Path, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money - 20)
     false => w
 
 export fn remove_ac(w: World) -> World:
-  World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber + 1, stone: w.a.stone, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: w.ab, ac: false, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money + 10)
+  World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber + 1, stone: w.a.stone, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: w.ab, ac: NoRoute, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money + 10)
 
 export fn build_ad(w: World) -> World:
   let can = w.money >= 20 and w.a.timber >= 2 and w.a.stone >= 1
   match can:
-    true => World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber - 2, stone: w.a.stone - 1, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: true, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money - 20)
+    true => World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber - 2, stone: w.a.stone - 1, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: Path, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money - 20)
     false => w
 
 export fn remove_ad(w: World) -> World:
-  World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber + 1, stone: w.a.stone, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: false, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money + 10)
+  World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber + 1, stone: w.a.stone, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: NoRoute, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money + 10)
 
 export fn build_bc(w: World) -> World:
   let can = w.money >= 20 and w.b.timber >= 2 and w.b.stone >= 1
   match can:
-    true => World(a: w.a, b: Town(name: w.b.name, gEnd: w.b.gEnd, tEnd: w.b.tEnd, sEnd: w.b.sEnd, oEnd: w.b.oEnd, grain: w.b.grain, timber: w.b.timber - 2, stone: w.b.stone - 1, ore: w.b.ore, tools: w.b.tools, pop: w.b.pop, prosperity: w.b.prosperity, research: w.b.research), c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: true, bd: w.bd, cd: w.cd, money: w.money - 20)
+    true => World(a: w.a, b: Town(name: w.b.name, gEnd: w.b.gEnd, tEnd: w.b.tEnd, sEnd: w.b.sEnd, oEnd: w.b.oEnd, grain: w.b.grain, timber: w.b.timber - 2, stone: w.b.stone - 1, ore: w.b.ore, tools: w.b.tools, pop: w.b.pop, prosperity: w.b.prosperity, research: w.b.research), c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: Path, bd: w.bd, cd: w.cd, money: w.money - 20)
     false => w
 
 export fn remove_bc(w: World) -> World:
-  World(a: w.a, b: Town(name: w.b.name, gEnd: w.b.gEnd, tEnd: w.b.tEnd, sEnd: w.b.sEnd, oEnd: w.b.oEnd, grain: w.b.grain, timber: w.b.timber + 1, stone: w.b.stone, ore: w.b.ore, tools: w.b.tools, pop: w.b.pop, prosperity: w.b.prosperity, research: w.b.research), c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: false, bd: w.bd, cd: w.cd, money: w.money + 10)
+  World(a: w.a, b: Town(name: w.b.name, gEnd: w.b.gEnd, tEnd: w.b.tEnd, sEnd: w.b.sEnd, oEnd: w.b.oEnd, grain: w.b.grain, timber: w.b.timber + 1, stone: w.b.stone, ore: w.b.ore, tools: w.b.tools, pop: w.b.pop, prosperity: w.b.prosperity, research: w.b.research), c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: NoRoute, bd: w.bd, cd: w.cd, money: w.money + 10)
 
 export fn build_bd(w: World) -> World:
   let can = w.money >= 20 and w.b.timber >= 2 and w.b.stone >= 1
   match can:
-    true => World(a: w.a, b: Town(name: w.b.name, gEnd: w.b.gEnd, tEnd: w.b.tEnd, sEnd: w.b.sEnd, oEnd: w.b.oEnd, grain: w.b.grain, timber: w.b.timber - 2, stone: w.b.stone - 1, ore: w.b.ore, tools: w.b.tools, pop: w.b.pop, prosperity: w.b.prosperity, research: w.b.research), c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: true, cd: w.cd, money: w.money - 20)
+    true => World(a: w.a, b: Town(name: w.b.name, gEnd: w.b.gEnd, tEnd: w.b.tEnd, sEnd: w.b.sEnd, oEnd: w.b.oEnd, grain: w.b.grain, timber: w.b.timber - 2, stone: w.b.stone - 1, ore: w.b.ore, tools: w.b.tools, pop: w.b.pop, prosperity: w.b.prosperity, research: w.b.research), c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: Path, cd: w.cd, money: w.money - 20)
     false => w
 
 export fn remove_bd(w: World) -> World:
-  World(a: w.a, b: Town(name: w.b.name, gEnd: w.b.gEnd, tEnd: w.b.tEnd, sEnd: w.b.sEnd, oEnd: w.b.oEnd, grain: w.b.grain, timber: w.b.timber + 1, stone: w.b.stone, ore: w.b.ore, tools: w.b.tools, pop: w.b.pop, prosperity: w.b.prosperity, research: w.b.research), c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: false, cd: w.cd, money: w.money + 10)
+  World(a: w.a, b: Town(name: w.b.name, gEnd: w.b.gEnd, tEnd: w.b.tEnd, sEnd: w.b.sEnd, oEnd: w.b.oEnd, grain: w.b.grain, timber: w.b.timber + 1, stone: w.b.stone, ore: w.b.ore, tools: w.b.tools, pop: w.b.pop, prosperity: w.b.prosperity, research: w.b.research), c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: NoRoute, cd: w.cd, money: w.money + 10)
 
 export fn build_cd(w: World) -> World:
   let can = w.money >= 20 and w.c.timber >= 2 and w.c.stone >= 1
   match can:
-    true => World(a: w.a, b: w.b, c: Town(name: w.c.name, gEnd: w.c.gEnd, tEnd: w.c.tEnd, sEnd: w.c.sEnd, oEnd: w.c.oEnd, grain: w.c.grain, timber: w.c.timber - 2, stone: w.c.stone - 1, ore: w.c.ore, tools: w.c.tools, pop: w.c.pop, prosperity: w.c.prosperity, research: w.c.research), d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: true, money: w.money - 20)
+    true => World(a: w.a, b: w.b, c: Town(name: w.c.name, gEnd: w.c.gEnd, tEnd: w.c.tEnd, sEnd: w.c.sEnd, oEnd: w.c.oEnd, grain: w.c.grain, timber: w.c.timber - 2, stone: w.c.stone - 1, ore: w.c.ore, tools: w.c.tools, pop: w.c.pop, prosperity: w.c.prosperity, research: w.c.research), d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: Path, money: w.money - 20)
     false => w
 
 export fn remove_cd(w: World) -> World:
-  World(a: w.a, b: w.b, c: Town(name: w.c.name, gEnd: w.c.gEnd, tEnd: w.c.tEnd, sEnd: w.c.sEnd, oEnd: w.c.oEnd, grain: w.c.grain, timber: w.c.timber + 1, stone: w.c.stone, ore: w.c.ore, tools: w.c.tools, pop: w.c.pop, prosperity: w.c.prosperity, research: w.c.research), d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: false, money: w.money + 10)
+  World(a: w.a, b: w.b, c: Town(name: w.c.name, gEnd: w.c.gEnd, tEnd: w.c.tEnd, sEnd: w.c.sEnd, oEnd: w.c.oEnd, grain: w.c.grain, timber: w.c.timber + 1, stone: w.c.stone, ore: w.c.ore, tools: w.c.tools, pop: w.c.pop, prosperity: w.c.prosperity, research: w.c.research), d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: NoRoute, money: w.money + 10)
 
 export fn town_line(t: Town) -> Text:
   t.name + ": pop=" + int_text(t.pop) + " grain=" + int_text(t.grain) + " timber=" + int_text(t.timber) + " stone=" + int_text(t.stone) + " ore=" + int_text(t.ore) + " tools=" + int_text(t.tools) + " prosperity=" + int_text(t.prosperity) + " research=" + int_text(t.research)
@@ -208,10 +221,10 @@ export fn world_report(label: Text, w: World) -> Text:
   label + "\\n" + town_line(w.a) + "\\n" + town_line(w.b) + "\\n" + town_line(w.c) + "\\n" + town_line(w.d) + "\\nMoney: " + int_text(w.money)
 
 export fn base_world() -> World:
-  World(a: Town(name: "Riverford", gEnd: 5, tEnd: 1, sEnd: 0, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), b: Town(name: "Hillcrest", gEnd: 0, tEnd: 1, sEnd: 2, oEnd: 3, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), c: Town(name: "Greenvale", gEnd: 2, tEnd: 4, sEnd: 1, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), d: Town(name: "Portmere", gEnd: 1, tEnd: 0, sEnd: 0, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), ab: false, ac: false, ad: false, bc: false, bd: false, cd: false, money: 100)
+  World(a: Town(name: "Riverford", gEnd: 5, tEnd: 1, sEnd: 0, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), b: Town(name: "Hillcrest", gEnd: 0, tEnd: 1, sEnd: 2, oEnd: 3, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), c: Town(name: "Greenvale", gEnd: 2, tEnd: 4, sEnd: 1, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), d: Town(name: "Portmere", gEnd: 1, tEnd: 0, sEnd: 0, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), ab: NoRoute, ac: NoRoute, ad: NoRoute, bc: NoRoute, bd: NoRoute, cd: NoRoute, money: 100)
 
 export fn connected_world() -> World:
-  World(a: Town(name: "Riverford", gEnd: 5, tEnd: 1, sEnd: 0, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), b: Town(name: "Hillcrest", gEnd: 0, tEnd: 1, sEnd: 2, oEnd: 3, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), c: Town(name: "Greenvale", gEnd: 2, tEnd: 4, sEnd: 1, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), d: Town(name: "Portmere", gEnd: 1, tEnd: 0, sEnd: 0, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), ab: true, ac: true, ad: true, bc: true, bd: true, cd: true, money: 100)
+  World(a: Town(name: "Riverford", gEnd: 5, tEnd: 1, sEnd: 0, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), b: Town(name: "Hillcrest", gEnd: 0, tEnd: 1, sEnd: 2, oEnd: 3, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), c: Town(name: "Greenvale", gEnd: 2, tEnd: 4, sEnd: 1, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), d: Town(name: "Portmere", gEnd: 1, tEnd: 0, sEnd: 0, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), ab: Path, ac: Path, ad: Path, bc: Path, bd: Path, cd: Path, money: 100)
 
 export fn status(t: Town) -> Text:
   match t.prosperity > 6:
@@ -233,30 +246,37 @@ fn main() -> Text:
 
 export fn toggle_ab(w: World) -> World:
   match w.ab:
-    true => remove_ab(w)
-    false => build_ab(w)
+    NoRoute => build_ab(w)
+    _ => remove_ab(w)
 
 export fn toggle_ac(w: World) -> World:
   match w.ac:
-    true => remove_ac(w)
-    false => build_ac(w)
+    NoRoute => build_ac(w)
+    _ => remove_ac(w)
 
 export fn toggle_ad(w: World) -> World:
   match w.ad:
-    true => remove_ad(w)
-    false => build_ad(w)
+    NoRoute => build_ad(w)
+    _ => remove_ad(w)
 
 export fn toggle_bc(w: World) -> World:
   match w.bc:
-    true => remove_bc(w)
-    false => build_bc(w)
+    NoRoute => build_bc(w)
+    _ => remove_bc(w)
 
 export fn toggle_bd(w: World) -> World:
   match w.bd:
-    true => remove_bd(w)
-    false => build_bd(w)
+    NoRoute => build_bd(w)
+    _ => remove_bd(w)
 
 export fn toggle_cd(w: World) -> World:
   match w.cd:
-    true => remove_cd(w)
-    false => build_cd(w)
+    NoRoute => build_cd(w)
+    _ => remove_cd(w)
+
+export fn route_text(r: RouteMode) -> Text:
+  match r:
+    NoRoute => "none"
+    Path => "path"
+    Road => "road"
+    River => "river"
