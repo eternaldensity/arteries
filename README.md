@@ -20,4 +20,5 @@ visible and explainable.
 /home/yria/dev/Diamond/target/debug/diamond check app/diamond.toml
 /home/yria/dev/Diamond/target/debug/diamond build app/diamond.toml --out .diamond/app-build
 /home/yria/dev/Diamond/target/debug/diamond serve .diamond/app-build --listen 127.0.0.1:3010
+# then open http://127.0.0.1:3010/ (plain HTTP, not HTTPS)
 ```
