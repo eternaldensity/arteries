@@ -1,6 +1,9 @@
 export component Root:
   state world: World = connected_world()
   derived report: Text = world_report("Current network", world)
+  derived active_links: Int = bool_int(world.ab) + bool_int(world.ac) + bool_int(world.bc) + bool_int(world.bd)
+  derived total_prosperity: Int = world.a.prosperity + world.b.prosperity + world.c.prosperity + world.d.prosperity
+  derived total_research: Int = world.a.research + world.b.research + world.c.research + world.d.research
 
   on tick_once:
     world = tick(world)
@@ -28,19 +31,66 @@ export component Root:
 
   html:
     <main>
-      <h1>Arteries: transport economy prototype</h1>
-      <p>Build or remove links, then run ticks to see prosperity and research change.</p>
-      <section>
-        <button type="button" on-click={toggle_ab}>Toggle A-B link</button>
-        <button type="button" on-click={toggle_ac}>Toggle A-C link</button>
-        <button type="button" on-click={toggle_bc}>Toggle B-C link</button>
-        <button type="button" on-click={toggle_bd}>Toggle B-D link</button>
+      <header>
+        <h1>Arteries</h1>
+        <p>Steer a small economy through transport links alone. Toggle links, run time, and watch settlements respond.</p>
+      </header>
+
+      <section class="metrics">
+        <div class="metric"><span class="label">Active links</span><strong>{active_links}</strong></div>
+        <div class="metric"><span class="label">Total prosperity</span><strong>{total_prosperity}</strong></div>
+        <div class="metric"><span class="label">Total research</span><strong>{total_research}</strong></div>
       </section>
-      <section>
-        <button type="button" on-click={tick_once}>Run 1 tick</button>
-        <button type="button" on-click={run_twelve}>Run 12 ticks</button>
-        <button type="button" on-click={reset_connected}>Reset connected</button>
-        <button type="button" on-click={reset_isolated}>Reset isolated</button>
+
+      <section class="controls">
+        <div class="control-group">
+          <h2>Links</h2>
+          <button type="button" on-click={toggle_ab}>A-B: {bool_text(world.ab)}</button>
+          <button type="button" on-click={toggle_ac}>A-C: {bool_text(world.ac)}</button>
+          <button type="button" on-click={toggle_bc}>B-C: {bool_text(world.bc)}</button>
+          <button type="button" on-click={toggle_bd}>B-D: {bool_text(world.bd)}</button>
+        </div>
+        <div class="control-group">
+          <h2>Time</h2>
+          <button type="button" on-click={tick_once}>Run 1 tick</button>
+          <button type="button" on-click={run_twelve}>Run 12 ticks</button>
+        </div>
+        <div class="control-group">
+          <h2>Scenarios</h2>
+          <button type="button" on-click={reset_connected}>Connected</button>
+          <button type="button" on-click={reset_isolated}>Isolated</button>
+        </div>
       </section>
-      <pre>{report}</pre>
+
+      <section class="settlements">
+        <article class="settlement">
+          <h2>{world.a.name} <span class="status">{status(world.a)}</span></h2>
+          <p>Pop {world.a.pop} · Prosperity {world.a.prosperity} · Research {world.a.research}</p>
+          <p>Grain {world.a.grain} · Timber {world.a.timber} · Ore {world.a.ore}</p>
+          <p>Endowments: grain {world.a.gEnd}, timber {world.a.tEnd}, ore {world.a.oEnd}</p>
+        </article>
+        <article class="settlement">
+          <h2>{world.b.name} <span class="status">{status(world.b)}</span></h2>
+          <p>Pop {world.b.pop} · Prosperity {world.b.prosperity} · Research {world.b.research}</p>
+          <p>Grain {world.b.grain} · Timber {world.b.timber} · Ore {world.b.ore}</p>
+          <p>Endowments: grain {world.b.gEnd}, timber {world.b.tEnd}, ore {world.b.oEnd}</p>
+        </article>
+        <article class="settlement">
+          <h2>{world.c.name} <span class="status">{status(world.c)}</span></h2>
+          <p>Pop {world.c.pop} · Prosperity {world.c.prosperity} · Research {world.c.research}</p>
+          <p>Grain {world.c.grain} · Timber {world.c.timber} · Ore {world.c.ore}</p>
+          <p>Endowments: grain {world.c.gEnd}, timber {world.c.tEnd}, ore {world.c.oEnd}</p>
+        </article>
+        <article class="settlement">
+          <h2>{world.d.name} <span class="status">{status(world.d)}</span></h2>
+          <p>Pop {world.d.pop} · Prosperity {world.d.prosperity} · Research {world.d.research}</p>
+          <p>Grain {world.d.grain} · Timber {world.d.timber} · Ore {world.d.ore}</p>
+          <p>Endowments: grain {world.d.gEnd}, timber {world.d.tEnd}, ore {world.d.oEnd}</p>
+        </article>
+      </section>
+
+      <section class="report">
+        <h2>Full text report</h2>
+        <pre>{report}</pre>
+      </section>
     </main>

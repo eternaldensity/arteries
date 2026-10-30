@@ -132,3 +132,16 @@ fn main() -> Text:
   let isolated = run_ticks(base_world(), 12)
   let connected = run_ticks(connected_world(), 12)
   world_report("ISOLATED (no links):", isolated) + "\n\n" + world_report("CONNECTED:", connected)
+
+export fn status(t: Town) -> Text:
+  match t.prosperity > 6:
+    true => "thriving"
+    false => match t.prosperity >= 0:
+      true => "stable"
+      false => "stressed"
+
+
+export fn bool_text(b: Bool) -> Text:
+  match b:
+    true => "on"
+    false => "off"

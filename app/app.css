@@ -1,4 +1,19 @@
-main { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
-section { margin: 1rem 0; }
-button { margin: 0.25rem; padding: 0.5rem 0.75rem; }
-pre { background: #f4f4f4; padding: 1rem; border-radius: 0.5rem; white-space: pre-wrap; }
+main { font-family: system-ui, sans-serif; max-width: 1000px; margin: 2rem auto; padding: 0 1rem; }
+header { margin-bottom: 1.5rem; }
+header p { color: #444; max-width: 700px; }
+.metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 1.5rem 0; }
+.metric { background: #f4f4f4; border-radius: 0.75rem; padding: 1rem; text-align: center; }
+.metric .label { display: block; color: #666; font-size: 0.85rem; }
+.metric strong { font-size: 1.8rem; }
+.controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 1.5rem 0; }
+.control-group { background: #fafafa; border: 1px solid #ddd; border-radius: 0.75rem; padding: 1rem; }
+.control-group h2 { margin-top: 0; font-size: 1rem; }
+button { margin: 0.25rem; padding: 0.5rem 0.75rem; border: 1px solid #ccc; border-radius: 0.5rem; background: white; cursor: pointer; }
+button:hover { background: #eee; }
+.settlements { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin: 1.5rem 0; }
+.settlement { background: #fff; border: 1px solid #ddd; border-radius: 0.75rem; padding: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.settlement h2 { margin-top: 0; font-size: 1.1rem; display: flex; justify-content: space-between; }
+.status { font-size: 0.8rem; color: #555; font-weight: normal; }
+.report { margin-top: 1.5rem; }
+pre { background: #f4f4f4; padding: 1rem; border-radius: 0.5rem; white-space: pre-wrap; overflow: auto; }
+@media (max-width: 700px) { .metrics, .controls, .settlements { grid-template-columns: 1fr; } }
