@@ -41,3 +41,10 @@ pre { background: #f4f4f4; padding: 1rem; border-radius: 0.5rem; white-space: pr
 .route-bc { left: 330px; top: 60px; width: 278px; transform: rotate(142.1deg); }
 .route-bd { left: 330px; top: 60px; width: 162px; transform: rotate(82.9deg); }
 .route-cd { left: 90px; top: 230px; width: 242px; transform: rotate(-2.4deg); }
+
+.feature { position: absolute; border-radius: 50%; opacity: 0.55; }
+.feature-river { left: 150px; top: 120px; width: 180px; height: 18px; background: #3b82f6; transform: rotate(-12deg); border-radius: 9px; }
+.feature-lake { left: 250px; top: 180px; width: 70px; height: 50px; background: #60a5fa; }
+.feature-mountain { left: 200px; top: 40px; width: 0; height: 0; border-left: 30px solid transparent; border-right: 30px solid transparent; border-bottom: 45px solid #78716c; opacity: 0.7; border-radius: 0; }
+.straight { border-top: 4px solid #1d4ed8; background: transparent; height: 0; }
+.curved { border-top: 4px solid #7c3aed; background: transparent; height: 0; border-radius: 0 0 50% 50%; }

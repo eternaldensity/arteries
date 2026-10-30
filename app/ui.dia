@@ -1,5 +1,6 @@
 export component Root:
   state world: World = connected_world()
+  state curved_routes: Bool = false
   derived report: Text = world_report("Current network", world)
   derived active_links: Int = bool_int(world.ab) + bool_int(world.ac) + bool_int(world.ad) + bool_int(world.bc) + bool_int(world.bd) + bool_int(world.cd)
   derived total_prosperity: Int = world.a.prosperity + world.b.prosperity + world.c.prosperity + world.d.prosperity
@@ -35,6 +36,9 @@ export component Root:
   on reset_isolated:
     world = base_world()
 
+  on toggle_curve:
+    curved_routes = curved_routes == false
+
   html:
     <main>
       <header>
@@ -57,11 +61,13 @@ export component Root:
           <button type="button" on-click={toggle_bc}>B-C: {bool_text(world.bc)}</button>
           <button type="button" on-click={toggle_bd}>B-D: {bool_text(world.bd)}</button>
           <button type="button" on-click={toggle_cd}>C-D: {bool_text(world.cd)}</button>
+          <button type="button" on-click={toggle_cd}>C-D: {bool_text(world.cd)}</button>
         </div>
         <div class="control-group">
           <h2>Time</h2>
           <button type="button" on-click={tick_once}>Run 1 tick</button>
           <button type="button" on-click={run_twelve}>Run 12 ticks</button>
+          <button type="button" on-click={toggle_curve}>Route style: {bool_text(curved_routes)}</button>
         </div>
         <div class="control-group">
           <h2>Scenarios</h2>
@@ -73,12 +79,23 @@ export component Root:
       <section class="map">
         <h2>Landscape map</h2>
         <div class="map-canvas">
-          <when test={world.ab}><div class="route route-ab"></div></when>
-          <when test={world.ac}><div class="route route-ac"></div></when>
-          <when test={world.ad}><div class="route route-ad"></div></when>
-          <when test={world.bc}><div class="route route-bc"></div></when>
-          <when test={world.bd}><div class="route route-bd"></div></when>
-          <when test={world.cd}><div class="route route-cd"></div></when>
+          <when test={world.ab and curved_routes == false}><div class="route route-ab straight"></div></when>
+          <when test={world.ac and curved_routes == false}><div class="route route-ac straight"></div></when>
+          <when test={world.ad and curved_routes == false}><div class="route route-ad straight"></div></when>
+          <when test={world.bc and curved_routes == false}><div class="route route-bc straight"></div></when>
+          <when test={world.bd and curved_routes == false}><div class="route route-bd straight"></div></when>
+          <when test={world.cd and curved_routes == false}><div class="route route-cd straight"></div></when>
+
+          <when test={world.ab and curved_routes}><div class="route route-ab curved"></div></when>
+          <when test={world.ac and curved_routes}><div class="route route-ac curved"></div></when>
+          <when test={world.ad and curved_routes}><div class="route route-ad curved"></div></when>
+          <when test={world.bc and curved_routes}><div class="route route-bc curved"></div></when>
+          <when test={world.bd and curved_routes}><div class="route route-bd curved"></div></when>
+          <when test={world.cd and curved_routes}><div class="route route-cd curved"></div></when>
+
+          <div class="feature feature-river"></div>
+          <div class="feature feature-lake"></div>
+          <div class="feature feature-mountain"></div>
 
           <div class="node node-a"><strong>Riverford</strong><br>plains</div>
           <div class="node node-b"><strong>Hillcrest</strong><br>hills</div>
