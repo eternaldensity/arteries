@@ -1,14 +1,15 @@
-# Arteries prototype: a tiny deterministic transport-economy simulation.
-# Phase 1 scope: 4 settlements, 3 goods, link-driven trade, prosperity, and research.
-
+# Arteries prototype: richer economy, routes, money, and construction.
 type Town:
   name: Text
   gEnd: Int
   tEnd: Int
+  sEnd: Int
   oEnd: Int
   grain: Int
   timber: Int
+  stone: Int
   ore: Int
+  tools: Int
   pop: Int
   prosperity: Int
   research: Int
@@ -24,8 +25,11 @@ type World:
   d: Town
   ab: Bool
   ac: Bool
+  ad: Bool
   bc: Bool
   bd: Bool
+  cd: Bool
+  money: Int
 
 fn min_int(x: Int, y: Int) -> Int:
   match x < y:
@@ -38,36 +42,51 @@ fn bool_int(b: Bool) -> Int:
     false => 0
 
 fn produce(t: Town) -> Town:
-  Town(name: t.name, gEnd: t.gEnd, tEnd: t.tEnd, oEnd: t.oEnd, grain: t.grain + t.gEnd, timber: t.timber + t.tEnd, ore: t.ore + t.oEnd, pop: t.pop, prosperity: t.prosperity, research: t.research)
+  let grain2 = t.grain + t.gEnd
+  let timber2 = t.timber + t.tEnd
+  let stone2 = t.stone + t.sEnd
+  let ore2 = t.ore + t.oEnd
+  let make_tools = match timber2 >= 1 and stone2 >= 1 and ore2 >= 1:
+    true => 1
+    false => 0
+  let timber3 = timber2 - make_tools
+  let stone3 = stone2 - make_tools
+  let ore3 = ore2 - make_tools
+  let tools3 = t.tools + make_tools
+  Town(name: t.name, gEnd: t.gEnd, tEnd: t.tEnd, sEnd: t.sEnd, oEnd: t.oEnd, grain: grain2, timber: timber3, stone: stone3, ore: ore3, tools: tools3, pop: t.pop, prosperity: t.prosperity, research: t.research)
 
 fn consume(t: Town) -> Town:
   let grain2 = t.grain - t.pop
   let prosperity2 = match grain2 >= 0:
     true => t.prosperity + 1
     false => t.prosperity - 2
-  Town(name: t.name, gEnd: t.gEnd, tEnd: t.tEnd, oEnd: t.oEnd, grain: grain2, timber: t.timber, ore: t.ore, pop: t.pop, prosperity: prosperity2, research: t.research)
+  Town(name: t.name, gEnd: t.gEnd, tEnd: t.tEnd, sEnd: t.sEnd, oEnd: t.oEnd, grain: grain2, timber: t.timber, stone: t.stone, ore: t.ore, tools: t.tools, pop: t.pop, prosperity: prosperity2, research: t.research)
 
 fn trade(a: Town, b: Town) -> Pair:
   # Grain moves only as surplus above local food need.
   let surplusA = a.grain - (a.pop * 2)
-  let demandB = b.pop * 2 - b.grain
+  let demandB = (b.pop * 2) - b.grain
   let grain_ab = match surplusA > 0 and demandB > 0:
     true => min_int(surplusA, demandB)
     false => 0
   let surplusB = b.grain - (b.pop * 2)
-  let demandA = a.pop * 2 - a.grain
+  let demandA = (a.pop * 2) - a.grain
   let grain_ba = match surplusB > 0 and demandA > 0:
     true => min_int(surplusB, demandA)
     false => 0
   let grainA = a.grain - grain_ab + grain_ba
   let grainB = b.grain + grain_ab - grain_ba
-  # Timber and ore are shared so more settlements gain variety (research input).
+  # Share non-food goods to spread variety and inputs.
   let timberTotal = a.timber + b.timber
+  let stoneTotal = a.stone + b.stone
   let oreTotal = a.ore + b.ore
+  let toolsTotal = a.tools + b.tools
   let timberA = timberTotal / 2
+  let stoneA = stoneTotal / 2
   let oreA = oreTotal / 2
-  let a2 = Town(name: a.name, gEnd: a.gEnd, tEnd: a.tEnd, oEnd: a.oEnd, grain: grainA, timber: timberA, ore: oreA, pop: a.pop, prosperity: a.prosperity, research: a.research)
-  let b2 = Town(name: b.name, gEnd: b.gEnd, tEnd: b.tEnd, oEnd: b.oEnd, grain: grainB, timber: timberTotal - timberA, ore: oreTotal - oreA, pop: b.pop, prosperity: b.prosperity, research: b.research)
+  let toolsA = toolsTotal / 2
+  let a2 = Town(name: a.name, gEnd: a.gEnd, tEnd: a.tEnd, sEnd: a.sEnd, oEnd: a.oEnd, grain: grainA, timber: timberA, stone: stoneA, ore: oreA, tools: toolsA, pop: a.pop, prosperity: a.prosperity, research: a.research)
+  let b2 = Town(name: b.name, gEnd: b.gEnd, tEnd: b.tEnd, sEnd: b.sEnd, oEnd: b.oEnd, grain: grainB, timber: timberTotal - timberA, stone: stoneTotal - stoneA, ore: oreTotal - oreA, tools: toolsTotal - toolsA, pop: b.pop, prosperity: b.prosperity, research: b.research)
   Pair(a: a2, b: b2)
 
 fn trade_if(link: Bool, a: Town, b: Town) -> Pair:
@@ -76,17 +95,20 @@ fn trade_if(link: Bool, a: Town, b: Town) -> Pair:
     false => Pair(a: a, b: b)
 
 fn research(t: Town) -> Town:
-  let variety = bool_int(t.grain > 0) + bool_int(t.timber > 0) + bool_int(t.ore > 0)
+  let variety = bool_int(t.timber > 0) + bool_int(t.stone > 0) + bool_int(t.ore > 0) + bool_int(t.tools > 0)
   let gain = t.pop * (1 + variety)
   let food_ok = bool_int(t.grain >= 0)
   let prosperity2 = t.prosperity + food_ok + (variety - 1)
-  Town(name: t.name, gEnd: t.gEnd, tEnd: t.tEnd, oEnd: t.oEnd, grain: t.grain, timber: t.timber, ore: t.ore, pop: t.pop, prosperity: prosperity2, research: t.research + gain)
+  Town(name: t.name, gEnd: t.gEnd, tEnd: t.tEnd, sEnd: t.sEnd, oEnd: t.oEnd, grain: t.grain, timber: t.timber, stone: t.stone, ore: t.ore, tools: t.tools, pop: t.pop, prosperity: prosperity2, research: t.research + gain)
 
 fn grow(t: Town) -> Town:
-  let newPop = match t.prosperity > 6:
-    true => t.pop + 1
-    false => t.pop
-  Town(name: t.name, gEnd: t.gEnd, tEnd: t.tEnd, oEnd: t.oEnd, grain: t.grain, timber: t.timber, ore: t.ore, pop: newPop, prosperity: t.prosperity, research: t.research)
+  let can_grow = match t.prosperity > 6 and t.stone >= 1 and t.timber >= 1:
+    true => 1
+    false => 0
+  let newPop = t.pop + can_grow
+  let stone2 = t.stone - can_grow
+  let timber2 = t.timber - can_grow
+  Town(name: t.name, gEnd: t.gEnd, tEnd: t.tEnd, sEnd: t.sEnd, oEnd: t.oEnd, grain: t.grain, timber: timber2, stone: stone2, ore: t.ore, tools: t.tools, pop: newPop, prosperity: t.prosperity, research: t.research)
 
 fn tick(w: World) -> World:
   let a0 = consume(produce(w.a))
@@ -99,36 +121,142 @@ fn tick(w: World) -> World:
   let p2 = trade_if(w.ac, a1, c0)
   let a2 = p2.a
   let c1 = p2.b
-  let p3 = trade_if(w.bc, b1, c1)
-  let b2 = p3.a
-  let c2 = p3.b
-  let p4 = trade_if(w.bd, b2, d0)
-  let b3 = p4.a
-  let d1 = p4.b
-  let aR = grow(research(a2))
+  let p3 = trade_if(w.ad, a2, d0)
+  let a3 = p3.a
+  let d1 = p3.b
+  let p4 = trade_if(w.bc, b1, c1)
+  let b2 = p4.a
+  let c2 = p4.b
+  let p5 = trade_if(w.bd, b2, d1)
+  let b3 = p5.a
+  let d2 = p5.b
+  let p6 = trade_if(w.cd, c2, d2)
+  let c3 = p6.a
+  let d3 = p6.b
+  let aR = grow(research(a3))
   let bR = grow(research(b3))
-  let cR = grow(research(c2))
-  let dR = grow(research(d1))
-  World(a: aR, b: bR, c: cR, d: dR, ab: w.ab, ac: w.ac, bc: w.bc, bd: w.bd)
+  let cR = grow(research(c3))
+  let dR = grow(research(d3))
+  let built = bool_int(w.ab) + bool_int(w.ac) + bool_int(w.ad) + bool_int(w.bc) + bool_int(w.bd) + bool_int(w.cd)
+  let money2 = w.money - built
+  World(a: aR, b: bR, c: cR, d: dR, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, money: money2)
 
 fn run_ticks(w: World, n: Int) -> World:
   match n <= 0:
     true => w
     false => run_ticks(tick(w), n - 1)
 
+# Construction helpers (cost: 2 timber, 1 stone, 20 money)
+fn build_ab(w: World) -> World:
+  let can = w.money >= 20 and w.a.timber >= 2 and w.a.stone >= 1
+  match can:
+    true => World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber - 2, stone: w.a.stone - 1, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: true, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money - 20)
+    false => w
+
+fn remove_ab(w: World) -> World:
+  World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber + 1, stone: w.a.stone, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: false, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money + 10)
+
+fn build_ac(w: World) -> World:
+  let can = w.money >= 20 and w.a.timber >= 2 and w.a.stone >= 1
+  match can:
+    true => World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber - 2, stone: w.a.stone - 1, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: w.ab, ac: true, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money - 20)
+    false => w
+
+fn remove_ac(w: World) -> World:
+  World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber + 1, stone: w.a.stone, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: w.ab, ac: false, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money + 10)
+
+fn build_ad(w: World) -> World:
+  let can = w.money >= 20 and w.a.timber >= 2 and w.a.stone >= 1
+  match can:
+    true => World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber - 2, stone: w.a.stone - 1, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: true, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money - 20)
+    false => w
+
+fn remove_ad(w: World) -> World:
+  World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, grain: w.a.grain, timber: w.a.timber + 1, stone: w.a.stone, ore: w.a.ore, tools: w.a.tools, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: false, bc: w.bc, bd: w.bd, cd: w.cd, money: w.money + 10)
+
+fn build_bc(w: World) -> World:
+  let can = w.money >= 20 and w.b.timber >= 2 and w.b.stone >= 1
+  match can:
+    true => World(a: w.a, b: Town(name: w.b.name, gEnd: w.b.gEnd, tEnd: w.b.tEnd, sEnd: w.b.sEnd, oEnd: w.b.oEnd, grain: w.b.grain, timber: w.b.timber - 2, stone: w.b.stone - 1, ore: w.b.ore, tools: w.b.tools, pop: w.b.pop, prosperity: w.b.prosperity, research: w.b.research), c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: true, bd: w.bd, cd: w.cd, money: w.money - 20)
+    false => w
+
+fn remove_bc(w: World) -> World:
+  World(a: w.a, b: Town(name: w.b.name, gEnd: w.b.gEnd, tEnd: w.b.tEnd, sEnd: w.b.sEnd, oEnd: w.b.oEnd, grain: w.b.grain, timber: w.b.timber + 1, stone: w.b.stone, ore: w.b.ore, tools: w.b.tools, pop: w.b.pop, prosperity: w.b.prosperity, research: w.b.research), c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: false, bd: w.bd, cd: w.cd, money: w.money + 10)
+
+fn build_bd(w: World) -> World:
+  let can = w.money >= 20 and w.b.timber >= 2 and w.b.stone >= 1
+  match can:
+    true => World(a: w.a, b: Town(name: w.b.name, gEnd: w.b.gEnd, tEnd: w.b.tEnd, sEnd: w.b.sEnd, oEnd: w.b.oEnd, grain: w.b.grain, timber: w.b.timber - 2, stone: w.b.stone - 1, ore: w.b.ore, tools: w.b.tools, pop: w.b.pop, prosperity: w.b.prosperity, research: w.b.research), c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: true, cd: w.cd, money: w.money - 20)
+    false => w
+
+fn remove_bd(w: World) -> World:
+  World(a: w.a, b: Town(name: w.b.name, gEnd: w.b.gEnd, tEnd: w.b.tEnd, sEnd: w.b.sEnd, oEnd: w.b.oEnd, grain: w.b.grain, timber: w.b.timber + 1, stone: w.b.stone, ore: w.b.ore, tools: w.b.tools, pop: w.b.pop, prosperity: w.b.prosperity, research: w.b.research), c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: false, cd: w.cd, money: w.money + 10)
+
+fn build_cd(w: World) -> World:
+  let can = w.money >= 20 and w.c.timber >= 2 and w.c.stone >= 1
+  match can:
+    true => World(a: w.a, b: w.b, c: Town(name: w.c.name, gEnd: w.c.gEnd, tEnd: w.c.tEnd, sEnd: w.c.sEnd, oEnd: w.c.oEnd, grain: w.c.grain, timber: w.c.timber - 2, stone: w.c.stone - 1, ore: w.c.ore, tools: w.c.tools, pop: w.c.pop, prosperity: w.c.prosperity, research: w.c.research), d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: true, money: w.money - 20)
+    false => w
+
+fn remove_cd(w: World) -> World:
+  World(a: w.a, b: w.b, c: Town(name: w.c.name, gEnd: w.c.gEnd, tEnd: w.c.tEnd, sEnd: w.c.sEnd, oEnd: w.c.oEnd, grain: w.c.grain, timber: w.c.timber + 1, stone: w.c.stone, ore: w.c.ore, tools: w.c.tools, pop: w.c.pop, prosperity: w.c.prosperity, research: w.c.research), d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: false, money: w.money + 10)
+
 fn town_line(t: Town) -> Text:
-  t.name + ": pop=" + int_text(t.pop) + " grain=" + int_text(t.grain) + " timber=" + int_text(t.timber) + " ore=" + int_text(t.ore) + " prosperity=" + int_text(t.prosperity) + " research=" + int_text(t.research)
+  t.name + ": pop=" + int_text(t.pop) + " grain=" + int_text(t.grain) + " timber=" + int_text(t.timber) + " stone=" + int_text(t.stone) + " ore=" + int_text(t.ore) + " tools=" + int_text(t.tools) + " prosperity=" + int_text(t.prosperity) + " research=" + int_text(t.research)
 
 fn world_report(label: Text, w: World) -> Text:
-  label + "\n" + town_line(w.a) + "\n" + town_line(w.b) + "\n" + town_line(w.c) + "\n" + town_line(w.d)
+  label + "\\n" + town_line(w.a) + "\\n" + town_line(w.b) + "\\n" + town_line(w.c) + "\\n" + town_line(w.d) + "\\nMoney: " + int_text(w.money)
 
 fn base_world() -> World:
-  World( a: Town(name: "Riverford", gEnd: 5, tEnd: 0, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), b: Town(name: "Hillcrest", gEnd: 0, tEnd: 1, oEnd: 3, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), c: Town(name: "Greenvale", gEnd: 2, tEnd: 4, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), d: Town(name: "Portmere", gEnd: 1, tEnd: 0, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), ab: false, ac: false, bc: false, bd: false)
+  World(a: Town(name: "Riverford", gEnd: 5, tEnd: 1, sEnd: 0, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), b: Town(name: "Hillcrest", gEnd: 0, tEnd: 1, sEnd: 2, oEnd: 3, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), c: Town(name: "Greenvale", gEnd: 2, tEnd: 4, sEnd: 1, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), d: Town(name: "Portmere", gEnd: 1, tEnd: 0, sEnd: 0, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), ab: false, ac: false, ad: false, bc: false, bd: false, cd: false, money: 100)
 
 fn connected_world() -> World:
-  World( a: Town(name: "Riverford", gEnd: 5, tEnd: 0, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), b: Town(name: "Hillcrest", gEnd: 0, tEnd: 1, oEnd: 3, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), c: Town(name: "Greenvale", gEnd: 2, tEnd: 4, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), d: Town(name: "Portmere", gEnd: 1, tEnd: 0, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), ab: true, ac: true, bc: true, bd: true)
+  World(a: Town(name: "Riverford", gEnd: 5, tEnd: 1, sEnd: 0, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), b: Town(name: "Hillcrest", gEnd: 0, tEnd: 1, sEnd: 2, oEnd: 3, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), c: Town(name: "Greenvale", gEnd: 2, tEnd: 4, sEnd: 1, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), d: Town(name: "Portmere", gEnd: 1, tEnd: 0, sEnd: 0, oEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, pop: 2, prosperity: 0, research: 0), ab: true, ac: true, ad: true, bc: true, bd: true, cd: true, money: 100)
+
+fn status(t: Town) -> Text:
+  match t.prosperity > 6:
+    true => "thriving"
+    false => match t.prosperity >= 0:
+      true => "stable"
+      false => "stressed"
+
+fn bool_text(b: Bool) -> Text:
+  match b:
+    true => "on"
+    false => "off"
 
 fn main() -> Text:
-  let isolated = run_ticks(base_world(), 12)
-  let connected = run_ticks(connected_world(), 12)
-  world_report("ISOLATED (no links):", isolated) + "\n\n" + world_report("CONNECTED:", connected)
+  let isolated = run_ticks(base_world(), 8)
+  let connected = run_ticks(connected_world(), 8)
+  world_report("ISOLATED (no routes):", isolated) + "\\n\\n" + world_report("CONNECTED:", connected)
+
+
+fn toggle_ab(w: World) -> World:
+  match w.ab:
+    true => remove_ab(w)
+    false => build_ab(w)
+
+fn toggle_ac(w: World) -> World:
+  match w.ac:
+    true => remove_ac(w)
+    false => build_ac(w)
+
+fn toggle_ad(w: World) -> World:
+  match w.ad:
+    true => remove_ad(w)
+    false => build_ad(w)
+
+fn toggle_bc(w: World) -> World:
+  match w.bc:
+    true => remove_bc(w)
+    false => build_bc(w)
+
+fn toggle_bd(w: World) -> World:
+  match w.bd:
+    true => remove_bd(w)
+    false => build_bd(w)
+
+fn toggle_cd(w: World) -> World:
+  match w.cd:
+    true => remove_cd(w)
+    false => build_cd(w)
