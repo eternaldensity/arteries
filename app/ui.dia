@@ -71,19 +71,21 @@ export component Root:
       </section>
 
       <section class="map">
-        <h2>Map</h2>
-        <div class="terrain-grid">
-          <div class="tile plains">Plains<br><strong>Riverford</strong></div>
-          <div class="tile forest">Forest</div>
-          <div class="tile hills">Hills<br><strong>Hillcrest</strong></div>
-          <div class="tile river">River</div>
-          <div class="tile plains">Plains</div>
-          <div class="tile coast">Coast<br><strong>Portmere</strong></div>
-          <div class="tile forest">Forest<br><strong>Greenvale</strong></div>
-          <div class="tile hills">Hills</div>
-          <div class="tile plains">Plains</div>
+        <h2>Landscape map</h2>
+        <div class="map-canvas">
+          <when test={world.ab}><div class="route route-ab"></div></when>
+          <when test={world.ac}><div class="route route-ac"></div></when>
+          <when test={world.ad}><div class="route route-ad"></div></when>
+          <when test={world.bc}><div class="route route-bc"></div></when>
+          <when test={world.bd}><div class="route route-bd"></div></when>
+          <when test={world.cd}><div class="route route-cd"></div></when>
+
+          <div class="node node-a"><strong>Riverford</strong><br>plains</div>
+          <div class="node node-b"><strong>Hillcrest</strong><br>hills</div>
+          <div class="node node-c"><strong>Greenvale</strong><br>forest</div>
+          <div class="node node-d"><strong>Portmere</strong><br>coast</div>
         </div>
-        <p class="legend">Terrain: plains, forest, hills, river, coast. Routes connect settlements across these features.</p>
+        <p class="legend">Lines show built transport routes between settlements across the landscape.</p>
       </section>
 
       <section class="settlements">
