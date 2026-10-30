@@ -1,453 +1,2235 @@
-# Arteries prototype: economy, routes, fees, capacity, and events.
+# Arteries - transport economy simulation core.
+#
+# The map is implicit: terrain is a pure function of (seed, x, y), so every
+# seed produces a different world without storing thousands of tiles. Routes are
+# polylines in map space and the browser rasterises them per row.
+
+# ---------------------------------------------------------------- types
+
+export enum Terrain:
+  Plains
+  Forest
+  Hills
+  Mountain
+  Water
+  Coast
+  Marsh
+
+export enum Good:
+  Grain
+  Timber
+  Stone
+  Ore
+  Fiber
+  Tools
+  Cloth
+  Fish
+
 export enum RouteMode:
   NoRoute
   Path
   Road
   River
+  Rail
 
-export type Town:
-  name: Text
-  gEnd: Int
-  tEnd: Int
-  sEnd: Int
-  oEnd: Int
-  fEnd: Int
-  grain: Int
-  timber: Int
-  stone: Int
-  ore: Int
-  tools: Int
-  fiber: Int
-  cloth: Int
+export type Point:
+  x: Int
+  y: Int
+
+export type TownState:
   pop: Int
   prosperity: Int
   research: Int
+  stock: List<Int>
 
-export type Pair:
-  a: Town
-  b: Town
+export type Town:
+  id: Text
+  name: Text
+  x: Int
+  y: Int
+  terrain: Terrain
+  endow: List<Int>
+  state: TownState
+
+export type Site:
+  id: Text
+  name: Text
+  x: Int
+  y: Int
+  terrain: Terrain
+  resource: Good
+  richness: Int
+  founded: Bool
+
+export type RoutePlan:
+  path: List<Point>
+  length: Int
+  water: Int
+  mountain: Int
+  forest: Int
+  money: Int
+  timber: Int
+  stone: Int
+  min_y: Int
+  max_y: Int
+
+export type Route:
+  id: Text
+  a: Text
+  b: Text
+  a_name: Text
+  b_name: Text
+  mode: RouteMode
+  plan: RoutePlan
+  fee: Int
+  traffic: Int
+  capacity: Int
+  upkeep: Int
 
 export type World:
-  a: Town
-  b: Town
-  c: Town
-  d: Town
-  e: Town
-  ab: RouteMode
-  ac: RouteMode
-  ad: RouteMode
-  bc: RouteMode
-  bd: RouteMode
-  cd: RouteMode
-  ae: RouteMode
-  ce: RouteMode
-  fee_ab: Int
-  fee_ac: Int
-  fee_ad: Int
-  fee_bc: Int
-  fee_bd: Int
-  fee_cd: Int
-  fee_ae: Int
-  fee_ce: Int
+  seed: Int
+  tick: Int
   money: Int
+  towns: List<Town>
+  sites: List<Site>
+  routes: List<Route>
+  log: List<Text>
+  history: List<Int>
   tech_road: Bool
   tech_river: Bool
-  tick_count: Int
+  tech_rail: Bool
 
-export fn min_int(x: Int, y: Int) -> Int:
-  match x < y:
-    true => x
+export type BuildResult:
+  world: World
+  ok: Bool
+  message: Text
+  from: Text
+  to: Text
+
+export type TradeResult:
+  a: Town
+  b: Town
+  moved: Int
+
+export type TradeMoves:
+  ab: List<Int>
+  ba: List<Int>
+  moved: Int
+
+export type NetState:
+  towns: List<Town>
+  routes: List<Route>
+
+export type EventOutcome:
+  towns: List<Town>
+  messages: List<Text>
+
+export type FoundLists:
+  towns: List<Town>
+  sites: List<Site>
+  log: List<Text>
+
+export type MapCell:
+  x: Int
+  y: Int
+  terrain: Terrain
+  route: Int
+  marker: Text
+  marker_name: Text
+  marker_class: Text
+  is_town: Bool
+  selected: Bool
+  draft: Bool
+  css: Text
+  title: Text
+
+export type MapBaseCell:
+  x: Int
+  y: Int
+  terrain: Terrain
+  marker: Text
+  marker_name: Text
+  is_town: Bool
+
+export type BaseRow:
+  y: Int
+  cells: List<MapBaseCell>
+
+export type MarkerInfo:
+  id: Text
+  name: Text
+  is_town: Bool
+  x: Int
+  y: Int
+  terrain: Terrain
+
+export type RenderedRow:
+  y: Int
+  cells: List<MapCell>
+
+export type TerrainPatch:
+  key: Text
+  position: Text
+  css: Text
+
+export type RouteNode:
+  key: Text
+  position: Text
+  css: Text
+
+export type TerrainRow:
+  y: Int
+  patches: List<Text>
+
+export type RouteNodeGroup:
+  key: Text
+  nodes: List<RouteNode>
+
+export type Selection:
+  selected: Text
+  from: Text
+  to: Text
+  draft: RoutePlan
+  ready: Bool
+  notice: Text
+
+export type InspectView:
+  ready: Bool
+  name: Text
+  status: Text
+  tone: Text
+  pop: Int
+  prosperity: Int
+  research: Int
+  terrain: Text
+  value: Int
+  insight: Text
+  shortages: Text
+  connected: Int
+  goods: List<Int>
+  needs: List<Int>
+  endows: List<Int>
+
+export type Game:
+  world: World
+  sel: Selection
+  notice: Text
+  last_ok: Bool
+  route_groups: List<RouteNodeGroup>
+  auto_upkeep: Bool
+  last_paid_tick: Int
+  upkeep_per_cycle: Int
+  inspect: InspectView
+
+# ---------------------------------------------------------------- constants
+
+export fn map_w() -> Int:
+  10
+
+export fn map_h() -> Int:
+  6
+
+export fn max_log() -> Int:
+  8
+
+export fn max_history() -> Int:
+  12
+
+export fn max_settlements() -> Int:
+  5
+
+export fn max_routes() -> Int:
+  4
+
+export fn road_research() -> Int:
+  45
+
+export fn river_research() -> Int:
+  110
+
+export fn rail_research() -> Int:
+  220
+
+fn mod_int(a: Int, b: Int) -> Int:
+  match b == 0:
+    true => 0
+    false => a - (a / b) * b
+
+fn abs_int(x: Int) -> Int:
+  match x < 0:
+    true => -x
+    false => x
+
+fn min_int(a: Int, b: Int) -> Int:
+  match a < b:
+    true => a
+    false => b
+
+fn max_int(a: Int, b: Int) -> Int:
+  match a > b:
+    true => a
+    false => b
+
+fn clamp(v: Int, lo: Int, hi: Int) -> Int:
+  match v < lo:
+    true => lo
+    false => match v > hi:
+      true => hi
+      false => v
+
+fn bool_int(b: Bool) -> Int:
+  match b:
+    true => 1
+    false => 0
+
+fn sign(x: Int) -> Int:
+  match x < 0:
+    true => -1
+    false => match x > 0:
+      true => 1
+      false => 0
+
+fn hash100(seed: Int, x: Int, y: Int, salt: Int) -> Int:
+  let h = ((x + 1) * 7919) + ((y + 1) * 104729) + ((seed + 1) * 15485863) + (salt * 2654435761)
+  let m = mod_int(h, 1000003)
+  mod_int(m, 100)
+
+export fn nth_int(xs: List<Int>, i: Int) -> Int:
+  match list_get(xs, i):
+    Some(v) => v
+    None => 0
+
+export fn nth_text(xs: List<Text>, i: Int) -> Text:
+  match list_get(xs, i):
+    Some(v) => v
+    None => ""
+
+fn replace_int(xs: List<Int>, i: Int, v: Int) -> List<Int>:
+  for x in indices(len(xs)):
+    match x == i:
+      true => v
+      false => nth_int(xs, x)
+
+fn replace_text(xs: List<Text>, i: Int, v: Text) -> List<Text>:
+  for x in indices(len(xs)):
+    match x == i:
+      true => v
+      false => nth_text(xs, x)
+
+export fn indices(n: Int) -> List<Int>:
+  match n <= 0:
+    true => []
+    false => list_append(indices(n - 1), n - 1)
+
+fn sum_ints(xs: List<Int>, i: Int) -> Int:
+  match list_get(xs, i):
+    None => 0
+    Some(v) => v + sum_ints(xs, i + 1)
+
+export fn total(xs: List<Int>) -> Int:
+  sum_ints(xs, 0)
+
+fn concat_lists(xs: List<Text>, ys: List<Text>) -> List<Text>:
+  match len(xs) == 0:
+    true => ys
+    false => concat_lists(list_slice(xs, 1, len(xs) - 1), list_append(ys, nth_text(xs, 0)))
+
+# ---------------------------------------------------------------- goods
+
+export fn goods() -> List<Good>:
+  [Grain, Timber, Stone, Ore, Fiber, Tools, Cloth, Fish]
+
+fn good_index(g: Good) -> Int:
+  match g:
+    Grain => 0
+    Timber => 1
+    Stone => 2
+    Ore => 3
+    Fiber => 4
+    Tools => 5
+    Cloth => 6
+    Fish => 7
+
+export fn good_name(g: Good) -> Text:
+  match g:
+    Grain => "Grain"
+    Timber => "Timber"
+    Stone => "Stone"
+    Ore => "Ore"
+    Fiber => "Fiber"
+    Tools => "Tools"
+    Cloth => "Cloth"
+    Fish => "Fish"
+
+export fn good_short(g: Good) -> Text:
+  match g:
+    Grain => "GRA"
+    Timber => "TIM"
+    Stone => "STO"
+    Ore => "ORE"
+    Fiber => "FIB"
+    Tools => "TOL"
+    Cloth => "CLO"
+    Fish => "FSH"
+
+export fn stock(t: Town, g: Good) -> Int:
+  nth_int(t.state.stock, good_index(g))
+
+export fn endow_of(t: Town, g: Good) -> Int:
+  nth_int(t.endow, good_index(g))
+
+fn endowment(t: Town, g: Good) -> Int:
+  nth_int(t.endow, good_index(g))
+
+fn with_stock_list(t: Town, xs: List<Int>) -> Town:
+  Town(id: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, endow: t.endow, state: TownState(pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, stock: xs))
+
+export fn with_stock(t: Town, g: Good, v: Int) -> Town:
+  let next = replace_int(t.state.stock, good_index(g), max_int(v, 0))
+  with_stock_list(t, next)
+
+fn add_stock(t: Town, g: Good, v: Int) -> Town:
+  with_stock(t, g, stock(t, g) + v)
+
+fn with_state(t: Town, s: TownState) -> Town:
+  Town(id: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, endow: t.endow, state: s)
+
+fn set_pop(t: Town, p: Int) -> Town:
+  with_state(t, TownState(pop: max_int(p, 1), prosperity: t.state.prosperity, research: t.state.research, stock: t.state.stock))
+
+fn set_prosperity(t: Town, p: Int) -> Town:
+  with_state(t, TownState(pop: t.state.pop, prosperity: clamp(p, 0, 30), research: t.state.research, stock: t.state.stock))
+
+fn add_research(t: Town, r: Int) -> Town:
+  with_state(t, TownState(pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research + r, stock: t.state.stock))
+
+export fn need_of(t: Town, g: Good) -> Int:
+  match g:
+    Grain => t.state.pop
+    Fish => t.state.pop / 3 + 1
+    Timber => t.state.pop / 2 + 1
+    Stone => t.state.pop / 2 + 1
+    Ore => t.state.pop / 2 + 1
+    Fiber => t.state.pop / 2 + 1
+    Tools => t.state.pop / 2 + 1
+    Cloth => t.state.pop / 2 + 1
+
+fn variety(t: Town) -> Int:
+  let flags = for g in goods():
+    bool_int(stock(t, g) > 0)
+  total(flags)
+
+export fn food_ok(t: Town) -> Int:
+  let need = t.state.pop
+  let have = stock(t, Grain) + stock(t, Fish) / 2
+  match have >= need:
+    true => 2
+    false => match have > 0:
+      true => 1
+      false => 0
+
+export fn status_text(t: Town) -> Text:
+  match t.state.prosperity >= 16:
+    true => "thriving"
+    false => match t.state.prosperity >= 8:
+      true => "stable"
+      false => match t.state.prosperity >= 4:
+        true => "fragile"
+        false => "stressed"
+
+export fn status_tone(t: Town) -> Text:
+  match t.state.prosperity >= 16:
+    true => "good"
+    false => match t.state.prosperity >= 8:
+      true => "ok"
+      false => match t.state.prosperity >= 4:
+        true => "warn"
+        false => "bad"
+
+# ---------------------------------------------------------------- terrain
+
+export fn terrain_name(t: Terrain) -> Text:
+  match t:
+    Plains => "Plains"
+    Forest => "Forest"
+    Hills => "Hills"
+    Mountain => "Mountain"
+    Water => "Water"
+    Coast => "Coast"
+    Marsh => "Marsh"
+
+export fn terrain_class(t: Terrain) -> Text:
+  match t:
+    Plains => "t-plains"
+    Forest => "t-forest"
+    Hills => "t-hills"
+    Mountain => "t-mountain"
+    Water => "t-water"
+    Coast => "t-coast"
+    Marsh => "t-marsh"
+
+fn terrain_cost(t: Terrain) -> Int:
+  match t:
+    Plains => 1
+    Forest => 2
+    Hills => 4
+    Mountain => 9
+    Water => 11
+    Coast => 1
+    Marsh => 3
+
+fn terrain_of(seed: Int, x: Int, y: Int) -> Terrain:
+  let block = mod_int((x / 2) * 7 + (y / 2) * 11 + seed, 17)
+  let fine = mod_int(x * 5 + y * 9 + seed * 3, 23)
+  let elev = block * 3 + fine + (map_w() - x) * 3 + (map_h() - y) * 2
+  let river = 3 + mod_int(y / 3 + seed, 3)
+  let lake_x = 4 + mod_int(seed, 2)
+  let lake_y = 2 + mod_int(seed / 7, 2)
+  let pond = x == lake_x and y == lake_y and not (x == river)
+  match x >= map_w() - 1 or x == river or pond:
+    true => Water
+    false => match x == river - 1 or x == river + 1 or x == map_w() - 2:
+      true => Coast
+      false => match elev > 112:
+        true => Mountain
+        false => match elev > 94:
+          true => Hills
+          false => match fine > 15 and block > 10:
+            true => Forest
+            false => match fine < 5 and y > map_h() - 3:
+              true => Marsh
+              false => Plains
+
+fn terrain_at(seed: Int, x: Int, y: Int) -> Terrain:
+  match x < 0 or y < 0 or x >= map_w() or y >= map_h():
+    true => Water
+    false => terrain_of(seed, x, y)
+
+# ---------------------------------------------------------------- anchors
+
+fn town_name(i: Int) -> Text:
+  match i == 0:
+    true => "Riverford"
+    false => match i == 1:
+      true => "Hillcrest"
+      false => match i == 2:
+        true => "Greenvale"
+        false => match i == 3:
+          true => "Portmere"
+          false => match i == 4:
+            true => "Thornwick"
+            false => match i == 5:
+              true => "Amberfield"
+              false => "Highmoor"
+
+fn town_base_x(i: Int) -> Int:
+  match i == 0:
+    true => 2
+    false => match i == 1:
+      true => 6
+      false => match i == 2:
+        true => 10
+        false => match i == 3:
+          true => 11
+          false => match i == 4:
+            true => 3
+            false => 7
+
+fn town_base_y(i: Int) -> Int:
+  match i < 4:
+    true => match i == 1:
+      true => 2
+      false => match i == 3:
+        true => 4
+        false => 3
+    false => match i == 4:
+      true => 6
+      false => 5
+
+fn site_name(i: Int) -> Text:
+  match i == 0:
+    true => "Westwood"
+    false => match i == 1:
+      true => "Gold Plain"
+      false => match i == 2:
+        true => "Iron Scar"
+        false => match i == 3:
+          true => "Tidecove"
+          false => "Reedwash"
+
+fn mirror_x(seed: Int, x: Int) -> Int:
+  match mod_int(seed, 2) == 1:
+    true => map_w() - 1 - x
+    false => x
+
+fn mirror_y(seed: Int, y: Int) -> Int:
+  match mod_int(seed / 2, 2) == 1:
+    true => map_h() - 1 - y
     false => y
 
-export fn bool_int(b: Bool) -> Int:
-  match b:
-    true => 1
-    false => 0
+fn site_x(seed: Int, i: Int) -> Int:
+  let x = match i == 0:
+    true => 5
+    false => match i == 1:
+      true => 8
+      false => 1
+  mirror_x(seed, x)
 
-export fn route_active(route: RouteMode) -> Int:
-  match route:
+fn site_y(seed: Int, i: Int) -> Int:
+  let y = match i == 0:
+    true => 3
+    false => match i == 1:
+      true => 4
+      false => 3
+  mirror_y(seed, y)
+
+fn town_anchor_x(seed: Int, i: Int) -> Int:
+  let x = match i == 0:
+    true => 1
+    false => match i == 1:
+      true => 4
+      false => match i == 2:
+        true => 8
+        false => 2
+  mirror_x(seed, x)
+
+fn town_anchor_y(seed: Int, i: Int) -> Int:
+  let y = match i == 0:
+    true => 1
+    false => match i == 1:
+      true => 1
+      false => match i == 2:
+        true => 2
+        false => 4
+  mirror_y(seed, y)
+
+fn primary_terrain(g: Good) -> Terrain:
+  match g:
+    Timber => Forest
+    Stone => Hills
+    Ore => Hills
+    Fish => Coast
+    Fiber => Marsh
+    _ => Plains
+
+fn endow_list(g1: Good, v1: Int, g2: Good, v2: Int) -> List<Int>:
+  let a = replace_int(zeros(len(goods())), good_index(g1), v1)
+  replace_int(a, good_index(g2), v2)
+
+fn zeros(n: Int) -> List<Int>:
+  for i in indices(n):
+    0
+
+fn initial_stock_for(i: Int) -> List<Int>:
+  let endow = town_endow(i)
+  let doubled = for k in indices(len(endow)):
+    nth_int(endow, k) * 2
+  let with_food = replace_int(doubled, good_index(Grain), nth_int(doubled, good_index(Grain)) + 2)
+  replace_int(with_food, good_index(Fish), nth_int(with_food, good_index(Fish)) + 1)
+
+fn outpost_stock(resource: Good, richness: Int) -> List<Int>:
+  let a = replace_int(zeros(len(goods())), good_index(resource), richness * 2)
+  let b = replace_int(a, good_index(Grain), 2)
+  replace_int(b, good_index(Fish), 1)
+
+fn town_endow(i: Int) -> List<Int>:
+  match i == 0:
+    true => endow_list(Grain, 4, Fiber, 1)
+    false => match i == 1:
+      true => endow_list(Timber, 3, Stone, 1)
+      false => match i == 2:
+        true => endow_list(Stone, 3, Ore, 2)
+        false => match i == 3:
+          true => endow_list(Fish, 4, Grain, 1)
+          false => match i == 4:
+            true => endow_list(Fiber, 3, Timber, 1)
+            false => match i == 5:
+              true => endow_list(Grain, 2, Ore, 2)
+              false => endow_list(Timber, 2, Stone, 2)
+
+fn main_endow(i: Int) -> Good:
+  match i == 0:
+    true => Grain
+    false => match i == 1:
+      true => Timber
+      false => match i == 2:
+        true => Stone
+        false => match i == 3:
+          true => Fish
+          false => match i == 4:
+            true => Fiber
+            false => match i == 5:
+              true => Grain
+              false => Timber
+
+fn make_town(seed: Int, i: Int) -> Town:
+  let x = town_anchor_x(seed, i)
+  let y = town_anchor_y(seed, i)
+  let endow = town_endow(i)
+  Town(id: "t" + int_text(i), name: town_name(i), x: x, y: y, terrain: primary_terrain(main_endow(i)), endow: endow, state: TownState(pop: 2, prosperity: 6, research: 0, stock: initial_stock_for(i)))
+
+fn site_resource(i: Int) -> Good:
+  match i == 0:
+    true => Timber
+    false => match i == 1:
+      true => Grain
+      false => match i == 2:
+        true => Ore
+        false => match i == 3:
+          true => Fish
+          false => Fiber
+
+fn make_site(seed: Int, i: Int) -> Site:
+  let r = site_resource(i)
+  Site(id: "s" + int_text(i), name: site_name(i), x: site_x(seed, i), y: site_y(seed, i), terrain: primary_terrain(r), resource: r, richness: 2 + mod_int(hash100(seed, i, 53, 67), 2), founded: false)
+
+# ---------------------------------------------------------------- world creation
+
+fn empty_town() -> Town:
+  Town(id: "", name: "Unknown", x: 0, y: 0, terrain: Plains, endow: zeros(len(goods())), state: TownState(pop: 0, prosperity: 0, research: 0, stock: zeros(len(goods()))))
+
+export fn empty_plan() -> RoutePlan:
+  RoutePlan(path: [], length: 0, water: 0, mountain: 0, forest: 0, money: 0, timber: 0, stone: 0, min_y: 0, max_y: 0)
+
+fn make_towns(seed: Int) -> List<Town>:
+  for i in indices(4):
+    make_town(seed, i)
+
+fn make_sites(seed: Int) -> List<Site>:
+  for i in indices(3):
+    make_site(seed, i)
+
+export fn new_world(seed: Int) -> World:
+  World(seed: seed, tick: 0, money: 160, towns: make_towns(seed), sites: make_sites(seed), routes: [], log: ["Seed " + int_text(seed) + ": a new frontier. Survey a route between two settlements."], history: [], tech_road: false, tech_river: false, tech_rail: false)
+
+export fn seed_world(world: World, seed: Int) -> World:
+  new_world(seed)
+
+# ---------------------------------------------------------------- town lookup
+
+export fn find_town(towns: List<Town>, id: Text) -> Town:
+  find_town_at(towns, id, 0)
+
+fn find_town_at(towns: List<Town>, id: Text, i: Int) -> Town:
+  match list_get(towns, i):
+    None => empty_town()
+    Some(t) => match t.id == id:
+      true => t
+      false => find_town_at(towns, id, i + 1)
+
+export fn town_exists(world: World, id: Text) -> Bool:
+  match id == "":
+    true => false
+    false => find_town(world.towns, id).id != ""
+
+export fn replace_town(towns: List<Town>, t: Town) -> List<Town>:
+  for x in towns:
+    match x.id == t.id:
+      true => t
+      false => x
+
+fn with_towns(world: World, towns: List<Town>) -> World:
+  World(seed: world.seed, tick: world.tick, money: world.money, towns: towns, sites: world.sites, routes: world.routes, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+
+fn with_resources(world: World, money: Int, log: List<Text>) -> World:
+  World(seed: world.seed, tick: world.tick, money: money, towns: world.towns, sites: world.sites, routes: world.routes, log: log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+
+fn set_money(world: World, money: Int) -> World:
+  World(seed: world.seed, tick: world.tick, money: money, towns: world.towns, sites: world.sites, routes: world.routes, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+
+fn with_routes(world: World, routes: List<Route>) -> World:
+  World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: routes, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+
+fn with_sites(world: World, sites: List<Site>) -> World:
+  World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: sites, routes: world.routes, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+
+fn with_tech(world: World, road: Bool, river: Bool, rail: Bool) -> World:
+  World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: world.log, history: world.history, tech_road: road, tech_river: river, tech_rail: rail)
+
+fn record(world: World, message: Text) -> World:
+  let next = list_append(world.log, message)
+  let trimmed = match len(next) > max_log():
+    true => list_slice(next, len(next) - max_log(), max_log())
+    false => next
+  with_resources(world, world.money, trimmed)
+
+# ---------------------------------------------------------------- route geometry
+
+fn lerp(a: Int, b: Int, num: Int, den: Int) -> Int:
+  a + ((b - a) * num) / den
+
+fn segment_length(a: Point, b: Point) -> Int:
+  let dx = abs_int(b.x - a.x)
+  let dy = abs_int(b.y - a.y)
+  max_int(dx, dy) + min_int(dx, dy) / 2
+
+fn path_length(path: List<Point>) -> Int:
+  path_length_at(path, 0, 0)
+
+fn path_length_at(path: List<Point>, i: Int, acc: Int) -> Int:
+  match list_get(path, i):
+    None => acc
+    Some(p) => match list_get(path, i + 1):
+      None => acc
+      Some(q) => path_length_at(path, i + 1, acc + segment_length(p, q))
+
+fn bend_score(seed: Int, ax: Int, ay: Int, bx: Int, by: Int, off: Int) -> Int:
+  let dx = bx - ax
+  let dy = by - ay
+  let px = sign(-dy)
+  let py = sign(dx)
+  let p1x = clamp(lerp(ax, bx, 1, 4) + px * off * 3 / 4, 0, map_w() - 1)
+  let p1y = clamp(lerp(ay, by, 1, 4) + py * off * 3 / 4, 0, map_h() - 1)
+  let p2x = clamp(lerp(ax, bx, 1, 2) + px * off, 0, map_w() - 1)
+  let p2y = clamp(lerp(ay, by, 1, 2) + py * off, 0, map_h() - 1)
+  let p3x = clamp(lerp(ax, bx, 3, 4) + px * off * 3 / 4, 0, map_w() - 1)
+  let p3y = clamp(lerp(ay, by, 3, 4) + py * off * 3 / 4, 0, map_h() - 1)
+  terrain_cost(terrain_at(seed, p1x, p1y)) + terrain_cost(terrain_at(seed, p2x, p2y)) * 2 + terrain_cost(terrain_at(seed, p3x, p3y)) + abs_int(off) * 3
+
+fn pick_bend(seed: Int, ax: Int, ay: Int, bx: Int, by: Int, i: Int, best: Int, best_cost: Int) -> Int:
+  match i > 6:
+    true => best
+    false =>
+      let off = i - 3
+      let cost = bend_score(seed, ax, ay, bx, by, off)
+      match cost < best_cost:
+        true => pick_bend(seed, ax, ay, bx, by, i + 1, off, cost)
+        false => pick_bend(seed, ax, ay, bx, by, i + 1, best, best_cost)
+
+fn bend_offset(seed: Int, ax: Int, ay: Int, bx: Int, by: Int) -> Int:
+  pick_bend(seed, ax, ay, bx, by, 0, 0, 100000)
+
+fn plan_points(seed: Int, ax: Int, ay: Int, bx: Int, by: Int) -> List<Point>:
+  let off = bend_offset(seed, ax, ay, bx, by)
+  let dx = bx - ax
+  let dy = by - ay
+  let px = sign(-dy)
+  let py = sign(dx)
+  let p1 = Point(x: clamp(lerp(ax, bx, 1, 4) + px * off * 3 / 4, 0, map_w() - 1), y: clamp(lerp(ay, by, 1, 4) + py * off * 3 / 4, 0, map_h() - 1))
+  let p2 = Point(x: clamp(lerp(ax, bx, 1, 2) + px * off, 0, map_w() - 1), y: clamp(lerp(ay, by, 1, 2) + py * off, 0, map_h() - 1))
+  let p3 = Point(x: clamp(lerp(ax, bx, 3, 4) + px * off * 3 / 4, 0, map_w() - 1), y: clamp(lerp(ay, by, 3, 4) + py * off * 3 / 4, 0, map_h() - 1))
+  [Point(x: ax, y: ay), p1, p2, p3, Point(x: bx, y: by)]
+
+fn wet_terrain(t: Terrain) -> Int:
+  match t:
+    Water => 1
+    _ => 0
+
+fn high_terrain(t: Terrain) -> Int:
+  match t:
+    Mountain => 1
+    _ => 0
+
+fn wooded_terrain(t: Terrain) -> Int:
+  match t:
+    Forest => 1
+    _ => 0
+
+fn count_water(points: List<Point>, seed: Int, i: Int) -> Int:
+  match list_get(points, i):
+    None => 0
+    Some(p) => wet_terrain(terrain_at(seed, p.x, p.y)) + count_water(points, seed, i + 1)
+
+fn count_mountain(points: List<Point>, seed: Int, i: Int) -> Int:
+  match list_get(points, i):
+    None => 0
+    Some(p) => high_terrain(terrain_at(seed, p.x, p.y)) + count_mountain(points, seed, i + 1)
+
+fn count_forest(points: List<Point>, seed: Int, i: Int) -> Int:
+  match list_get(points, i):
+    None => 0
+    Some(p) => wooded_terrain(terrain_at(seed, p.x, p.y)) + count_forest(points, seed, i + 1)
+
+fn min_point_y(points: List<Point>, i: Int, best: Int) -> Int:
+  match list_get(points, i):
+    None => best
+    Some(p) => min_point_y(points, i + 1, min_int(best, p.y))
+
+fn max_point_y(points: List<Point>, i: Int, best: Int) -> Int:
+  match list_get(points, i):
+    None => best
+    Some(p) => max_point_y(points, i + 1, max_int(best, p.y))
+
+export fn plan_route(world: World, a: Text, b: Text) -> RoutePlan:
+  let ta = find_town(world.towns, a)
+  let tb = find_town(world.towns, b)
+  match ta.id == "" or tb.id == "" or ta.id == tb.id:
+    true => empty_plan()
+    false =>
+      let points = plan_points(world.seed, ta.x, ta.y, tb.x, tb.y)
+      let length = path_length(points)
+      let water = count_water(points, world.seed, 0)
+      let mountain = count_mountain(points, world.seed, 0)
+      let forest = count_forest(points, world.seed, 0)
+      RoutePlan(path: points, length: length, water: water, mountain: mountain, forest: forest, money: 8 + length + water * 5 + mountain * 8, timber: 1 + length / 14 + water, stone: 1 + length / 18 + mountain * 2, min_y: min_point_y(points, 0, map_h()), max_y: max_point_y(points, 0, 0))
+
+fn near_segment(px: Int, py: Int, a: Point, b: Point) -> Bool:
+  let vx = b.x - a.x
+  let vy = b.y - a.y
+  let wx = px - a.x
+  let wy = py - a.y
+  let l2 = vx * vx + vy * vy
+  let inside = px >= min_int(a.x, b.x) - 1 and px <= max_int(a.x, b.x) + 1 and py >= min_int(a.y, b.y) - 1 and py <= max_int(a.y, b.y) + 1
+  match inside:
+    true => match l2 == 0:
+      true => wx * wx + wy * wy <= 2
+      false =>
+        let cross = wx * vy - wy * vx
+        cross * cross * 2 <= l2
+    false => false
+
+export fn plan_crosses(plan: RoutePlan, x: Int, y: Int) -> Bool:
+  plan_crosses_at(plan.path, x, y, 0)
+
+fn plan_crosses_at(path: List<Point>, x: Int, y: Int, i: Int) -> Bool:
+  match list_get(path, i):
+    None => false
+    Some(a) => match list_get(path, i + 1):
+      None => false
+      Some(b) => match near_segment(x, y, a, b):
+        true => true
+        false => plan_crosses_at(path, x, y, i + 1)
+
+export fn route_mode_code(mode: RouteMode) -> Int:
+  match mode:
     NoRoute => 0
     Path => 1
-    Road => 1
-    River => 1
+    Road => 2
+    River => 3
+    Rail => 4
 
-export fn route_cap(route: RouteMode) -> Int:
-  match route:
-    NoRoute => 0
-    Path => 4
-    Road => 8
-    River => 12
-
-export fn produce(t: Town) -> Town:
-  let grain2 = t.grain + t.gEnd
-  let timber2 = t.timber + t.tEnd
-  let stone2 = t.stone + t.sEnd
-  let ore2 = t.ore + t.oEnd
-  let fiber2 = t.fiber + t.fEnd
-  let make_tools = match timber2 >= 1 and stone2 >= 1 and ore2 >= 1:
-    true => 1
+fn route_cell(route: Route, x: Int, y: Int) -> Int:
+  match y >= route.plan.min_y - 1 and y <= route.plan.max_y + 1 and plan_crosses(route.plan, x, y):
+    true => route_mode_code(route.mode)
     false => 0
-  let make_cloth = match fiber2 >= 1:
-    true => 1
-    false => 0
-  let timber3 = timber2 - make_tools
-  let stone3 = stone2 - make_tools
-  let ore3 = ore2 - make_tools
-  let fiber3 = fiber2 - make_cloth
-  let tools3 = t.tools + make_tools
-  let cloth3 = t.cloth + make_cloth
-  Town(name: t.name, gEnd: t.gEnd, tEnd: t.tEnd, sEnd: t.sEnd, oEnd: t.oEnd, fEnd: t.fEnd, grain: grain2, timber: timber3, stone: stone3, ore: ore3, tools: tools3, fiber: fiber3, cloth: cloth3, pop: t.pop, prosperity: t.prosperity, research: t.research)
 
-export fn consume(t: Town) -> Town:
-  let grain2 = t.grain - t.pop
-  let prosperity2 = match grain2 >= 0:
-    true => t.prosperity + 1
-    false => t.prosperity - 2
-  Town(name: t.name, gEnd: t.gEnd, tEnd: t.tEnd, sEnd: t.sEnd, oEnd: t.oEnd, fEnd: t.fEnd, grain: grain2, timber: t.timber, stone: t.stone, ore: t.ore, tools: t.tools, fiber: t.fiber, cloth: t.cloth, pop: t.pop, prosperity: prosperity2, research: t.research)
+fn best_route_code(routes: List<Route>, x: Int, y: Int, i: Int, best: Int) -> Int:
+  match list_get(routes, i):
+    None => best
+    Some(r) => best_route_code(routes, x, y, i + 1, max_int(best, route_cell(r, x, y)))
 
-export fn trade(a: Town, b: Town) -> Pair:
-  let surplusA = a.grain - (a.pop * 2)
-  let demandB = (b.pop * 2) - b.grain
-  let grain_ab = match surplusA > 0 and demandB > 0:
-    true => min_int(surplusA, demandB)
-    false => 0
-  let surplusB = b.grain - (b.pop * 2)
-  let demandA = (a.pop * 2) - a.grain
-  let grain_ba = match surplusB > 0 and demandA > 0:
-    true => min_int(surplusB, demandA)
-    false => 0
-  let grainA = a.grain - grain_ab + grain_ba
-  let grainB = b.grain + grain_ab - grain_ba
-  let timberTotal = a.timber + b.timber
-  let stoneTotal = a.stone + b.stone
-  let oreTotal = a.ore + b.ore
-  let toolsTotal = a.tools + b.tools
-  let fiberTotal = a.fiber + b.fiber
-  let clothTotal = a.cloth + b.cloth
-  let timberA = timberTotal / 2
-  let stoneA = stoneTotal / 2
-  let oreA = oreTotal / 2
-  let toolsA = toolsTotal / 2
-  let fiberA = fiberTotal / 2
-  let clothA = clothTotal / 2
-  let a2 = Town(name: a.name, gEnd: a.gEnd, tEnd: a.tEnd, sEnd: a.sEnd, oEnd: a.oEnd, fEnd: a.fEnd, grain: grainA, timber: timberA, stone: stoneA, ore: oreA, tools: toolsA, fiber: fiberA, cloth: clothA, pop: a.pop, prosperity: a.prosperity, research: a.research)
-  let b2 = Town(name: b.name, gEnd: b.gEnd, tEnd: b.tEnd, sEnd: b.sEnd, oEnd: b.oEnd, fEnd: b.fEnd, grain: grainB, timber: timberTotal - timberA, stone: stoneTotal - stoneA, ore: oreTotal - oreA, tools: toolsTotal - toolsA, fiber: fiberTotal - fiberA, cloth: clothTotal - clothA, pop: b.pop, prosperity: b.prosperity, research: b.research)
-  Pair(a: a2, b: b2)
+export fn route_at(world: World, x: Int, y: Int) -> Int:
+  best_route_code(world.routes, x, y, 0, 0)
 
-export fn trade_if(route: RouteMode, a: Town, b: Town) -> Pair:
-  match route:
-    NoRoute => Pair(a: a, b: b)
-    _ => trade(a, b)
+# ---------------------------------------------------------------- map model
 
-export fn research(t: Town) -> Town:
-  let variety = bool_int(t.timber > 0) + bool_int(t.stone > 0) + bool_int(t.ore > 0) + bool_int(t.tools > 0) + bool_int(t.fiber > 0) + bool_int(t.cloth > 0)
-  let gain = t.pop * (1 + variety)
-  let food_ok = bool_int(t.grain >= 0)
-  let comfort = bool_int(t.tools > 0)
-  let aspiration = bool_int(t.tools > 2)
-  let delta = (food_ok * 2) + comfort + aspiration + variety - 2
-  let prosperity2 = t.prosperity + delta
-  Town(name: t.name, gEnd: t.gEnd, tEnd: t.tEnd, sEnd: t.sEnd, oEnd: t.oEnd, fEnd: t.fEnd, grain: t.grain, timber: t.timber, stone: t.stone, ore: t.ore, tools: t.tools, fiber: t.fiber, cloth: t.cloth, pop: t.pop, prosperity: prosperity2, research: t.research + gain)
+fn marker_towns(towns: List<Town>, x: Int, y: Int, i: Int) -> Text:
+  match list_get(towns, i):
+    None => ""
+    Some(t) => match t.x == x and t.y == y:
+      true => t.id
+      false => marker_towns(towns, x, y, i + 1)
 
-export fn grow(t: Town) -> Town:
-  let can_grow = match t.prosperity > 6 and t.stone >= 1 and t.timber >= 1:
-    true => 1
-    false => 0
-  let newPop = t.pop + can_grow
-  let stone2 = t.stone - can_grow
-  let timber2 = t.timber - can_grow
-  Town(name: t.name, gEnd: t.gEnd, tEnd: t.tEnd, sEnd: t.sEnd, oEnd: t.oEnd, fEnd: t.fEnd, grain: t.grain, timber: timber2, stone: stone2, ore: t.ore, tools: t.tools, fiber: t.fiber, cloth: t.cloth, pop: newPop, prosperity: t.prosperity, research: t.research)
+fn marker_site_at(sites: List<Site>, x: Int, y: Int, i: Int) -> Text:
+  match list_get(sites, i):
+    None => ""
+    Some(s) => match s.x == x and s.y == y:
+      true => s.id
+      false => marker_site_at(sites, x, y, i + 1)
 
-export fn tick(w: World) -> World:
-  let a0 = consume(produce(w.a))
-  let b0 = consume(produce(w.b))
-  let c0 = consume(produce(w.c))
-  let d0 = consume(produce(w.d))
-  let e0 = consume(produce(w.e))
-  let p1 = trade_if(w.ab, a0, b0)
-  let a1 = p1.a
-  let b1 = p1.b
-  let p2 = trade_if(w.ac, a1, c0)
-  let a2 = p2.a
-  let c1 = p2.b
-  let p3 = trade_if(w.ad, a2, d0)
-  let a3 = p3.a
-  let d1 = p3.b
-  let p_ae = trade_if(w.ae, a3, e0)
-  let a4 = p_ae.a
-  let e1 = p_ae.b
-  let p4 = trade_if(w.bc, b1, c1)
-  let b2 = p4.a
-  let c2 = p4.b
-  let p5 = trade_if(w.bd, b2, d1)
-  let b3 = p5.a
-  let d2 = p5.b
-  let p6 = trade_if(w.cd, c2, d2)
-  let c3 = p6.a
-  let d3 = p6.b
-  let p_ce = trade_if(w.ce, c3, e1)
-  let c4 = p_ce.a
-  let e2 = p_ce.b
-  # Capacity penalties
-  let pen_ab = match route_cap(w.ab) > 0 and (a3.pop + b3.pop) > route_cap(w.ab):
-    true => 1
-    false => 0
-  let a3p = Town(name: a3.name, gEnd: a3.gEnd, tEnd: a3.tEnd, sEnd: a3.sEnd, oEnd: a3.oEnd, fEnd: a3.fEnd, grain: a3.grain, timber: a3.timber, stone: a3.stone, ore: a3.ore, tools: a3.tools, fiber: a3.fiber, cloth: a3.cloth, pop: a3.pop, prosperity: a3.prosperity - pen_ab, research: a3.research)
-  let b3p = Town(name: b3.name, gEnd: b3.gEnd, tEnd: b3.tEnd, sEnd: b3.sEnd, oEnd: b3.oEnd, fEnd: b3.fEnd, grain: b3.grain, timber: b3.timber, stone: b3.stone, ore: b3.ore, tools: b3.tools, fiber: b3.fiber, cloth: b3.cloth, pop: b3.pop, prosperity: b3.prosperity - pen_ab, research: b3.research)
-  let a4p = Town(name: a4.name, gEnd: a4.gEnd, tEnd: a4.tEnd, sEnd: a4.sEnd, oEnd: a4.oEnd, fEnd: a4.fEnd, grain: a4.grain, timber: a4.timber, stone: a4.stone, ore: a4.ore, tools: a4.tools, fiber: a4.fiber, cloth: a4.cloth, pop: a4.pop, prosperity: a4.prosperity, research: a4.research)
-  let aR = grow(research(a4p))
-  let bR = grow(research(b3p))
-  let cR = grow(research(c4))
-  let dR = grow(research(d3))
-  let eR = grow(research(e2))
-  # Events (deterministic by tick count)
-  let tc = w.tick_count + 1
-  let aEvt = match (tc - (tc / 5) * 5) == 0:
-    true => Town(name: aR.name, gEnd: aR.gEnd, tEnd: aR.tEnd, sEnd: aR.sEnd, oEnd: aR.oEnd, fEnd: aR.fEnd, grain: aR.grain + 5, timber: aR.timber, stone: aR.stone, ore: aR.ore, tools: aR.tools, fiber: aR.fiber, cloth: aR.cloth, pop: aR.pop, prosperity: aR.prosperity, research: aR.research)
-    false => aR
-  let dEvt = match (tc - (tc / 7) * 7) == 0:
-    true => Town(name: dR.name, gEnd: dR.gEnd, tEnd: dR.tEnd, sEnd: dR.sEnd, oEnd: dR.oEnd, fEnd: dR.fEnd, grain: dR.grain, timber: dR.timber, stone: dR.stone, ore: dR.ore, tools: dR.tools, fiber: dR.fiber, cloth: dR.cloth, pop: dR.pop, prosperity: dR.prosperity - 2, research: dR.research)
-    false => dR
-  # Fees and upkeep
-  let built = route_active(w.ab) + route_active(w.ac) + route_active(w.ad) + route_active(w.ae) + route_active(w.bc) + route_active(w.bd) + route_active(w.cd) + route_active(w.ce)
-  let fee_income = (w.fee_ab * route_active(w.ab) * (aR.pop + bR.pop)) + (w.fee_ac * route_active(w.ac) * (aR.pop + cR.pop)) + (w.fee_ad * route_active(w.ad) * (aR.pop + dR.pop)) + (w.fee_bc * route_active(w.bc) * (bR.pop + cR.pop)) + (w.fee_bd * route_active(w.bd) * (bR.pop + dR.pop)) + (w.fee_cd * route_active(w.cd) * (cR.pop + dR.pop))
-  let fee_income2 = fee_income + (w.fee_ae * route_active(w.ae) * (aR.pop + eR.pop)) + (w.fee_ce * route_active(w.ce) * (cR.pop + eR.pop))
-  let money2 = w.money + fee_income2 - built
-  let max_research = aR.research
-  let tech_road2 = match w.tech_road or aEvt.research >= 50 or bR.research >= 50 or cR.research >= 50 or dEvt.research >= 50 or eR.research >= 50:
-    true => true
+export fn cell_marker(world: World, x: Int, y: Int) -> Text:
+  marker_towns(world.towns, x, y, 0)
+
+export fn marker_name(world: World, id: Text) -> Text:
+  let t = find_town(world.towns, id)
+  match t.id != "":
+    true => t.name
+    false => site_name_by_id(world.sites, id, 0)
+
+fn site_name_by_id(sites: List<Site>, id: Text, i: Int) -> Text:
+  match list_get(sites, i):
+    None => ""
+    Some(s) => match s.id == id:
+      true => s.name
+      false => site_name_by_id(sites, id, i + 1)
+
+export fn marker_kind(world: World, id: Text) -> Text:
+  match find_town(world.towns, id).id != "":
+    true => "town"
+    false => "site"
+
+fn marker_terrain(world: World, x: Int, y: Int) -> Terrain:
+  let t = find_town_at(world.towns, cell_marker(world, x, y), 0)
+  match t.id != "":
+    true => t.terrain
+    false => terrain_at(world.seed, x, y)
+
+export fn display_terrain(world: World, x: Int, y: Int) -> Terrain:
+  let id = cell_marker(world, x, y)
+  match id != "":
+    true => marker_terrain(world, x, y)
+    false => site_terrain_at(world.sites, x, y, 0, terrain_at(world.seed, x, y))
+
+fn site_terrain_at(sites: List<Site>, x: Int, y: Int, i: Int, base: Terrain) -> Terrain:
+  match list_get(sites, i):
+    None => base
+    Some(s) => match s.x == x and s.y == y:
+      true => match s.founded:
+        true => base
+        false => s.terrain
+      false => site_terrain_at(sites, x, y, i + 1, base)
+
+export fn map_cell_at(world: World, x: Int, y: Int, route_code: Int, draft: RoutePlan, draft_ready: Bool) -> MapCell:
+  let markers = make_markers(world)
+  let row_markers = collect_row_markers(markers, y, 0, [])
+  render_cell(world.seed, row_markers, " ", x, y, route_code, draft, draft_ready)
+
+export fn map_cell(world: World, x: Int, y: Int, draft: RoutePlan, draft_ready: Bool) -> MapCell:
+  map_cell_at(world, x, y, route_at(world, x, y), draft, draft_ready)
+
+fn map_cell_class_raw(terrain: Terrain, route: Int, draft: Bool) -> Text:
+  let route_class = match route == 0:
+    true => ""
+    false => match route == 1:
+      true => " r-path"
+      false => match route == 2:
+        true => " r-road"
+        false => match route == 3:
+          true => " r-river"
+          false => " r-rail"
+  let draft_class = match draft:
+    true => " r-draft"
+    false => ""
+  terrain_class(terrain) + route_class + draft_class
+
+export fn map_cell_class(world: World, c: MapCell) -> Text:
+  map_cell_class_raw(c.terrain, c.route, c.draft)
+
+fn empty_marker() -> MarkerInfo:
+  MarkerInfo(id: "", name: "", is_town: false, x: 0, y: 0, terrain: Plains)
+
+fn marker_search(towns: List<Town>, sites: List<Site>, x: Int, y: Int, i: Int) -> MarkerInfo:
+  match list_get(towns, i):
+    Some(t) => match t.x == x and t.y == y:
+      true => MarkerInfo(id: t.id, name: t.name, is_town: true, x: t.x, y: t.y, terrain: t.terrain)
+      false => marker_search(towns, sites, x, y, i + 1)
+    None => site_marker_search(sites, x, y, 0)
+
+fn site_marker_search(sites: List<Site>, x: Int, y: Int, i: Int) -> MarkerInfo:
+  match list_get(sites, i):
+    None => empty_marker()
+    Some(s) => match s.founded:
+      true => site_marker_search(sites, x, y, i + 1)
+      false => match s.x == x and s.y == y:
+        true => MarkerInfo(id: s.id, name: s.name, is_town: false, x: s.x, y: s.y, terrain: s.terrain)
+        false => site_marker_search(sites, x, y, i + 1)
+
+export fn make_markers(world: World) -> List<MarkerInfo>:
+  let towns = for t in world.towns:
+    MarkerInfo(id: t.id, name: t.name, is_town: true, x: t.x, y: t.y, terrain: t.terrain)
+  let groups = for s in world.sites:
+    match s.founded:
+      true => []
+      false => [MarkerInfo(id: s.id, name: s.name, is_town: false, x: s.x, y: s.y, terrain: s.terrain)]
+  let sites = flatten_markers(groups, 0, [])
+  concat_markers(towns, sites)
+
+fn flatten_markers(xs: List<List<MarkerInfo>>, i: Int, acc: List<MarkerInfo>) -> List<MarkerInfo>:
+  match list_get(xs, i):
+    None => acc
+    Some(row) => flatten_markers(xs, i + 1, concat_markers(acc, row))
+
+fn concat_markers(xs: List<MarkerInfo>, ys: List<MarkerInfo>) -> List<MarkerInfo>:
+  match len(xs) == 0:
+    true => ys
+    false => concat_markers(list_slice(xs, 1, len(xs) - 1), list_append(ys, nth_marker(xs, 0)))
+
+fn nth_marker(xs: List<MarkerInfo>, i: Int) -> MarkerInfo:
+  match list_get(xs, i):
+    Some(m) => m
+    None => empty_marker()
+
+fn build_base_cell(seed: Int, markers: List<MarkerInfo>, x: Int, y: Int) -> MapBaseCell:
+  let marker = marker_at_markers(markers, x, y, 0)
+  let terrain = match marker.id != "":
+    true => marker.terrain
+    false => terrain_at(seed, x, y)
+  MapBaseCell(x: x, y: y, terrain: terrain, marker: marker.id, marker_name: marker.name, is_town: marker.is_town)
+
+export fn render_map(seed: Int, markers: List<MarkerInfo>, selected: Text, draft: RoutePlan, draft_ready: Bool, route_rows: List<List<Int>>) -> List<RenderedRow>:
+  for y in indices(map_h()):
+    let row_markers = collect_row_markers(markers, y, 0, [])
+    let row_codes = nth_int_list(route_rows, y)
+    let cells = for x in indices(map_w()):
+      let marker = marker_at_markers(row_markers, x, y, 0)
+      let terrain = match marker.id != "":
+        true => marker.terrain
+        false => terrain_at(seed, x, y)
+      let route_code = nth_int(row_codes, x)
+      let draft_crosses = match draft_ready:
+        true => plan_crosses(draft, x, y)
+        false => false
+      let is_selected = marker.id != "" and marker.id == selected
+      let mclass = match marker.id == "":
+        true => ""
+        false => match marker.is_town:
+          true => match is_selected:
+            true => "town-marker selected"
+            false => "town-marker"
+          false => "site-marker"
+      MapCell(x: x, y: y, terrain: terrain, route: route_code, marker: marker.id, marker_name: marker.name, marker_class: mclass, is_town: marker.is_town, selected: is_selected, draft: draft_crosses, css: map_cell_class_raw(terrain, route_code, draft_crosses), title: terrain_name(terrain))
+    RenderedRow(y: y, cells: cells)
+
+fn collect_row_markers(markers: List<MarkerInfo>, y: Int, i: Int, acc: List<MarkerInfo>) -> List<MarkerInfo>:
+  match list_get(markers, i):
+    None => acc
+    Some(m) => match m.id != "" and m.y == y:
+      true => collect_row_markers(markers, y, i + 1, list_append(acc, m))
+      false => collect_row_markers(markers, y, i + 1, acc)
+
+fn render_cell(seed: Int, markers: List<MarkerInfo>, selected: Text, x: Int, y: Int, route_code: Int, draft: RoutePlan, draft_ready: Bool) -> MapCell:
+  let marker = marker_at_markers(markers, x, y, 0)
+  let terrain = match marker.id != "":
+    true => marker.terrain
+    false => terrain_at(seed, x, y)
+  let draft_crosses = match draft_ready:
+    true => plan_crosses(draft, x, y)
     false => false
-  let tech_river2 = match w.tech_river or aEvt.research >= 100 or bR.research >= 100 or cR.research >= 100 or dEvt.research >= 100 or eR.research >= 100:
-    true => true
-    false => false
-  World(a: aEvt, b: bR, c: cR, d: dEvt, e: eR, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: money2, tech_road: tech_road2, tech_river: tech_river2, tick_count: tc)
+  let is_selected = marker.id != "" and marker.id == selected
+  let mclass = match marker.id == "":
+    true => ""
+    false => match marker.is_town:
+      true => match is_selected:
+        true => "town-marker selected"
+        false => "town-marker"
+      false => "site-marker"
+  let title = match marker.id == "":
+    true => terrain_name(terrain)
+    false => terrain_name(terrain) + " · " + marker.name
+  MapCell(x: x, y: y, terrain: terrain, route: route_code, marker: marker.id, marker_name: marker.name, marker_class: mclass, is_town: marker.is_town, selected: is_selected, draft: draft_crosses, css: map_cell_class_raw(terrain, route_code, draft_crosses), title: title)
 
-export fn run_ticks(w: World, n: Int) -> World:
-  match n <= 0:
-    true => w
-    false => run_ticks(tick(w), n - 1)
+fn marker_at_markers(markers: List<MarkerInfo>, x: Int, y: Int, i: Int) -> MarkerInfo:
+  match list_get(markers, i):
+    None => empty_marker()
+    Some(m) => match m.x == x and m.y == y:
+      true => m
+      false => marker_at_markers(markers, x, y, i + 1)
 
-export fn town_line(t: Town) -> Text:
-  t.name + ": pop=" + int_text(t.pop) + " grain=" + int_text(t.grain) + " timber=" + int_text(t.timber) + " stone=" + int_text(t.stone) + " ore=" + int_text(t.ore) + " tools=" + int_text(t.tools) + " fiber=" + int_text(t.fiber) + " cloth=" + int_text(t.cloth) + " prosperity=" + int_text(t.prosperity) + " research=" + int_text(t.research)
+export fn route_mode_class(mode: RouteMode) -> Text:
+  match mode:
+    NoRoute => "m-none"
+    Path => "m-path"
+    Road => "m-road"
+    River => "m-river"
+    Rail => "m-rail"
 
-export fn world_report(label: Text, w: World) -> Text:
-  label + "\\n" + town_line(w.a) + "\\n" + town_line(w.b) + "\\n" + town_line(w.c) + "\\n" + town_line(w.d) + "\\n" + town_line(w.e) + "\\nMoney: " + int_text(w.money) + " Tick: " + int_text(w.tick_count)
+export fn cell_title(world: World, c: MapCell) -> Text:
+  let base = terrain_name(c.terrain)
+  match c.marker != "":
+    true => base + " · " + marker_name(world, c.marker)
+    false => base
 
-export fn base_world() -> World:
-  World(a: Town(name: "Riverford", gEnd: 5, tEnd: 1, sEnd: 0, oEnd: 0, fEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, fiber: 0, cloth: 0, pop: 2, prosperity: 0, research: 0), b: Town(name: "Hillcrest", gEnd: 0, tEnd: 1, sEnd: 2, oEnd: 3, fEnd: 1, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, fiber: 0, cloth: 0, pop: 2, prosperity: 0, research: 0), c: Town(name: "Greenvale", gEnd: 2, tEnd: 4, sEnd: 1, oEnd: 0, fEnd: 2, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, fiber: 0, cloth: 0, pop: 2, prosperity: 0, research: 0), d: Town(name: "Portmere", gEnd: 1, tEnd: 0, sEnd: 0, oEnd: 0, fEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, fiber: 0, cloth: 0, pop: 2, prosperity: 0, research: 0), e: Town(name: "Outpost", gEnd: 0, tEnd: 0, sEnd: 0, oEnd: 2, fEnd: 1, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, fiber: 0, cloth: 0, pop: 1, prosperity: 0, research: 0), ab: NoRoute, ae: NoRoute, ce: NoRoute, ac: NoRoute, ad: NoRoute, bc: NoRoute, bd: NoRoute, cd: NoRoute, fee_ab: 1, fee_ac: 1, fee_ad: 1, fee_bc: 1, fee_bd: 1, fee_cd: 1, fee_ae: 1, fee_ce: 1, money: 100, tech_road: false, tech_river: false, tick_count: 0)
+export fn site_title(s: Site) -> Text:
+  s.name + " · " + good_name(s.resource) + " site · richness " + int_text(s.richness) + " · build a route nearby to found it"
 
-export fn connected_world() -> World:
-  World(a: Town(name: "Riverford", gEnd: 5, tEnd: 1, sEnd: 0, oEnd: 0, fEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, fiber: 0, cloth: 0, pop: 2, prosperity: 0, research: 0), b: Town(name: "Hillcrest", gEnd: 0, tEnd: 1, sEnd: 2, oEnd: 3, fEnd: 1, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, fiber: 0, cloth: 0, pop: 2, prosperity: 0, research: 0), c: Town(name: "Greenvale", gEnd: 2, tEnd: 4, sEnd: 1, oEnd: 0, fEnd: 2, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, fiber: 0, cloth: 0, pop: 2, prosperity: 0, research: 0), d: Town(name: "Portmere", gEnd: 1, tEnd: 0, sEnd: 0, oEnd: 0, fEnd: 0, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, fiber: 0, cloth: 0, pop: 2, prosperity: 0, research: 0), e: Town(name: "Outpost", gEnd: 0, tEnd: 0, sEnd: 0, oEnd: 2, fEnd: 1, grain: 0, timber: 0, stone: 0, ore: 0, tools: 0, fiber: 0, cloth: 0, pop: 1, prosperity: 0, research: 0), ab: Path, ae: NoRoute, ce: NoRoute, ac: Path, ad: Path, bc: Path, bd: Path, cd: Path, fee_ab: 1, fee_ac: 1, fee_ad: 1, fee_bc: 1, fee_bd: 1, fee_cd: 1, fee_ae: 1, fee_ce: 1, money: 100, tech_road: false, tech_river: false, tick_count: 0)
+export fn route_direction(r: Route) -> Text:
+  r.a_name + " → " + r.b_name
 
-export fn status(t: Town) -> Text:
-  match t.prosperity > 6:
-    true => "thriving"
-    false => match t.prosperity >= 0:
-      true => "stable"
-      false => "stressed"
+export fn fee_label(r: Route) -> Text:
+  "toll " + int_text(r.fee) + "/unit"
 
-export fn bool_text(b: Bool) -> Text:
-  match b:
+export fn income_label(r: Route) -> Text:
+  int_text(r.traffic * r.fee) + " crowns/cycle"
+
+export fn money_class(world: World) -> Text:
+  match world.money < 0:
+    true => "negative"
+    false => "positive"
+
+export fn settlement_row_class(sel: Selection, id: Text) -> Text:
+  match sel.selected == id:
+    true => "settlement-row active"
+    false => "settlement-row"
+
+export fn endow_class(t: Town, g: Good) -> Text:
+  match endow_of(t, g) > 0:
     true => "on"
     false => "off"
 
-export fn route_text(r: RouteMode) -> Text:
-  match r:
+export fn marker_button_class(sel: Selection, m: MarkerInfo) -> Text:
+  match m.is_town:
+    false => "site-marker"
+    true => match sel.selected == m.id:
+      true => "town-marker selected"
+      false => "town-marker"
+
+export fn marker_button_class_selected(selected: Text, m: MarkerInfo) -> Text:
+  match m.is_town:
+    false => "site-marker"
+    true => match selected == m.id:
+      true => "town-marker selected"
+      false => "town-marker"
+
+export fn survey_badge(sel: Selection) -> Text:
+  match sel.ready:
+    true => "survey ready"
+    false => match sel.from == "":
+      true => "idle"
+      false => "choose destination"
+
+export fn tech_next_text(world: World) -> Text:
+  match world.tech_rail:
+    true => "All transport eras unlocked"
+    false => next_tech_name(world) + " at " + int_text(next_tech_threshold(world)) + " research"
+
+export fn signal_count(game: Game) -> Int:
+  len(alerts(game.world)) + match upkeep_due(game) > 0:
+    true => 1
+    false => 0
+
+export fn good_detail(t: Town, g: Good) -> Text:
+  good_name(g) + ": " + int_text(stock(t, g)) + " stock · need " + int_text(need_of(t, g)) + " · endowment " + int_text(endow_of(t, g))
+
+fn empty_inspect() -> InspectView:
+  InspectView(ready: false, name: "", status: "", tone: "ok", pop: 0, prosperity: 0, research: 0, terrain: "", value: 0, insight: "", shortages: "none", connected: 0, goods: zeros(len(goods())), needs: zeros(len(goods())), endows: zeros(len(goods())))
+
+export fn inspect_view(world: World, id: Text) -> InspectView:
+  let t = find_town(world.towns, id)
+  match t.id == "":
+    true => empty_inspect()
+    false =>
+      let goods_now = for g in goods():
+        stock(t, g)
+      let needs = for g in goods():
+        need_of(t, g)
+      let endows = for g in goods():
+        endow_of(t, g)
+      InspectView(ready: true, name: t.name, status: status_text(t), tone: status_tone(t), pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, terrain: terrain_name(t.terrain), value: market_value(t), insight: town_insight(world, t), shortages: shortage_text(t), connected: connected_routes(world, t.id), goods: goods_now, needs: needs, endows: endows)
+
+export fn inspect_stock(iv: InspectView, g: Good) -> Int:
+  nth_int(iv.goods, good_index(g))
+
+export fn inspect_need(iv: InspectView, g: Good) -> Int:
+  nth_int(iv.needs, good_index(g))
+
+export fn inspect_endow(iv: InspectView, g: Good) -> Int:
+  nth_int(iv.endows, good_index(g))
+
+export fn inspect_good_title(iv: InspectView, g: Good) -> Text:
+  good_name(g) + ": " + int_text(inspect_stock(iv, g)) + " stock · need " + int_text(inspect_need(iv, g)) + " · endowment " + int_text(inspect_endow(iv, g))
+
+export fn upkeep_signal_text(game: Game) -> Text:
+  "Upkeep due: " + int_text(upkeep_due(game)) + " crowns. " + match maintenance_text(game) == "degraded":
+    true => "Capacity is degraded."
+    false => "Pay it to keep routes maintained."
+
+# ---------------------------------------------------------------- presentation
+
+export fn route_text(mode: RouteMode) -> Text:
+  match mode:
     NoRoute => "none"
-    Path => "path"
-    Road => "road"
-    River => "river"
+    Path => "pack route"
+    Road => "cart road"
+    River => "river barge"
+    Rail => "rail"
 
-export fn tech_summary(w: World) -> Text:
-  match w.tech_road:
-    true => match w.tech_river:
-      true => "roads + rivers"
-      false => "roads"
-    false => "none"
+export fn route_short(mode: RouteMode) -> Text:
+  match mode:
+    NoRoute => "-"
+    Path => "PATH"
+    Road => "ROAD"
+    River => "RIVER"
+    Rail => "RAIL"
 
-# Construction helpers
-export fn build_ab(w: World) -> World:
-  let can = w.money >= 20 and w.a.timber >= 2 and w.a.stone >= 1
-  match can:
-    true => World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, fEnd: w.a.fEnd, grain: w.a.grain, timber: w.a.timber - 2, stone: w.a.stone - 1, ore: w.a.ore, tools: w.a.tools, fiber: w.a.fiber, cloth: w.a.cloth, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, e: w.e, ab: Path, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 20, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-    false => w
+export fn mode_capacity_label(mode: RouteMode) -> Text:
+  match mode:
+    NoRoute => "none"
+    Path => "low"
+    Road => "medium"
+    River => "high"
+    Rail => "very high"
 
-export fn remove_ab(w: World) -> World:
-  World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, fEnd: w.a.fEnd, grain: w.a.grain, timber: w.a.timber + 1, stone: w.a.stone, ore: w.a.ore, tools: w.a.tools, fiber: w.a.fiber, cloth: w.a.cloth, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, e: w.e, ab: NoRoute, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money + 10, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
+export fn connected_routes(world: World, id: Text) -> Int:
+  let flags = for r in world.routes:
+    bool_int(r.a == id or r.b == id)
+  total(flags)
 
-export fn toggle_ab(w: World) -> World:
-  match w.ab:
-    NoRoute => build_ab(w)
-    _ => remove_ab(w)
+export fn total_pop(world: World) -> Int:
+  let values = for t in world.towns:
+    t.state.pop
+  total(values)
+
+export fn total_prosperity(world: World) -> Int:
+  let values = for t in world.towns:
+    t.state.prosperity
+  total(values)
+
+export fn max_town_research(world: World) -> Int:
+  max_research(world.towns, 0)
+
+export fn next_tech_threshold(world: World) -> Int:
+  match world.tech_rail:
+    true => 1
+    false => match world.tech_river:
+      true => rail_research()
+      false => match world.tech_road:
+        true => river_research()
+        false => road_research()
+
+export fn next_tech_name(world: World) -> Text:
+  match world.tech_rail:
+    true => "All transport tech"
+    false => match world.tech_river:
+      true => "Rail"
+      false => match world.tech_road:
+        true => "River barges"
+        false => "Roads"
+
+export fn tech_progress(world: World) -> Int:
+  let best = max_town_research(world)
+  clamp(best * 100 / max_int(next_tech_threshold(world), 1), 0, 100)
+
+export fn progress_class(world: World) -> Text:
+  let p = tech_progress(world)
+  match p >= 100:
+    true => "p100"
+    false => match p >= 75:
+      true => "p75"
+      false => match p >= 50:
+        true => "p50"
+        false => match p >= 25:
+          true => "p25"
+          false => "p0"
+
+export fn town_insight(world: World, t: Town) -> Text:
+  match t.id == "":
+    true => "Select a settlement on the map to inspect it."
+    false => match food_ok(t) == 0:
+      true => "Food is short. Connect a grain or fishing settlement before the population shrinks."
+      false => match connected_routes(world, t.id) == 0:
+        true => "Isolated. Build a route so its surplus can reach a market and new goods can arrive."
+        false => match stock(t, Tools) == 0:
+          true => "No tools. Deliver timber, stone, and ore together to start tool production."
+          false => match t.state.prosperity < 8:
+            true => "Prosperity is fragile. Diversify the goods reaching this settlement; variety matters more than volume."
+            false => match t.state.prosperity >= 16:
+              true => "Thriving. Growth is now limited by food and building materials, not by demand."
+              false => "Stable. More variety or a cheaper route would raise prosperity and research."
+
+export fn endow_text(t: Town) -> Text:
+  let parts = for g in goods():
+    match endowment(t, g) > 0:
+      true => good_short(g) + " " + int_text(endowment(t, g))
+      false => ""
+  let text = join_nonempty(parts, 0, "")
+  match text == "":
+    true => "none"
+    false => text
+
+fn join_nonempty(xs: List<Text>, i: Int, acc: Text) -> Text:
+  match list_get(xs, i):
+    None => acc
+    Some(x) => match x == "":
+      true => join_nonempty(xs, i + 1, acc)
+      false => match acc == "":
+        true => join_nonempty(xs, i + 1, x)
+        false => join_nonempty(xs, i + 1, acc + " · " + x)
+
+export fn shortage_text(t: Town) -> Text:
+  let parts = for g in goods():
+    match need_of(t, g) > stock(t, g):
+      true => good_short(g) + " -" + int_text(need_of(t, g) - stock(t, g))
+      false => ""
+  let text = join_nonempty(parts, 0, "")
+  match text == "":
+    true => "none"
+    false => text
+
+export fn usage_class(r: Route) -> Text:
+  let p = match r.capacity <= 0:
+    true => 0
+    false => r.traffic * 100 / r.capacity
+  match p >= 90:
+    true => "usage-full"
+    false => match p >= 60:
+      true => "usage-high"
+      false => match p >= 25:
+        true => "usage-mid"
+        false => "usage-low"
+
+export fn bar_class(v: Int) -> Text:
+  match v >= 110:
+    true => "bar-11"
+    false => match v >= 100:
+      true => "bar-10"
+      false => match v >= 90:
+        true => "bar-9"
+        false => match v >= 80:
+          true => "bar-8"
+          false => match v >= 70:
+            true => "bar-7"
+            false => match v >= 60:
+              true => "bar-6"
+              false => match v >= 50:
+                true => "bar-5"
+                false => match v >= 40:
+                  true => "bar-4"
+                  false => match v >= 30:
+                    true => "bar-3"
+                    false => match v >= 20:
+                      true => "bar-2"
+                      false => match v >= 10:
+                        true => "bar-1"
+                        false => "bar-0"
+
+export fn log_feed(world: World) -> List<Text>:
+  list_reverse(world.log)
+
+fn any_shortage(towns: List<Town>, i: Int) -> Bool:
+  match list_get(towns, i):
+    None => false
+    Some(t) => match food_ok(t) == 0:
+      true => true
+      false => any_shortage(towns, i + 1)
+
+fn any_congested(routes: List<Route>, i: Int) -> Bool:
+  match list_get(routes, i):
+    None => false
+    Some(r) => match r.traffic >= r.capacity and r.capacity > 0:
+      true => true
+      false => any_congested(routes, i + 1)
+
+export fn alerts(world: World) -> List<Text>:
+  let a = match world.money < 0:
+    true => ["Treasury is negative. Upkeep is eating the network."]
+    false => []
+  let b = match any_shortage(world.towns, 0):
+    true => list_append(a, "At least one settlement is out of food.")
+    false => a
+  let c = match any_congested(world.routes, 0):
+    true => list_append(b, "A route is at capacity. Upgrade it or trade will stall.")
+    false => b
+  let d = match len(world.routes) == 0:
+    true => list_append(c, "No routes built yet. Click two settlements on the map to survey one.")
+    false => c
+  match len(d) == 0:
+    true => ["No active crises. The network is holding."]
+    false => d
+
+export fn town_status(t: Town) -> Text:
+  status_text(t)
+
+export fn market_value(t: Town) -> Int:
+  total(t.state.stock) + t.state.prosperity * 2 + t.state.research
+
+# ---------------------------------------------------------------- construction
+
+fn combined_stock(world: World, a: Text, b: Text, g: Good) -> Int:
+  stock(find_town(world.towns, a), g) + stock(find_town(world.towns, b), g)
+
+fn pay_good(world: World, a: Text, b: Text, g: Good, amount: Int) -> List<Town>:
+  pay_good_list(world.towns, a, b, g, amount)
+
+fn pay_good_list(towns: List<Town>, a: Text, b: Text, g: Good, amount: Int) -> List<Town>:
+  let ta = find_town(towns, a)
+  let tb = find_town(towns, b)
+  let from_a = min_int(stock(ta, g), amount)
+  let left = amount - from_a
+  let ta2 = with_stock(ta, g, stock(ta, g) - from_a)
+  let tb2 = with_stock(tb, g, stock(tb, g) - left)
+  replace_town(replace_town(towns, ta2), tb2)
+
+fn pay_plan_list(towns: List<Town>, a: Text, b: Text, plan: RoutePlan) -> List<Town>:
+  let t1 = pay_good_list(towns, a, b, Timber, plan.timber)
+  pay_good_list(t1, a, b, Stone, plan.stone)
+
+fn route_exists(routes: List<Route>, a: Text, b: Text, i: Int) -> Bool:
+  match list_get(routes, i):
+    None => false
+    Some(r) => match (r.a == a and r.b == b) or (r.a == b and r.b == a):
+      true => true
+      false => route_exists(routes, a, b, i + 1)
+
+fn base_capacity(mode: RouteMode) -> Int:
+  match mode:
+    NoRoute => 0
+    Path => 9
+    Road => 17
+    River => 26
+    Rail => 38
+
+fn mode_upkeep(mode: RouteMode) -> Int:
+  match mode:
+    NoRoute => 0
+    Path => 0
+    Road => 1
+    River => 2
+    Rail => 3
+
+fn route_capacity(mode: RouteMode, plan: RoutePlan) -> Int:
+  max_int(3, base_capacity(mode) - plan.length / 8 - plan.water - plan.mountain)
+
+fn route_upkeep(mode: RouteMode, plan: RoutePlan) -> Int:
+  1 + plan.length / 16 + mode_upkeep(mode)
+
+fn make_route(towns: List<Town>, a: Text, b: Text, plan: RoutePlan) -> Route:
+  let ta = find_town(towns, a)
+  let tb = find_town(towns, b)
+  Route(id: a + "-" + b, a: a, b: b, a_name: ta.name, b_name: tb.name, mode: Path, plan: plan, fee: 1, traffic: 0, capacity: route_capacity(Path, plan), upkeep: route_upkeep(Path, plan))
+
+fn site_near_plan(plan: RoutePlan, s: Site) -> Bool:
+  plan_crosses(plan, s.x, s.y) or plan_crosses(plan, s.x + 1, s.y) or plan_crosses(plan, s.x - 1, s.y) or plan_crosses(plan, s.x, s.y + 1) or plan_crosses(plan, s.x, s.y - 1)
+
+fn town_from_site(s: Site) -> Town:
+  let endow = replace_int(zeros(len(goods())), good_index(s.resource), s.richness)
+  Town(id: s.id, name: s.name, x: s.x, y: s.y, terrain: s.terrain, endow: endow, state: TownState(pop: 1, prosperity: 5, research: 0, stock: outpost_stock(s.resource, s.richness)))
+
+fn mark_site_founded(sites: List<Site>, id: Text) -> List<Site>:
+  for s in sites:
+    match s.id == id:
+      true => Site(id: s.id, name: s.name, x: s.x, y: s.y, terrain: s.terrain, resource: s.resource, richness: s.richness, founded: true)
+      false => s
+
+fn found_lists(towns: List<Town>, sites: List<Site>, log: List<Text>, plan: RoutePlan, i: Int, budget: Int) -> FoundLists:
+  match list_get(sites, i):
+    None => FoundLists(towns: towns, sites: sites, log: log)
+    Some(s) => match s.founded or budget <= 0 or len(towns) >= max_settlements():
+      true => found_lists(towns, sites, log, plan, i + 1, budget)
+      false => match site_near_plan(plan, s):
+        true =>
+          let town = town_from_site(s)
+          let towns2 = list_append(towns, town)
+          let sites2 = mark_site_founded(sites, s.id)
+          let log2 = append_message(log, s.name + " is founded where the new route passes.")
+          found_lists(towns2, sites2, log2, plan, i + 1, budget - 1)
+        false => found_lists(towns, sites, log, plan, i + 1, budget)
+
+export fn build_route(world: World, a: Text, b: Text, plan: RoutePlan) -> BuildResult:
+  match a == "" or b == "" or a == b:
+    true => BuildResult(world: world, ok: false, message: "Choose two different settlements.", from: a, to: b)
+    false => match route_exists(world.routes, a, b, 0):
+      true => BuildResult(world: world, ok: false, message: "A route already connects these settlements.", from: a, to: b)
+      false => match len(world.routes) >= max_routes():
+        true => BuildResult(world: world, ok: false, message: "Three trunk routes already exist. Dismantle one before building another.", from: a, to: b)
+        false => match world.money < plan.money:
+          true => BuildResult(world: world, ok: false, message: "The treasury needs " + int_text(plan.money) + " crowns for this survey.", from: a, to: b)
+          false => match combined_stock(world, a, b, Timber) < plan.timber or combined_stock(world, a, b, Stone) < plan.stone:
+            true => BuildResult(world: world, ok: false, message: "Materials are short: " + int_text(plan.timber) + " timber and " + int_text(plan.stone) + " stone are needed.", from: a, to: b)
+            false =>
+              let paid = pay_plan_list(world.towns, a, b, plan)
+              let route = make_route(paid, a, b, plan)
+              let log1 = append_message(world.log, "Built a pack route from " + route.a_name + " to " + route.b_name + " (" + int_text(plan.length) + " leagues).")
+              let found = found_lists(paid, world.sites, log1, plan, 0, 1)
+              let w = World(seed: world.seed, tick: world.tick, money: world.money - plan.money, towns: found.towns, sites: found.sites, routes: list_append(world.routes, route), log: found.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+              BuildResult(world: w, ok: true, message: "Route built. " + route.a_name + " and " + route.b_name + " are connected.", from: "", to: "")
+
+fn route_by_id(routes: List<Route>, id: Text, i: Int) -> Route:
+  match list_get(routes, i):
+    None => Route(id: "", a: "", b: "", a_name: "", b_name: "", mode: NoRoute, plan: empty_plan(), fee: 0, traffic: 0, capacity: 0, upkeep: 0)
+    Some(r) => match r.id == id:
+      true => r
+      false => route_by_id(routes, id, i + 1)
+
+fn replace_route(routes: List<Route>, route: Route) -> List<Route>:
+  for r in routes:
+    match r.id == route.id:
+      true => route
+      false => r
+
+fn nth_route(routes: List<Route>, i: Int) -> Route:
+  match list_get(routes, i):
+    None => route_by_id(routes, "", 0)
+    Some(r) => r
+
+fn drop_route(routes: List<Route>, id: Text, i: Int, acc: List<Route>) -> List<Route>:
+  match i >= len(routes):
+    true => list_reverse(acc)
+    false =>
+      let current = nth_route(routes, i)
+      match current.id == id:
+        true => drop_route(routes, id, i + 1, acc)
+        false => drop_route(routes, id, i + 1, list_append(acc, current))
+
+export fn can_upgrade(world: World, route: Route) -> Bool:
+  match route.mode:
+    Path => world.tech_road and world.money >= 35 and combined_stock(world, route.a, route.b, Stone) >= 2
+    Road => world.tech_river and world.money >= 60 and combined_stock(world, route.a, route.b, Timber) >= 4
+    River => world.tech_rail and world.money >= 90 and combined_stock(world, route.a, route.b, Stone) >= 4 and combined_stock(world, route.a, route.b, Tools) >= 2
+    _ => false
+
+export fn upgrade_cost_text(route: Route) -> Text:
+  match route.mode:
+    Path => "35 crowns + 2 stone"
+    Road => "60 crowns + 4 timber"
+    River => "90 crowns + 4 stone + 2 tools"
+    _ => "fully upgraded"
+
+export fn upgrade_route(world: World, id: Text) -> BuildResult:
+  let r = route_by_id(world.routes, id, 0)
+  match r.id == "":
+    true => BuildResult(world: world, ok: false, message: "Route not found.", from: "", to: "")
+    false => match can_upgrade(world, r):
+      false => BuildResult(world: world, ok: false, message: "Not enough technology, crowns, or materials to upgrade " + r.a_name + " to " + r.b_name + ".", from: "", to: "")
+      true =>
+        let next_mode = match r.mode:
+          Path => Road
+          Road => River
+          River => Rail
+          _ => Rail
+        let cost = match r.mode:
+          Path => 35
+          Road => 60
+          River => 90
+          _ => 0
+        let pay_good_kind = match r.mode:
+          Path => Stone
+          Road => Timber
+          River => Stone
+          _ => Stone
+        let pay_good_amount = match r.mode:
+          Path => 2
+          Road => 4
+          River => 4
+          _ => 0
+        let paid = pay_good(world, r.a, r.b, pay_good_kind, pay_good_amount)
+        let w1 = with_towns(world, paid)
+        let w2 = match r.mode:
+          River => with_towns(w1, pay_good(w1, r.a, r.b, Tools, 2))
+          _ => w1
+        let upgraded = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: next_mode, plan: r.plan, fee: r.fee, traffic: r.traffic, capacity: route_capacity(next_mode, r.plan), upkeep: route_upkeep(next_mode, r.plan))
+        let w3 = with_routes(w2, replace_route(w2.routes, upgraded))
+        let w4 = with_resources(w3, w3.money - cost, w3.log)
+        let w5 = record(w4, r.a_name + " to " + r.b_name + " upgraded to " + route_text(next_mode) + ".")
+        BuildResult(world: w5, ok: true, message: "Route upgraded to " + route_text(next_mode) + ".", from: "", to: "")
+
+export fn demolish_route(world: World, id: Text) -> BuildResult:
+  let r = route_by_id(world.routes, id, 0)
+  match r.id == "":
+    true => BuildResult(world: world, ok: false, message: "Route not found.", from: "", to: "")
+    false =>
+      let towns = pay_good(world, r.a, r.b, Timber, -1)
+      let towns2 = pay_good(with_towns(world, towns), r.a, r.b, Stone, -1)
+      let w1 = with_towns(world, towns2)
+      let w2 = with_routes(w1, drop_route(world.routes, id, 0, []))
+      let w3 = with_resources(w2, w2.money + r.upkeep * 2, w2.log)
+      let w4 = record(w3, "Dismantled the " + route_text(r.mode) + " between " + r.a_name + " and " + r.b_name + ".")
+      BuildResult(world: w4, ok: true, message: "Route dismantled; some materials recovered.", from: "", to: "")
+
+export fn total_upkeep(routes: List<Route>) -> Int:
+  let values = for r in routes:
+    r.upkeep
+  total(values)
+
+export fn adjust_fee(world: World, id: Text, delta: Int) -> World:
+  let r = route_by_id(world.routes, id, 0)
+  match r.id == "":
+    true => world
+    false =>
+      let changed = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: clamp(r.fee + delta, 0, 5), traffic: r.traffic, capacity: r.capacity, upkeep: r.upkeep)
+      with_routes(world, replace_route(world.routes, changed))
+
+# ---------------------------------------------------------------- simulation
+
+fn nth_good(i: Int) -> Good:
+  match i == 0:
+    true => Grain
+    false => match i == 1:
+      true => Timber
+      false => match i == 2:
+        true => Stone
+        false => match i == 3:
+          true => Ore
+          false => match i == 4:
+            true => Fiber
+            false => match i == 5:
+              true => Tools
+              false => match i == 6:
+                true => Cloth
+                false => Fish
+
+fn count_positive(xs: List<Int>, i: Int) -> Int:
+  match list_get(xs, i):
+    None => 0
+    Some(v) => match v > 0:
+      true => 1 + count_positive(xs, i + 1)
+      false => count_positive(xs, i + 1)
+
+fn advance_town(t: Town) -> Town:
+  let grain_at = good_index(Grain)
+  let timber_at = good_index(Timber)
+  let stone_at = good_index(Stone)
+  let ore_at = good_index(Ore)
+  let fiber_at = good_index(Fiber)
+  let tools_at = good_index(Tools)
+  let cloth_at = good_index(Cloth)
+  let fish_at = good_index(Fish)
+  let timber_base = nth_int(t.state.stock, timber_at) + endowment(t, Timber)
+  let stone_base = nth_int(t.state.stock, stone_at) + endowment(t, Stone)
+  let ore_base = nth_int(t.state.stock, ore_at) + endowment(t, Ore)
+  let fiber_base = nth_int(t.state.stock, fiber_at) + endowment(t, Fiber)
+  let can_tools = timber_base >= 1 and stone_base >= 1 and ore_base >= 1
+  let can_cloth = fiber_base >= 1
+  let grain_prod = nth_int(t.state.stock, grain_at) + endowment(t, Grain)
+  let fish_prod = nth_int(t.state.stock, fish_at) + endowment(t, Fish)
+  let cloth_prod = nth_int(t.state.stock, cloth_at) + endowment(t, Cloth) + match can_cloth:
+    true => 1
+    false => 0
+  let need_grain = t.state.pop
+  let grain_eaten = min_int(grain_prod, need_grain)
+  let need_fish = t.state.pop / 3 + 1
+  let fish_eaten = min_int(fish_prod, need_fish)
+  let cloth_need = t.state.pop / 4
+  let cloth_used = min_int(cloth_prod, cloth_need)
+  let after = for i in indices(len(goods())):
+    let raw = nth_int(t.state.stock, i) + endowment(t, nth_good(i))
+    let prod_value = match can_tools and (i == timber_at or i == stone_at or i == ore_at):
+      true => raw - 1
+      false => match can_tools and i == tools_at:
+        true => raw + 1
+        false => match can_cloth and i == fiber_at:
+          true => raw - 1
+          false => match can_cloth and i == cloth_at:
+            true => raw + 1
+            false => raw
+    match i == grain_at:
+      true => max_int(prod_value - grain_eaten, 0)
+      false => match i == fish_at:
+        true => max_int(prod_value - fish_eaten, 0)
+        false => match i == cloth_at:
+          true => max_int(prod_value - cloth_used, 0)
+          false => prod_value
+  let fed = grain_eaten + fish_eaten * 2
+  let target = need_grain + need_fish * 2
+  let food = match fed >= target:
+    true => 2
+    false => match fed * 2 >= target:
+      true => 1
+      false => 0
+  let score = count_positive(after, 0)
+  let comfort = bool_int(nth_int(after, tools_at) > 0) + bool_int(cloth_used > 0)
+  let delta = food * 2 + min_int(score, 6) / 2 + comfort - 2
+  let prosperity = clamp(t.state.prosperity + delta, 0, 30)
+  let research = t.state.research + t.state.pop + score + prosperity / 6 + food
+  let food_now = nth_int(after, grain_at) + nth_int(after, fish_at)
+  let can_grow = prosperity >= 9 and food_now >= t.state.pop * 2 + 2 and nth_int(after, timber_at) >= 1 and nth_int(after, stone_at) >= 1
+  match can_grow:
+    true =>
+      let final = for i in indices(len(after)):
+        match i == grain_at:
+          true => max_int(nth_int(after, i) - 2, 0)
+          false => match i == timber_at or i == stone_at:
+            true => max_int(nth_int(after, i) - 1, 0)
+            false => nth_int(after, i)
+      Town(id: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, endow: t.endow, state: TownState(pop: t.state.pop + 1, prosperity: clamp(prosperity - 1, 0, 30), research: research, stock: final))
+    false => match food == 0 and t.state.pop > 1 and prosperity <= 4:
+      true => Town(id: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, endow: t.endow, state: TownState(pop: t.state.pop - 1, prosperity: clamp(prosperity - 1, 0, 30), research: research, stock: after))
+      false => Town(id: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, endow: t.endow, state: TownState(pop: t.state.pop, prosperity: prosperity, research: research, stock: after))
+
+fn move_ab(a: Town, b: Town, g: Good, quota: Int, fee: Int) -> Int:
+  let penalty = match g:
+    Grain => fee / 2
+    Fish => fee / 2
+    _ => fee
+  let surplus_a = stock(a, g) - need_of(a, g) - 1
+  let need_b = max_int(need_of(b, g) - stock(b, g) - penalty, 0)
+  match surplus_a > 0 and need_b > 0:
+    true => min_int(min_int(surplus_a, need_b), quota)
+    false => 0
+
+fn trade_moves(a: Town, b: Town, route: Route, capacity: Int) -> TradeMoves:
+  let quota = max_int(1, capacity / len(goods()))
+  let ab = for g in goods():
+    move_ab(a, b, g, quota, route.fee)
+  let ba = for g in goods():
+    move_ab(b, a, g, quota, route.fee)
+  TradeMoves(ab: ab, ba: ba, moved: total(ab) + total(ba))
+
+fn apply_moves(a: Town, b: Town, moves: TradeMoves) -> TradeResult:
+  let stock_a = for i in indices(len(goods())):
+    max_int(nth_int(a.state.stock, i) - nth_int(moves.ab, i) + nth_int(moves.ba, i), 0)
+  let stock_b = for i in indices(len(goods())):
+    max_int(nth_int(b.state.stock, i) + nth_int(moves.ab, i) - nth_int(moves.ba, i), 0)
+  TradeResult(a: with_stock_list(a, stock_a), b: with_stock_list(b, stock_b), moved: moves.moved)
+
+fn trade_net(net: NetState, route: Route, scale: Int) -> NetState:
+  let a = find_town(net.towns, route.a)
+  let b = find_town(net.towns, route.b)
+  match a.id == "" or b.id == "":
+    true => net
+    false =>
+      let cap = max_int(2, route.capacity * scale / 100)
+      let moves = trade_moves(a, b, route, cap)
+      let result = apply_moves(a, b, moves)
+      let towns = replace_town(replace_town(net.towns, result.a), result.b)
+      let changed = Route(id: route.id, a: route.a, b: route.b, a_name: route.a_name, b_name: route.b_name, mode: route.mode, plan: route.plan, fee: route.fee, traffic: route.traffic + result.moved, capacity: route.capacity, upkeep: route.upkeep)
+      NetState(towns: towns, routes: replace_route(net.routes, changed))
+
+fn trade_pass(net: NetState, i: Int, scale: Int) -> NetState:
+  match list_get(net.routes, i):
+    None => net
+    Some(r) => trade_pass(trade_net(net, r, scale), i + 1, scale)
+
+fn max_research(towns: List<Town>, i: Int) -> Int:
+  match list_get(towns, i):
+    None => 0
+    Some(t) => max_int(t.state.research, max_research(towns, i + 1))
+
+fn unlock_text(world: World) -> Text:
+  match world.tech_rail:
+    true => "rails"
+    false => match world.tech_river:
+      true => "rivers"
+      false => match world.tech_road:
+        true => "roads"
+        false => "none"
+
+export fn tech_summary(world: World) -> Text:
+  unlock_text(world)
+
+fn tech_messages(world: World, best: Int) -> List<Text>:
+  let road = world.tech_road or best >= road_research()
+  let river = world.tech_river or best >= river_research()
+  let rail = world.tech_rail or best >= rail_research()
+  match road and not world.tech_road:
+    true => ["Discovery: improved carts. Roads can now be built."]
+    false => match river and not world.tech_river:
+      true => ["Discovery: river navigation. Barges can now be built."]
+      false => match rail and not world.tech_rail:
+        true => ["Discovery: steam power. Rail can now be built."]
+        false => []
+
+fn nth_town(towns: List<Town>, i: Int) -> Town:
+  match list_get(towns, i):
+    None => empty_town()
+    Some(t) => t
+
+fn harvest(towns: List<Town>, i: Int) -> EventOutcome:
+  match list_get(towns, i):
+    None => EventOutcome(towns: towns, messages: ["A generous harvest adds grain across the frontier."])
+    Some(t) => harvest(replace_town(towns, add_stock(t, Grain, 3)), i + 1)
+
+fn storm(towns: List<Town>, tick: Int, seed: Int) -> EventOutcome:
+  let idx = mod_int(tick + seed, len(towns))
+  let target = nth_town(towns, idx)
+  let next = replace_town(towns, set_prosperity(target, target.state.prosperity - 2))
+  EventOutcome(towns: next, messages: ["A storm damages stores in " + target.name + "."])
+
+fn caravan(towns: List<Town>, tick: Int, seed: Int) -> EventOutcome:
+  let idx = mod_int(tick * 3 + seed, len(towns))
+  let target = nth_town(towns, idx)
+  let next = replace_town(towns, add_stock(add_stock(target, Timber, 2), Stone, 1))
+  EventOutcome(towns: next, messages: ["A caravan reaches " + target.name + " with timber and stone."])
+
+fn append_message(log: List<Text>, message: Text) -> List<Text>:
+  let next = list_append(log, message)
+  match len(next) > max_log():
+    true => list_slice(next, len(next) - max_log(), max_log())
+    false => next
+
+fn append_messages(log: List<Text>, messages: List<Text>, i: Int) -> List<Text>:
+  match list_get(messages, i):
+    None => log
+    Some(m) => append_messages(append_message(log, m), messages, i + 1)
+
+fn append_history_values(history: List<Int>, towns: List<Town>) -> List<Int>:
+  let values = for t in towns:
+    t.state.prosperity
+  let next = list_append(history, total(values))
+  match len(next) > max_history():
+    true => list_slice(next, len(next) - max_history(), max_history())
+    false => next
+
+fn reset_traffic(routes: List<Route>) -> List<Route>:
+  for r in routes:
+    Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: r.fee, traffic: 0, capacity: r.capacity, upkeep: r.upkeep)
+
+export fn tick_scaled(world: World, scale: Int) -> World:
+  let towns0 = for t in world.towns:
+    advance_town(t)
+  let net2 = trade_pass(NetState(towns: towns0, routes: reset_traffic(world.routes)), 0, scale)
+  let best = max_research(net2.towns, 0)
+  let msgs_tech = tech_messages(world, best)
+  let road = world.tech_road or best >= road_research()
+  let river = world.tech_river or best >= river_research()
+  let rail = world.tech_rail or best >= rail_research()
+  let income = for r in net2.routes:
+    r.traffic * r.fee
+  let money2 = world.money + total(income)
+  let ev1 = match mod_int(world.tick, 6) == 0:
+    true => harvest(net2.towns, 0)
+    false => EventOutcome(towns: net2.towns, messages: [])
+  let ev2 = match mod_int(world.tick, 9) == 0:
+    true => storm(ev1.towns, world.tick, world.seed)
+    false => EventOutcome(towns: ev1.towns, messages: [])
+  let ev3 = match mod_int(world.tick, 11) == 0:
+    true => caravan(ev2.towns, world.tick, world.seed)
+    false => EventOutcome(towns: ev2.towns, messages: [])
+  let log1 = append_messages(append_messages(append_messages(world.log, ev1.messages, 0), ev2.messages, 0), ev3.messages, 0)
+  let log2 = append_messages(log1, msgs_tech, 0)
+  World(seed: world.seed, tick: world.tick + 1, money: money2, towns: ev3.towns, sites: world.sites, routes: net2.routes, log: log2, history: append_history_values(world.history, ev3.towns), tech_road: road, tech_river: river, tech_rail: rail)
+
+export fn tick(world: World) -> World:
+  tick_scaled(world, 100)
+
+export fn run_ticks_scaled(world: World, n: Int, scale: Int) -> World:
+  match n <= 0:
+    true => world
+    false => run_ticks_scaled(tick_scaled(world, scale), n - 1, scale)
+
+export fn run_ticks(world: World, n: Int) -> World:
+  run_ticks_scaled(world, n, 100)
+
+export fn position_class(x: Int, y: Int) -> Text:
+  "p-" + int_text(x) + "-" + int_text(y)
+
+fn concat_patches(xs: List<TerrainPatch>, ys: List<TerrainPatch>) -> List<TerrainPatch>:
+  match len(xs) == 0:
+    true => ys
+    false => concat_patches(list_slice(xs, 1, len(xs) - 1), list_append(ys, nth_patch(xs, 0)))
+
+fn nth_patch(xs: List<TerrainPatch>, i: Int) -> TerrainPatch:
+  match list_get(xs, i):
+    Some(p) => p
+    None => TerrainPatch(key: "", position: "", css: "")
+
+fn flatten_patches(xs: List<List<TerrainPatch>>, i: Int, acc: List<TerrainPatch>) -> List<TerrainPatch>:
+  match list_get(xs, i):
+    None => acc
+    Some(row) => flatten_patches(xs, i + 1, concat_patches(acc, row))
+
+export fn terrain_rows(world: World) -> List<TerrainRow>:
+  for y in indices(map_h()):
+    let groups = for x in indices(map_w()):
+      let t = terrain_at(world.seed, x, y)
+      match is_plain(t):
+        true => []
+        false => [position_class(x, y) + " " + terrain_class(t)]
+    let patches = flatten_texts(groups, 0, [])
+    TerrainRow(y: y, patches: patches)
+
+fn flatten_texts(xs: List<List<Text>>, i: Int, acc: List<Text>) -> List<Text>:
+  match list_get(xs, i):
+    None => acc
+    Some(row) => flatten_texts(xs, i + 1, concat_lists(acc, row))
+
+fn is_plain(t: Terrain) -> Bool:
+  match t:
+    Plains => true
+    _ => false
+
+fn node_css(mode: Int) -> Text:
+  match mode == 1:
+    true => "rn-path"
+    false => match mode == 2:
+      true => "rn-road"
+      false => match mode == 3:
+        true => "rn-river"
+        false => match mode == 4:
+          true => "rn-rail"
+          false => "rn-path"
+
+fn angle_sector(ax: Int, ay: Int) -> Int:
+  match ay * 5 <= ax:
+    true => 0
+    false => match ay * 3 <= ax * 2:
+      true => 1
+      false => match ay * 2 <= ax * 3:
+        true => 2
+        false => match ay <= ax * 5:
+          true => 3
+          false => 4
+
+fn angle_class(dx: Int, dy: Int) -> Text:
+  let sector = angle_sector(abs_int(dx), abs_int(dy))
+  let index = match dx >= 0:
+    true => match dy >= 0:
+      true => sector
+      false => 16 - sector
+    false => match dy >= 0:
+      true => 8 - sector
+      false => 8 + sector
+  let normalized = match index >= 16:
+    true => 0
+    false => index
+  match normalized == 0:
+    true => "a0"
+    false => match normalized == 1:
+      true => "a1"
+      false => match normalized == 2:
+        true => "a2"
+        false => match normalized == 3:
+          true => "a3"
+          false => match normalized == 4:
+            true => "a4"
+            false => match normalized == 5:
+              true => "a5"
+              false => match normalized == 6:
+                true => "a6"
+                false => match normalized == 7:
+                  true => "a7"
+                  false => match normalized == 8:
+                    true => "a8"
+                    false => match normalized == 9:
+                      true => "a9"
+                      false => match normalized == 10:
+                        true => "a10"
+                        false => match normalized == 11:
+                          true => "a11"
+                          false => match normalized == 12:
+                            true => "a12"
+                            false => match normalized == 13:
+                              true => "a13"
+                              false => match normalized == 14:
+                                true => "a14"
+                                false => "a15"
+
+fn length_class(n: Int) -> Text:
+  match n <= 1:
+    true => "l1"
+    false => match n == 2:
+      true => "l2"
+      false => match n == 3:
+        true => "l3"
+        false => match n == 4:
+          true => "l4"
+          false => match n == 5:
+            true => "l5"
+            false => match n == 6:
+              true => "l6"
+              false => match n == 7:
+                true => "l7"
+                false => match n == 8:
+                  true => "l8"
+                  false => match n == 9:
+                    true => "l9"
+                    false => match n == 10:
+                      true => "l10"
+                      false => match n == 11:
+                        true => "l11"
+                        false => "l12"
+
+fn segment_nodes(a: Point, b: Point, seg: Int, rid: Text, css: Text) -> List<RouteNode>:
+  let dx = b.x - a.x
+  let dy = b.y - a.y
+  let steps = max_int(abs_int(dx), abs_int(dy))
+  match steps <= 0:
+    true => []
+    false =>
+      let chunks = (steps + 1) / 2
+      for i in indices(chunks):
+        let t0 = i * 2
+        let t1 = min_int(t0 + 2, steps)
+        let px = lerp(a.x, b.x, t0, steps)
+        let py = lerp(a.y, b.y, t0, steps)
+        let qx = lerp(a.x, b.x, t1, steps)
+        let qy = lerp(a.y, b.y, t1, steps)
+        let sdx = qx - px
+        let sdy = qy - py
+        let span = max_int(abs_int(sdx), abs_int(sdy)) + (min_int(abs_int(sdx), abs_int(sdy)) + 1) / 2
+        RouteNode(key: rid + "-" + int_text(seg) + "-" + int_text(i), position: position_class(px, py), css: css + " " + angle_class(sdx, sdy) + " " + length_class(clamp(span, 1, 12)))
+
+fn path_nodes(path: List<Point>, seg: Int, rid: Text, css: Text) -> List<RouteNode>:
+  match list_get(path, seg):
+    None => []
+    Some(a) => match list_get(path, seg + 1):
+      None => []
+      Some(b) => concat_nodes(segment_nodes(a, b, seg, rid, css), path_nodes(path, seg + 1, rid, css))
+
+fn concat_nodes(xs: List<RouteNode>, ys: List<RouteNode>) -> List<RouteNode>:
+  match len(xs) == 0:
+    true => ys
+    false => list_append(concat_nodes(list_slice(xs, 1, len(xs) - 1), ys), nth_node(xs, 0))
+
+fn nth_node(xs: List<RouteNode>, i: Int) -> RouteNode:
+  match list_get(xs, i):
+    Some(n) => n
+    None => RouteNode(key: "", position: "", css: "")
+
+export fn route_groups(routes: List<Route>) -> List<RouteNodeGroup>:
+  for r in routes:
+    RouteNodeGroup(key: r.id, nodes: path_nodes(r.plan.path, 0, r.id, node_css(route_mode_code(r.mode))))
+
+export fn draft_nodes(plan: RoutePlan, ready: Bool) -> List<RouteNode>:
+  match ready:
+    true => path_nodes(plan.path, 0, "draft", "rn-draft")
+    false => []
+
+# ---------------------------------------------------------------- selection and game
+
+export fn empty_selection() -> Selection:
+  Selection(selected: "", from: "", to: "", draft: empty_plan(), ready: false, notice: "Click a settlement to inspect it, then click a second settlement to survey a route.")
+
+fn selection_with(sel: Selection, selected: Text, from: Text, to: Text, draft: RoutePlan, ready: Bool, notice: Text) -> Selection:
+  Selection(selected: selected, from: from, to: to, draft: draft, ready: ready, notice: notice)
+
+export fn selection_pick(world: World, sel: Selection, id: Text) -> Selection:
+  let name = marker_name(world, id)
+  match find_town(world.towns, id).id == "":
+    true => selection_with(sel, sel.selected, sel.from, sel.to, sel.draft, sel.ready, name + " is an unclaimed site. Build a route past it to found a settlement.")
+    false => selection_pick_town(world, sel, id, name)
+
+fn selection_pick_town(world: World, sel: Selection, id: Text, name: Text) -> Selection:
+  match sel.from == "":
+    true => selection_with(sel, id, id, "", empty_plan(), false, "Origin: " + name + ". Click a destination to survey a route.")
+    false => match sel.from == id:
+      true => selection_with(sel, id, "", "", empty_plan(), false, "Route selection cleared.")
+      false => match sel.to == "":
+        true => match len(world.routes) >= max_routes():
+          true => selection_with(sel, id, "", "", empty_plan(), false, "Four trunk routes already exist. Dismantle one before surveying another.")
+          false =>
+            let plan = plan_route(world, sel.from, id)
+            let ready = plan.length > 0
+            let notice = match ready:
+              true => "Survey ready: " + int_text(plan.length) + " leagues, " + int_text(plan.money) + " crowns, " + int_text(plan.timber) + " timber, " + int_text(plan.stone) + " stone."
+              false => "That pair cannot be surveyed."
+            selection_with(sel, id, sel.from, id, plan, ready, notice)
+        false => selection_with(sel, id, id, "", empty_plan(), false, "Origin moved to " + name + ". Click a destination.")
+
+export fn selection_cancel(sel: Selection) -> Selection:
+  empty_selection()
+
+export fn can_build_route(world: World, sel: Selection) -> Bool:
+  sel.ready and len(world.routes) < max_routes() and world.money >= sel.draft.money and combined_stock(world, sel.from, sel.to, Timber) >= sel.draft.timber and combined_stock(world, sel.from, sel.to, Stone) >= sel.draft.stone and not route_exists(world.routes, sel.from, sel.to, 0)
+
+export fn build_blocker(world: World, sel: Selection) -> Text:
+  match sel.ready:
+    false => "Survey a route first."
+    true => match len(world.routes) >= max_routes():
+      true => "Four trunk routes already exist. Dismantle one before surveying another."
+      false => match route_exists(world.routes, sel.from, sel.to, 0):
+        true => "A route already connects these settlements."
+        false => match world.money < sel.draft.money:
+          true => "Need " + int_text(sel.draft.money) + " crowns; treasury has " + int_text(world.money) + "."
+          false => match combined_stock(world, sel.from, sel.to, Timber) < sel.draft.timber:
+            true => "Need " + int_text(sel.draft.timber) + " timber at the endpoints."
+            false => match combined_stock(world, sel.from, sel.to, Stone) < sel.draft.stone:
+              true => "Need " + int_text(sel.draft.stone) + " stone at the endpoints."
+              false => "Ready to build."
+
+fn route_rows(routes: List<Route>) -> List<List<Int>>:
+  for y in indices(map_h()):
+    for x in indices(map_w()):
+      route_at_cell(routes, x, y)
+
+fn route_at_cell(routes: List<Route>, x: Int, y: Int) -> Int:
+  best_route_code(routes, x, y, 0, 0)
+
+fn first_selection(world: World) -> Selection:
+  Selection(selected: "t0", from: "", to: "", draft: empty_plan(), ready: false, notice: "Riverford is selected. Inspect the frontier, then click two settlements to survey a route.")
+
+export fn new_game(seed: Int) -> Game:
+  let world = new_world(seed)
+  Game(world: world, sel: first_selection(world), notice: "New world generated. Connect complementary settlements to start the economy.", last_ok: true, route_groups: route_groups(world.routes), auto_upkeep: false, last_paid_tick: 0, upkeep_per_cycle: total_upkeep(world.routes), inspect: inspect_view(world, "t0"))
+
+export fn game_pick(game: Game, id: Text) -> Game:
+  let sel = selection_pick(game.world, game.sel, id)
+  Game(world: game.world, sel: sel, notice: sel.notice, last_ok: game.last_ok, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: inspect_view(game.world, sel.selected))
+
+export fn game_cancel(game: Game) -> Game:
+  Game(world: game.world, sel: empty_selection(), notice: "Route selection cleared.", last_ok: game.last_ok, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: empty_inspect())
+
+export fn game_build(game: Game) -> Game:
+  let result = build_route(game.world, game.sel.from, game.sel.to, game.sel.draft)
+  let next_sel = match result.ok:
+    true => Selection(selected: game.sel.to, from: "", to: "", draft: empty_plan(), ready: false, notice: "")
+    false => game.sel
+  let chosen = match result.ok:
+    true => next_sel.selected
+    false => game.sel.selected
+  Game(world: result.world, sel: next_sel, notice: result.message, last_ok: result.ok, route_groups: route_groups(result.world.routes), auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: total_upkeep(result.world.routes), inspect: inspect_view(result.world, chosen))
+
+export fn game_upgrade(game: Game, id: Text) -> Game:
+  let result = upgrade_route(game.world, id)
+  Game(world: result.world, sel: game.sel, notice: result.message, last_ok: result.ok, route_groups: route_groups(result.world.routes), auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: total_upkeep(result.world.routes), inspect: inspect_view(result.world, game.sel.selected))
+
+export fn game_demolish(game: Game, id: Text) -> Game:
+  let result = demolish_route(game.world, id)
+  Game(world: result.world, sel: game.sel, notice: result.message, last_ok: result.ok, route_groups: route_groups(result.world.routes), auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: total_upkeep(result.world.routes), inspect: inspect_view(result.world, game.sel.selected))
+
+export fn game_fee(game: Game, id: Text, delta: Int) -> Game:
+  Game(world: adjust_fee(game.world, id, delta), sel: game.sel, notice: "Toll adjusted on the selected route.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: game.inspect)
+
+export fn upkeep_due(game: Game) -> Int:
+  match game.auto_upkeep:
+    true => 0
+    false => game.upkeep_per_cycle * max_int(0, game.world.tick - game.last_paid_tick)
+
+export fn neglect_ticks(game: Game) -> Int:
+  match game.auto_upkeep:
+    true => 0
+    false => max_int(0, game.world.tick - game.last_paid_tick)
+
+fn refresh_inspect_light(world: World, id: Text, iv: InspectView) -> InspectView:
+  let t = find_town(world.towns, id)
+  match t.id == "":
+    true => empty_inspect()
+    false =>
+      let goods_now = for g in goods():
+        stock(t, g)
+      InspectView(ready: true, name: t.name, status: status_text(t), tone: status_tone(t), pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, terrain: terrain_name(t.terrain), value: market_value(t), insight: iv.insight, shortages: iv.shortages, connected: connected_routes(world, t.id), goods: goods_now, needs: iv.needs, endows: iv.endows)
+
+export fn game_tick(game: Game, n: Int) -> Game:
+  let before = game.world.tick
+  let unpaid = neglect_ticks(game)
+  let scale = match game.auto_upkeep:
+    true => 100
+    false => match unpaid >= 3:
+      true => 50
+      false => 100
+  let world = run_ticks_scaled(game.world, n, scale)
+  let money2 = match game.auto_upkeep:
+    true => world.money - game.upkeep_per_cycle * n
+    false => world.money
+  let world2 = match game.auto_upkeep:
+    true => set_money(world, money2)
+    false => world
+  let paid_tick = match game.auto_upkeep:
+    true => world2.tick
+    false => game.last_paid_tick
+  let iv = game.inspect
+  Game(world: world2, sel: game.sel, notice: "Advanced " + int_text(world.tick - before) + " cycles. Year " + int_text(world.tick) + ".", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: iv)
+
+export fn game_pay_upkeep(game: Game) -> Game:
+  let due = upkeep_due(game)
+  match due <= 0:
+    true => Game(world: game.world, sel: game.sel, notice: "No upkeep is due.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: game.inspect)
+    false => match game.world.money < due:
+      true => Game(world: game.world, sel: game.sel, notice: "The treasury cannot cover " + int_text(due) + " crowns of upkeep.", last_ok: false, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: game.inspect)
+      false => Game(world: set_money(game.world, game.world.money - due), sel: game.sel, notice: "Paid " + int_text(due) + " crowns of upkeep. Routes are maintained.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.world.tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: game.inspect)
+
+export fn game_refresh(game: Game) -> Game:
+  Game(world: game.world, sel: game.sel, notice: "Inspector refreshed.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: inspect_view(game.world, game.sel.selected))
+
+export fn game_toggle_auto(game: Game) -> Game:
+  let on = not game.auto_upkeep
+  let notice = match on:
+    true => "Automatic upkeep enabled. Future upkeep is deducted each cycle."
+    false => "Automatic upkeep disabled. Pay upkeep manually to keep routes in condition."
+  let paid_tick = match on:
+    true => game.world.tick
+    false => game.last_paid_tick
+  Game(world: game.world, sel: game.sel, notice: notice, last_ok: true, route_groups: game.route_groups, auto_upkeep: on, last_paid_tick: paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: game.inspect)
+
+export fn maintenance_text(game: Game) -> Text:
+  match game.auto_upkeep:
+    true => "automatic"
+    false => match neglect_ticks(game) >= 3:
+      true => "degraded"
+      false => match upkeep_due(game) > 0:
+        true => "due"
+        false => "maintained"
+
+export fn maintenance_tone(game: Game) -> Text:
+  match game.auto_upkeep:
+    true => "ok"
+    false => match neglect_ticks(game) >= 3:
+      true => "bad"
+      false => match upkeep_due(game) > 0:
+        true => "warn"
+        false => "good"
+
+export fn auto_text(on: Bool) -> Text:
+  match on:
+    true => "on"
+    false => "off"
+
+export fn game_new_seed(game: Game) -> Game:
+  let seed = game.world.seed + 1
+  let world = new_world(seed)
+  Game(world: world, sel: first_selection(world), notice: "Generated world " + int_text(seed) + ".", last_ok: true, route_groups: route_groups(world.routes), auto_upkeep: false, last_paid_tick: 0, upkeep_per_cycle: total_upkeep(world.routes), inspect: inspect_view(world, "t0"))
 
 
-fn main() -> Text:
-  let isolated = run_ticks(base_world(), 4)
-  let connected = run_ticks(connected_world(), 4)
-  world_report("ISOLATED:", isolated) + "\\n\\n" + world_report("CONNECTED:", connected)
-
-export fn build_ac(w: World) -> World:
-  let can = w.money >= 20 and w.a.timber >= 2 and w.a.stone >= 1
-  match can:
-    true => World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, fEnd: w.a.fEnd, grain: w.a.grain, timber: w.a.timber - 2, stone: w.a.stone - 1, ore: w.a.ore, tools: w.a.tools, fiber: w.a.fiber, cloth: w.a.cloth, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, e: w.e, ab: w.ab, ac: Path, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 20, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-    false => w
-
-export fn remove_ac(w: World) -> World:
-  World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, fEnd: w.a.fEnd, grain: w.a.grain, timber: w.a.timber + 1, stone: w.a.stone, ore: w.a.ore, tools: w.a.tools, fiber: w.a.fiber, cloth: w.a.cloth, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, e: w.e, ab: w.ab, ac: NoRoute, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money + 10, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-
-export fn toggle_ac(w: World) -> World:
-  match w.ac:
-    NoRoute => build_ac(w)
-    _ => remove_ac(w)
-
-export fn build_ad(w: World) -> World:
-  let can = w.money >= 20 and w.a.timber >= 2 and w.a.stone >= 1
-  match can:
-    true => World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, fEnd: w.a.fEnd, grain: w.a.grain, timber: w.a.timber - 2, stone: w.a.stone - 1, ore: w.a.ore, tools: w.a.tools, fiber: w.a.fiber, cloth: w.a.cloth, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: Path, bc: w.bc, bd: w.bd, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 20, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-    false => w
-
-export fn remove_ad(w: World) -> World:
-  World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, fEnd: w.a.fEnd, grain: w.a.grain, timber: w.a.timber + 1, stone: w.a.stone, ore: w.a.ore, tools: w.a.tools, fiber: w.a.fiber, cloth: w.a.cloth, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: NoRoute, bc: w.bc, bd: w.bd, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money + 10, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-
-export fn toggle_ad(w: World) -> World:
-  match w.ad:
-    NoRoute => build_ad(w)
-    _ => remove_ad(w)
-
-export fn build_bc(w: World) -> World:
-  let can = w.money >= 20 and w.b.timber >= 2 and w.b.stone >= 1
-  match can:
-    true => World(a: w.a, b: Town(name: w.b.name, gEnd: w.b.gEnd, tEnd: w.b.tEnd, sEnd: w.b.sEnd, oEnd: w.b.oEnd, fEnd: w.b.fEnd, grain: w.b.grain, timber: w.b.timber - 2, stone: w.b.stone - 1, ore: w.b.ore, tools: w.b.tools, fiber: w.b.fiber, cloth: w.b.cloth, pop: w.b.pop, prosperity: w.b.prosperity, research: w.b.research), c: w.c, d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: w.ad, bc: Path, bd: w.bd, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 20, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-    false => w
-
-export fn remove_bc(w: World) -> World:
-  World(a: w.a, b: Town(name: w.b.name, gEnd: w.b.gEnd, tEnd: w.b.tEnd, sEnd: w.b.sEnd, oEnd: w.b.oEnd, fEnd: w.b.fEnd, grain: w.b.grain, timber: w.b.timber + 1, stone: w.b.stone, ore: w.b.ore, tools: w.b.tools, fiber: w.b.fiber, cloth: w.b.cloth, pop: w.b.pop, prosperity: w.b.prosperity, research: w.b.research), c: w.c, d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: w.ad, bc: NoRoute, bd: w.bd, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money + 10, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-
-export fn toggle_bc(w: World) -> World:
-  match w.bc:
-    NoRoute => build_bc(w)
-    _ => remove_bc(w)
-
-export fn build_bd(w: World) -> World:
-  let can = w.money >= 20 and w.b.timber >= 2 and w.b.stone >= 1
-  match can:
-    true => World(a: w.a, b: Town(name: w.b.name, gEnd: w.b.gEnd, tEnd: w.b.tEnd, sEnd: w.b.sEnd, oEnd: w.b.oEnd, fEnd: w.b.fEnd, grain: w.b.grain, timber: w.b.timber - 2, stone: w.b.stone - 1, ore: w.b.ore, tools: w.b.tools, fiber: w.b.fiber, cloth: w.b.cloth, pop: w.b.pop, prosperity: w.b.prosperity, research: w.b.research), c: w.c, d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: Path, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 20, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-    false => w
-
-export fn remove_bd(w: World) -> World:
-  World(a: w.a, b: Town(name: w.b.name, gEnd: w.b.gEnd, tEnd: w.b.tEnd, sEnd: w.b.sEnd, oEnd: w.b.oEnd, fEnd: w.b.fEnd, grain: w.b.grain, timber: w.b.timber + 1, stone: w.b.stone, ore: w.b.ore, tools: w.b.tools, fiber: w.b.fiber, cloth: w.b.cloth, pop: w.b.pop, prosperity: w.b.prosperity, research: w.b.research), c: w.c, d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: NoRoute, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money + 10, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-
-export fn toggle_bd(w: World) -> World:
-  match w.bd:
-    NoRoute => build_bd(w)
-    _ => remove_bd(w)
-
-export fn build_cd(w: World) -> World:
-  let can = w.money >= 20 and w.c.timber >= 2 and w.c.stone >= 1
-  match can:
-    true => World(a: w.a, b: w.b, c: Town(name: w.c.name, gEnd: w.c.gEnd, tEnd: w.c.tEnd, sEnd: w.c.sEnd, oEnd: w.c.oEnd, fEnd: w.c.fEnd, grain: w.c.grain, timber: w.c.timber - 2, stone: w.c.stone - 1, ore: w.c.ore, tools: w.c.tools, fiber: w.c.fiber, cloth: w.c.cloth, pop: w.c.pop, prosperity: w.c.prosperity, research: w.c.research), d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: Path, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 20, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-    false => w
-
-export fn remove_cd(w: World) -> World:
-  World(a: w.a, b: w.b, c: Town(name: w.c.name, gEnd: w.c.gEnd, tEnd: w.c.tEnd, sEnd: w.c.sEnd, oEnd: w.c.oEnd, fEnd: w.c.fEnd, grain: w.c.grain, timber: w.c.timber + 1, stone: w.c.stone, ore: w.c.ore, tools: w.c.tools, fiber: w.c.fiber, cloth: w.c.cloth, pop: w.c.pop, prosperity: w.c.prosperity, research: w.c.research), d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: NoRoute, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money + 10, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-
-export fn toggle_cd(w: World) -> World:
-  match w.cd:
-    NoRoute => build_cd(w)
-    _ => remove_cd(w)
-
-export fn upgrade_ab(w: World) -> World:
-  match w.ab:
-    Path => match w.tech_road and w.money >= 30:
-      true => World(a: w.a, b: w.b, c: w.c, d: w.d, e: w.e, ab: Road, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 30, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-      false => w
-    Road => match w.tech_river and w.money >= 50:
-      true => World(a: w.a, b: w.b, c: w.c, d: w.d, e: w.e, ab: River, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 50, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-      false => w
-    _ => w
-
-export fn upgrade_ac(w: World) -> World:
-  match w.ac:
-    Path => match w.tech_road and w.money >= 30:
-      true => World(a: w.a, b: w.b, c: w.c, d: w.d, e: w.e, ab: w.ab, ac: Road, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 30, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-      false => w
-    Road => match w.tech_river and w.money >= 50:
-      true => World(a: w.a, b: w.b, c: w.c, d: w.d, e: w.e, ab: w.ab, ac: River, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 50, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-      false => w
-    _ => w
-
-export fn upgrade_ad(w: World) -> World:
-  match w.ad:
-    Path => match w.tech_road and w.money >= 30:
-      true => World(a: w.a, b: w.b, c: w.c, d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: Road, bc: w.bc, bd: w.bd, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 30, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-      false => w
-    Road => match w.tech_river and w.money >= 50:
-      true => World(a: w.a, b: w.b, c: w.c, d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: River, bc: w.bc, bd: w.bd, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 50, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-      false => w
-    _ => w
-
-export fn upgrade_bc(w: World) -> World:
-  match w.bc:
-    Path => match w.tech_road and w.money >= 30:
-      true => World(a: w.a, b: w.b, c: w.c, d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: w.ad, bc: Road, bd: w.bd, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 30, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-      false => w
-    Road => match w.tech_river and w.money >= 50:
-      true => World(a: w.a, b: w.b, c: w.c, d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: w.ad, bc: River, bd: w.bd, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 50, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-      false => w
-    _ => w
-
-export fn upgrade_bd(w: World) -> World:
-  match w.bd:
-    Path => match w.tech_road and w.money >= 30:
-      true => World(a: w.a, b: w.b, c: w.c, d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: Road, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 30, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-      false => w
-    Road => match w.tech_river and w.money >= 50:
-      true => World(a: w.a, b: w.b, c: w.c, d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: River, cd: w.cd, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 50, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-      false => w
-    _ => w
-
-export fn upgrade_cd(w: World) -> World:
-  match w.cd:
-    Path => match w.tech_road and w.money >= 30:
-      true => World(a: w.a, b: w.b, c: w.c, d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: Road, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 30, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-      false => w
-    Road => match w.tech_river and w.money >= 50:
-      true => World(a: w.a, b: w.b, c: w.c, d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: River, ae: w.ae, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ae: w.fee_ae, fee_ce: w.fee_ce, money: w.money - 50, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-      false => w
-    _ => w
-
-export fn build_ae(w: World) -> World:
-  let can = w.money >= 20 and w.a.timber >= 2 and w.a.stone >= 1
-  match can:
-    true => World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, fEnd: w.a.fEnd, grain: w.a.grain, timber: w.a.timber - 2, stone: w.a.stone - 1, ore: w.a.ore, tools: w.a.tools, fiber: w.a.fiber, cloth: w.a.cloth, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: w.ad, ae: Path, bc: w.bc, bd: w.bd, cd: w.cd, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_ae: w.fee_ae, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ce: w.fee_ce, money: w.money - 20, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-    false => w
-
-export fn remove_ae(w: World) -> World:
-  World(a: Town(name: w.a.name, gEnd: w.a.gEnd, tEnd: w.a.tEnd, sEnd: w.a.sEnd, oEnd: w.a.oEnd, fEnd: w.a.fEnd, grain: w.a.grain, timber: w.a.timber + 1, stone: w.a.stone, ore: w.a.ore, tools: w.a.tools, fiber: w.a.fiber, cloth: w.a.cloth, pop: w.a.pop, prosperity: w.a.prosperity, research: w.a.research), b: w.b, c: w.c, d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: w.ad, ae: NoRoute, bc: w.bc, bd: w.bd, cd: w.cd, ce: w.ce, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_ae: w.fee_ae, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ce: w.fee_ce, money: w.money + 10, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-
-export fn toggle_ae(w: World) -> World:
-  match w.ae:
-    NoRoute => build_ae(w)
-    _ => remove_ae(w)
-
-export fn build_ce(w: World) -> World:
-  let can = w.money >= 20 and w.c.timber >= 2 and w.c.stone >= 1
-  match can:
-    true => World(a: w.a, b: w.b, c: Town(name: w.c.name, gEnd: w.c.gEnd, tEnd: w.c.tEnd, sEnd: w.c.sEnd, oEnd: w.c.oEnd, fEnd: w.c.fEnd, grain: w.c.grain, timber: w.c.timber - 2, stone: w.c.stone - 1, ore: w.c.ore, tools: w.c.tools, fiber: w.c.fiber, cloth: w.c.cloth, pop: w.c.pop, prosperity: w.c.prosperity, research: w.c.research), d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: w.ad, ae: w.ae, bc: w.bc, bd: w.bd, cd: w.cd, ce: Path, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_ae: w.fee_ae, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ce: w.fee_ce, money: w.money - 20, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-    false => w
-
-export fn remove_ce(w: World) -> World:
-  World(a: w.a, b: w.b, c: Town(name: w.c.name, gEnd: w.c.gEnd, tEnd: w.c.tEnd, sEnd: w.c.sEnd, oEnd: w.c.oEnd, fEnd: w.c.fEnd, grain: w.c.grain, timber: w.c.timber + 1, stone: w.c.stone, ore: w.c.ore, tools: w.c.tools, fiber: w.c.fiber, cloth: w.c.cloth, pop: w.c.pop, prosperity: w.c.prosperity, research: w.c.research), d: w.d, e: w.e, ab: w.ab, ac: w.ac, ad: w.ad, ae: w.ae, bc: w.bc, bd: w.bd, cd: w.cd, ce: NoRoute, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_ae: w.fee_ae, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, fee_ce: w.fee_ce, money: w.money + 10, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
-
-export fn toggle_ce(w: World) -> World:
-  match w.ce:
-    NoRoute => build_ce(w)
-    _ => remove_ce(w)
-
-
-export fn alert_text(w: World) -> Text:
-  match w.money < 0:
-    true => "Warning: treasury is negative; upkeep may stall routes."
-    false => match w.a.prosperity < 0 or w.b.prosperity < 0 or w.c.prosperity < 0 or w.d.prosperity < 0 or w.e.prosperity < 0:
-      true => "Warning: a settlement is stressed."
-      false => "No active crises."
+fn nth_int_list(xs: List<List<Int>>, i: Int) -> List<Int>:
+  match list_get(xs, i):
+    Some(v) => v
+    None => []
