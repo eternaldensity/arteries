@@ -35,7 +35,10 @@ Every seed produces a different 10 × 6 frontier:
   endowments;
 - three unclaimed resource sites can be founded by routing past them;
 - site markers show their resource and richness directly on the map, and any
-  site can be clicked for a full inspector panel.
+  site can be clicked for a full inspector panel;
+- settlements and sites are placed on passable land, never on a river tile;
+- water crossings on a route are explicit bridges with extra cost, reduced
+  capacity, and longer construction time.
 
 The map is implicit: terrain is a pure function of `(seed, x, y)`, so the same
 seed always reproduces the same world. Settlement layouts are mirrored by the
@@ -109,7 +112,7 @@ New worlds start with **manual upkeep**:
 
 - each route has an upkeep cost per cycle;
 - unpaid upkeep accumulates as a debt, visible in the Network panel;
-- after three unpaid cycles routes become **degraded** and trade at half
+- after five unpaid cycles routes become **degraded** and trade at half
   capacity;
 - pay the debt to restore full capacity.
 
@@ -208,6 +211,20 @@ shaping, three route builds with construction projects, route cap, manual
 upkeep debt and degradation, paying upkeep, automatic upkeep, dismantling, and
 new-world generation. It fails on page
 errors, console errors, missing UI state, or unexpected cycle failures.
+
+## Scale and the Diamond evaluation budget
+
+Diamond limits each browser evaluation phase to **100,000 fuel** and **64 MiB of
+weighted managed-value work**, and one user event shares that phase with every
+render it triggers. The full design (100–300 settlements, many routes, large
+maps) does not fit inside that browser-only model.
+
+The current compact caps are therefore not a design preference; they are the
+stable envelope for this architecture. A detailed analysis of the limits and the
+recommended workarounds is in
+[`BUDGET_RESEARCH.md`](BUDGET_RESEARCH.md). The short version: move authoritative
+state and tick processing to PostgreSQL-backed server RPCs/jobs, split a cycle
+into staged requests, and keep the browser as a compact, region-level renderer.
 
 ## Known limits / next steps
 

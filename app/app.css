@@ -759,3 +759,21 @@ button.tiny { padding: 2px 8px; font-size: 13px; border-radius: 6px; }
 .project-row .project-tick { color: var(--faint); font-family: var(--mono); white-space: nowrap; }
 
 .project-row > div { display: flex; flex-direction: column; }
+
+/* larger, reliable map hit targets */
+.marker { pointer-events: none; z-index: 20; }
+.marker button {
+  pointer-events: auto;
+  min-width: 46px;
+  min-height: 46px;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(6, 14, 24, .18);
+  touch-action: manipulation;
+}
+.marker button:hover { background: rgba(94, 234, 212, .10); }
+.town-marker:hover .town-dot, .site-marker:hover .site-diamond { transform: scale(1.18); }
+.town-dot, .site-diamond { transition: transform .12s ease; }
+
+.endow-line { margin: 0 0 10px; color: var(--muted); font-size: 11px; }
+.endow-line strong { color: var(--green); font-family: var(--mono); font-size: 10px; letter-spacing: .02em; }

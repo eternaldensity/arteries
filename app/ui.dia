@@ -219,7 +219,7 @@ export component Root:
                     <div><span>Crowns</span><strong>{sel.draft.money}</strong></div>
                     <div><span>Timber</span><strong>{sel.draft.timber}</strong></div>
                     <div><span>Stone</span><strong>{sel.draft.stone}</strong></div>
-                    <div><span>River</span><strong>{sel.draft.water}</strong></div>
+                    <div><span>Bridges</span><strong>{sel.draft.water}</strong></div>
                     <div><span>Forest</span><strong>{sel.draft.forest}</strong></div>
                     <div><span>Build time</span><strong>{construction_preview(game)}</strong></div>
                   </div>
@@ -229,6 +229,7 @@ export component Root:
                     <button class="tiny" type="button" on-click={bend_right} aria-label="Bend route right">→</button>
                     <button class="ghost tiny" type="button" on-click={shape_auto}>Auto shape</button>
                   </div>
+                  <p class="helper">Water crossings become bridges; they add cost, lower capacity, and lengthen construction.</p>
                   <p class="blocker">{blocker}</p>
                   <div class="actions">
                     <button class="primary" type="button" on-click={build_route} disabled={not can_build}>{build_button_text(game)}</button>
@@ -294,6 +295,9 @@ export component Root:
               </div>
             </div>
             <p class="insight">{iv.insight}</p>
+            <when test={not iv.is_site}>
+              <p class="endow-line">Natural production per cycle: <strong>{inspect_endow_text(iv)}</strong></p>
+            </when>
             <when test={iv.is_site}>
               <div class="site-inspect">
                 <div><span>Resource</span><strong>{iv.resource}</strong></div>
