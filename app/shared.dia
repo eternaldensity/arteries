@@ -24,8 +24,10 @@ export type World:
   d: Town
   ab: Bool
   ac: Bool
+  ad: Bool
   bc: Bool
   bd: Bool
+  cd: Bool
 
 export fn min_int(x: Int, y: Int) -> Int:
   match x < y:
@@ -99,17 +101,23 @@ export fn tick(w: World) -> World:
   let p2 = trade_if(w.ac, a1, c0)
   let a2 = p2.a
   let c1 = p2.b
-  let p3 = trade_if(w.bc, b1, c1)
-  let b2 = p3.a
-  let c2 = p3.b
-  let p4 = trade_if(w.bd, b2, d0)
-  let b3 = p4.a
-  let d1 = p4.b
-  let aR = grow(research(a2))
+  let p3 = trade_if(w.ad, a2, d0)
+  let a3 = p3.a
+  let d1 = p3.b
+  let p4 = trade_if(w.bc, b1, c1)
+  let b2 = p4.a
+  let c2 = p4.b
+  let p5 = trade_if(w.bd, b2, d1)
+  let b3 = p5.a
+  let d2 = p5.b
+  let p6 = trade_if(w.cd, c2, d2)
+  let c3 = p6.a
+  let d3 = p6.b
+  let aR = grow(research(a3))
   let bR = grow(research(b3))
-  let cR = grow(research(c2))
-  let dR = grow(research(d1))
-  World(a: aR, b: bR, c: cR, d: dR, ab: w.ab, ac: w.ac, bc: w.bc, bd: w.bd)
+  let cR = grow(research(c3))
+  let dR = grow(research(d3))
+  World(a: aR, b: bR, c: cR, d: dR, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd)
 
 export fn run_ticks(w: World, n: Int) -> World:
   match n <= 0:
@@ -123,10 +131,10 @@ export fn world_report(label: Text, w: World) -> Text:
   label + "\n" + town_line(w.a) + "\n" + town_line(w.b) + "\n" + town_line(w.c) + "\n" + town_line(w.d)
 
 export fn base_world() -> World:
-  World( a: Town(name: "Riverford", gEnd: 5, tEnd: 0, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), b: Town(name: "Hillcrest", gEnd: 0, tEnd: 1, oEnd: 3, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), c: Town(name: "Greenvale", gEnd: 2, tEnd: 4, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), d: Town(name: "Portmere", gEnd: 1, tEnd: 0, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), ab: false, ac: false, bc: false, bd: false)
+  World( a: Town(name: "Riverford", gEnd: 5, tEnd: 0, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), b: Town(name: "Hillcrest", gEnd: 0, tEnd: 1, oEnd: 3, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), c: Town(name: "Greenvale", gEnd: 2, tEnd: 4, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), d: Town(name: "Portmere", gEnd: 1, tEnd: 0, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), ab: false, ac: false, ad: false, bc: false, bd: false, cd: false)
 
 export fn connected_world() -> World:
-  World( a: Town(name: "Riverford", gEnd: 5, tEnd: 0, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), b: Town(name: "Hillcrest", gEnd: 0, tEnd: 1, oEnd: 3, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), c: Town(name: "Greenvale", gEnd: 2, tEnd: 4, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), d: Town(name: "Portmere", gEnd: 1, tEnd: 0, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), ab: true, ac: true, bc: true, bd: true)
+  World( a: Town(name: "Riverford", gEnd: 5, tEnd: 0, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), b: Town(name: "Hillcrest", gEnd: 0, tEnd: 1, oEnd: 3, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), c: Town(name: "Greenvale", gEnd: 2, tEnd: 4, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), d: Town(name: "Portmere", gEnd: 1, tEnd: 0, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), ab: true, ac: true, ad: true, bc: true, bd: true, cd: true)
 
 fn main() -> Text:
   let isolated = run_ticks(base_world(), 12)
@@ -140,8 +148,8 @@ export fn status(t: Town) -> Text:
       true => "stable"
       false => "stressed"
 
-
 export fn bool_text(b: Bool) -> Text:
   match b:
     true => "on"
     false => "off"
+

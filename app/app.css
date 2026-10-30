@@ -17,3 +17,13 @@ button:hover { background: #eee; }
 .report { margin-top: 1.5rem; }
 pre { background: #f4f4f4; padding: 1rem; border-radius: 0.5rem; white-space: pre-wrap; overflow: auto; }
 @media (max-width: 700px) { .metrics, .controls, .settlements { grid-template-columns: 1fr; } }
+
+.map { margin: 1.5rem 0; }
+.terrain-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; max-width: 420px; }
+.tile { border-radius: 0.5rem; padding: 1rem 0.5rem; text-align: center; min-height: 70px; font-size: 0.85rem; }
+.plains { background: #eef7e8; }
+.forest { background: #dcefdc; }
+.hills { background: #efe7dc; }
+.river { background: #ddebf7; }
+.coast { background: #e3f2fd; }
+.legend { color: #555; font-size: 0.85rem; }

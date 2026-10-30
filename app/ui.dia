@@ -1,7 +1,7 @@
 export component Root:
   state world: World = connected_world()
   derived report: Text = world_report("Current network", world)
-  derived active_links: Int = bool_int(world.ab) + bool_int(world.ac) + bool_int(world.bc) + bool_int(world.bd)
+  derived active_links: Int = bool_int(world.ab) + bool_int(world.ac) + bool_int(world.ad) + bool_int(world.bc) + bool_int(world.bd) + bool_int(world.cd)
   derived total_prosperity: Int = world.a.prosperity + world.b.prosperity + world.c.prosperity + world.d.prosperity
   derived total_research: Int = world.a.research + world.b.research + world.c.research + world.d.research
 
@@ -12,16 +12,22 @@ export component Root:
     world = run_ticks(world, 12)
 
   on toggle_ab:
-    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: not world.ab, ac: world.ac, bc: world.bc, bd: world.bd)
+    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: not world.ab, ac: world.ac, ad: world.ad, bc: world.bc, bd: world.bd, cd: world.cd)
 
   on toggle_ac:
-    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: world.ab, ac: not world.ac, bc: world.bc, bd: world.bd)
+    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: world.ab, ac: not world.ac, ad: world.ad, bc: world.bc, bd: world.bd, cd: world.cd)
+
+  on toggle_ad:
+    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: world.ab, ac: world.ac, ad: not world.ad, bc: world.bc, bd: world.bd, cd: world.cd)
+
+  on toggle_cd:
+    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: world.ab, ac: world.ac, ad: world.ad, bc: world.bc, bd: world.bd, cd: not world.cd)
 
   on toggle_bc:
-    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: world.ab, ac: world.ac, bc: not world.bc, bd: world.bd)
+    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: world.ab, ac: world.ac, ad: world.ad, bc: not world.bc, bd: world.bd, cd: world.cd)
 
   on toggle_bd:
-    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: world.ab, ac: world.ac, bc: world.bc, bd: not world.bd)
+    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: world.ab, ac: world.ac, ad: world.ad, bc: world.bc, bd: not world.bd, cd: world.cd)
 
   on reset_connected:
     world = connected_world()
@@ -47,8 +53,10 @@ export component Root:
           <h2>Links</h2>
           <button type="button" on-click={toggle_ab}>A-B: {bool_text(world.ab)}</button>
           <button type="button" on-click={toggle_ac}>A-C: {bool_text(world.ac)}</button>
+          <button type="button" on-click={toggle_ad}>A-D: {bool_text(world.ad)}</button>
           <button type="button" on-click={toggle_bc}>B-C: {bool_text(world.bc)}</button>
           <button type="button" on-click={toggle_bd}>B-D: {bool_text(world.bd)}</button>
+          <button type="button" on-click={toggle_cd}>C-D: {bool_text(world.cd)}</button>
         </div>
         <div class="control-group">
           <h2>Time</h2>
@@ -60,6 +68,22 @@ export component Root:
           <button type="button" on-click={reset_connected}>Connected</button>
           <button type="button" on-click={reset_isolated}>Isolated</button>
         </div>
+      </section>
+
+      <section class="map">
+        <h2>Map</h2>
+        <div class="terrain-grid">
+          <div class="tile plains">Plains<br><strong>Riverford</strong></div>
+          <div class="tile forest">Forest</div>
+          <div class="tile hills">Hills<br><strong>Hillcrest</strong></div>
+          <div class="tile river">River</div>
+          <div class="tile plains">Plains</div>
+          <div class="tile coast">Coast<br><strong>Portmere</strong></div>
+          <div class="tile forest">Forest<br><strong>Greenvale</strong></div>
+          <div class="tile hills">Hills</div>
+          <div class="tile plains">Plains</div>
+        </div>
+        <p class="legend">Terrain: plains, forest, hills, river, coast. Routes connect settlements across these features.</p>
       </section>
 
       <section class="settlements">
