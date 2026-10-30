@@ -1,0 +1,134 @@
+# Arteries prototype: a tiny deterministic transport-economy simulation.
+# Phase 1 scope: 4 settlements, 3 goods, link-driven trade, prosperity, and research.
+
+type Town:
+  name: Text
+  gEnd: Int
+  tEnd: Int
+  oEnd: Int
+  grain: Int
+  timber: Int
+  ore: Int
+  pop: Int
+  prosperity: Int
+  research: Int
+
+type Pair:
+  a: Town
+  b: Town
+
+type World:
+  a: Town
+  b: Town
+  c: Town
+  d: Town
+  ab: Bool
+  ac: Bool
+  bc: Bool
+  bd: Bool
+
+fn min_int(x: Int, y: Int) -> Int:
+  match x < y:
+    true => x
+    false => y
+
+fn bool_int(b: Bool) -> Int:
+  match b:
+    true => 1
+    false => 0
+
+fn produce(t: Town) -> Town:
+  Town(name: t.name, gEnd: t.gEnd, tEnd: t.tEnd, oEnd: t.oEnd, grain: t.grain + t.gEnd, timber: t.timber + t.tEnd, ore: t.ore + t.oEnd, pop: t.pop, prosperity: t.prosperity, research: t.research)
+
+fn consume(t: Town) -> Town:
+  let grain2 = t.grain - t.pop
+  let prosperity2 = match grain2 >= 0:
+    true => t.prosperity + 1
+    false => t.prosperity - 2
+  Town(name: t.name, gEnd: t.gEnd, tEnd: t.tEnd, oEnd: t.oEnd, grain: grain2, timber: t.timber, ore: t.ore, pop: t.pop, prosperity: prosperity2, research: t.research)
+
+fn trade(a: Town, b: Town) -> Pair:
+  # Grain moves only as surplus above local food need.
+  let surplusA = a.grain - (a.pop * 2)
+  let demandB = b.pop * 2 - b.grain
+  let grain_ab = match surplusA > 0 and demandB > 0:
+    true => min_int(surplusA, demandB)
+    false => 0
+  let surplusB = b.grain - (b.pop * 2)
+  let demandA = a.pop * 2 - a.grain
+  let grain_ba = match surplusB > 0 and demandA > 0:
+    true => min_int(surplusB, demandA)
+    false => 0
+  let grainA = a.grain - grain_ab + grain_ba
+  let grainB = b.grain + grain_ab - grain_ba
+  # Timber and ore are shared so more settlements gain variety (research input).
+  let timberTotal = a.timber + b.timber
+  let oreTotal = a.ore + b.ore
+  let timberA = timberTotal / 2
+  let oreA = oreTotal / 2
+  let a2 = Town(name: a.name, gEnd: a.gEnd, tEnd: a.tEnd, oEnd: a.oEnd, grain: grainA, timber: timberA, ore: oreA, pop: a.pop, prosperity: a.prosperity, research: a.research)
+  let b2 = Town(name: b.name, gEnd: b.gEnd, tEnd: b.tEnd, oEnd: b.oEnd, grain: grainB, timber: timberTotal - timberA, ore: oreTotal - oreA, pop: b.pop, prosperity: b.prosperity, research: b.research)
+  Pair(a: a2, b: b2)
+
+fn trade_if(link: Bool, a: Town, b: Town) -> Pair:
+  match link:
+    true => trade(a, b)
+    false => Pair(a: a, b: b)
+
+fn research(t: Town) -> Town:
+  let variety = bool_int(t.grain > 0) + bool_int(t.timber > 0) + bool_int(t.ore > 0)
+  let gain = t.pop * (1 + variety)
+  let food_ok = bool_int(t.grain >= 0)
+  let prosperity2 = t.prosperity + food_ok + (variety - 1)
+  Town(name: t.name, gEnd: t.gEnd, tEnd: t.tEnd, oEnd: t.oEnd, grain: t.grain, timber: t.timber, ore: t.ore, pop: t.pop, prosperity: prosperity2, research: t.research + gain)
+
+fn grow(t: Town) -> Town:
+  let newPop = match t.prosperity > 6:
+    true => t.pop + 1
+    false => t.pop
+  Town(name: t.name, gEnd: t.gEnd, tEnd: t.tEnd, oEnd: t.oEnd, grain: t.grain, timber: t.timber, ore: t.ore, pop: newPop, prosperity: t.prosperity, research: t.research)
+
+fn tick(w: World) -> World:
+  let a0 = consume(produce(w.a))
+  let b0 = consume(produce(w.b))
+  let c0 = consume(produce(w.c))
+  let d0 = consume(produce(w.d))
+  let p1 = trade_if(w.ab, a0, b0)
+  let a1 = p1.a
+  let b1 = p1.b
+  let p2 = trade_if(w.ac, a1, c0)
+  let a2 = p2.a
+  let c1 = p2.b
+  let p3 = trade_if(w.bc, b1, c1)
+  let b2 = p3.a
+  let c2 = p3.b
+  let p4 = trade_if(w.bd, b2, d0)
+  let b3 = p4.a
+  let d1 = p4.b
+  let aR = grow(research(a2))
+  let bR = grow(research(b3))
+  let cR = grow(research(c2))
+  let dR = grow(research(d1))
+  World(a: aR, b: bR, c: cR, d: dR, ab: w.ab, ac: w.ac, bc: w.bc, bd: w.bd)
+
+fn run_ticks(w: World, n: Int) -> World:
+  match n <= 0:
+    true => w
+    false => run_ticks(tick(w), n - 1)
+
+fn town_line(t: Town) -> Text:
+  t.name + ": pop=" + int_text(t.pop) + " grain=" + int_text(t.grain) + " timber=" + int_text(t.timber) + " ore=" + int_text(t.ore) + " prosperity=" + int_text(t.prosperity) + " research=" + int_text(t.research)
+
+fn world_report(label: Text, w: World) -> Text:
+  label + "\n" + town_line(w.a) + "\n" + town_line(w.b) + "\n" + town_line(w.c) + "\n" + town_line(w.d)
+
+fn base_world() -> World:
+  World( a: Town(name: "Riverford", gEnd: 5, tEnd: 0, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), b: Town(name: "Hillcrest", gEnd: 0, tEnd: 1, oEnd: 3, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), c: Town(name: "Greenvale", gEnd: 2, tEnd: 4, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), d: Town(name: "Portmere", gEnd: 1, tEnd: 0, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), ab: false, ac: false, bc: false, bd: false)
+
+fn connected_world() -> World:
+  World( a: Town(name: "Riverford", gEnd: 5, tEnd: 0, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), b: Town(name: "Hillcrest", gEnd: 0, tEnd: 1, oEnd: 3, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), c: Town(name: "Greenvale", gEnd: 2, tEnd: 4, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), d: Town(name: "Portmere", gEnd: 1, tEnd: 0, oEnd: 0, grain: 0, timber: 0, ore: 0, pop: 2, prosperity: 0, research: 0), ab: true, ac: true, bc: true, bd: true)
+
+fn main() -> Text:
+  let isolated = run_ticks(base_world(), 12)
+  let connected = run_ticks(connected_world(), 12)
+  world_report("ISOLATED (no links):", isolated) + "\n\n" + world_report("CONNECTED:", connected)
