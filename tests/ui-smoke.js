@@ -48,7 +48,7 @@ function assert(condition, message) {
     page.locator('.map-grid button.town-marker', { hasText: name }).first();
   const state = () =>
     page.evaluate(() => ({
-      year: document.querySelector('.brand p .mono:last-child')?.textContent,
+      time: document.querySelector('.brand p .mono:last-child')?.textContent,
       seed: document.querySelector('.brand p .mono:first-child')?.textContent,
       money: document.querySelector('.treasury strong')?.textContent,
       notice: document.querySelector('.notice')?.textContent,
@@ -67,12 +67,14 @@ function assert(condition, message) {
           : null,
     }));
 
-  const tick = async (n = 1) => {
+  const step = async (name, n = 1) => {
     for (let i = 0; i < n; i++) {
-      await page.getByRole('button', { name: 'Advance 1 cycle' }).click();
-      await page.waitForTimeout(450);
+      await page.getByRole('button', { name, exact: true }).click();
+      await page.waitForTimeout(550);
     }
   };
+  const day = (n = 1) => step('1 day', n);
+  const week = (n = 1) => step('1 week', n);
 
   const build = async (a, b) => {
     await town(a).click();
@@ -107,8 +109,8 @@ function assert(condition, message) {
     );
     for (let i = 0; i < 12; i++) {
       if ((await page.locator('.route-card').count()) > before) return;
-      await page.getByRole('button', { name: 'Advance 1 cycle' }).click();
-      await page.waitForTimeout(450);
+      await page.getByRole('button', { name: 'Advance 1 hour' }).click();
+      await page.waitForTimeout(550);
     }
     throw new Error(`construction for ${a}-${b} did not finish`);
   };
@@ -127,7 +129,10 @@ function assert(condition, message) {
 
     let s = await state();
     assert(!s.error, 'initial component error: ' + s.error);
-    assert(s.year === '0', 'world did not start at year 0');
+    assert(
+      s.time === 'Year 1 · Month 1 · Day 1 · 00:00',
+      `world did not start at the beginning of year 1, got ${s.time}`
+    );
     assert(s.seed === '7', 'expected deterministic seed 7');
     assert(s.towns.length === 3, 'expected 3 starting settlements');
     assert(s.inspector === 'Riverford', 'expected Riverford to be selected');
@@ -170,7 +175,7 @@ function assert(condition, message) {
       ['Riverford', 'Greenvale'],
     ]) {
       await build(a, b);
-      await tick(2);
+      await day(1);
     }
 
     s = await state();
@@ -195,8 +200,8 @@ function assert(condition, message) {
       'a fifth survey should not expose a build action'
     );
 
-    // Manual upkeep: unpaid cycles accumulate debt and degrade capacity.
-    await tick(10);
+    // Manual upkeep: unpaid weeks accumulate debt and degrade capacity.
+    await week(2);
     s = await state();
     assert(!s.error, 'component error while running manual-upkeep cycles: ' + s.error);
     assert(Number(s.maintenance[0]) > 0, 'expected upkeep debt after unpaid cycles');
@@ -214,10 +219,10 @@ function assert(condition, message) {
       `expected maintained condition, got ${s.maintenance[1]}`
     );
 
-    // Automatic upkeep: cycles must keep running and clear the debt.
+    // Automatic upkeep: weekly boundaries must clear the debt.
     await page.getByRole('button', { name: /Auto upkeep/ }).click();
     await page.waitForTimeout(450);
-    await tick(12);
+    await week(2);
     s = await state();
     assert(!s.error, 'component error during automatic upkeep: ' + s.error);
     assert(s.maintenance[0] === '0', 'automatic upkeep left debt behind');
@@ -246,7 +251,10 @@ function assert(condition, message) {
     s = await state();
     assert(!s.error, 'component error after new world: ' + s.error);
     assert(s.seed === '8', 'new world did not advance the seed');
-    assert(s.year === '0', 'new world did not reset the year');
+    assert(
+      s.time === 'Year 1 · Month 1 · Day 1 · 00:00',
+      `new world did not reset the clock, got ${s.time}`
+    );
     assert(s.routes === 0, 'new world kept old routes');
     assert(s.towns.length === 3, 'new world should start with 3 settlements');
     assert(s.maintenance[1] === 'maintained', 'new world upkeep should be clear');

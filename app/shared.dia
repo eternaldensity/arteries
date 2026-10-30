@@ -290,6 +290,47 @@ export fn river_research() -> Int:
 export fn rail_research() -> Int:
   220
 
+# ---------------------------------------------------------------- calendar
+
+export fn hours_per_day() -> Int:
+  24
+
+export fn days_per_week() -> Int:
+  7
+
+export fn hours_per_week() -> Int:
+  168
+
+export fn days_per_month() -> Int:
+  28
+
+export fn hours_per_month() -> Int:
+  672
+
+export fn hours_per_year() -> Int:
+  8064
+
+fn two_digit(n: Int) -> Text:
+  match n < 10:
+    true => "0" + int_text(n)
+    false => int_text(n)
+
+export fn calendar_text(world: World) -> Text:
+  let t = max_int(world.tick, 0)
+  let year = t / hours_per_year() + 1
+  let month = mod_int(t, hours_per_year()) / hours_per_month() + 1
+  let day = mod_int(t, hours_per_month()) / hours_per_day() + 1
+  let hour = mod_int(t, hours_per_day())
+  "Year " + int_text(year) + " · Month " + int_text(month) + " · Day " + int_text(day) + " · " + two_digit(hour) + ":00"
+
+export fn duration_text(hours: Int) -> Text:
+  let h = max_int(hours, 0)
+  match h < 24:
+    true => int_text(h) + "h"
+    false => match h < 168:
+      true => int_text(h / 24) + "d " + int_text(mod_int(h, 24)) + "h"
+      false => int_text(h / 168) + "w " + int_text(mod_int(h, 168) / 24) + "d"
+
 fn mod_int(a: Int, b: Int) -> Int:
   match b == 0:
     true => 0
@@ -1781,10 +1822,10 @@ fn empty_project() -> Project:
 fn mode_work(mode: RouteMode) -> Int:
   match mode:
     NoRoute => 0
-    Path => 2
-    Road => 4
-    River => 5
-    Rail => 6
+    Path => 0
+    Road => 6
+    River => 12
+    Rail => 18
 
 fn town_build_speed(t: Town) -> Int:
   match t.state.research >= 160:
@@ -1814,7 +1855,7 @@ fn construction_speed(world: World, a: Text, b: Text, mode: RouteMode) -> Int:
   1 + town_build_speed(ta) + town_build_speed(tb) + tech
 
 export fn construction_time(world: World, a: Text, b: Text, plan: RoutePlan, mode: RouteMode) -> Int:
-  let work = plan.length / 2 + mode_work(mode) + plan.water
+  let work = plan.length + mode_work(mode) + plan.water * 3
   let speed = construction_speed(world, a, b, mode)
   max_int(1, (work + speed - 1) / speed)
 
@@ -1835,7 +1876,7 @@ fn begin_route(world: World, a: Text, b: Text, plan: RoutePlan) -> ProjectStart:
             let ta = find_town(world.towns, a)
             let tb = find_town(world.towns, b)
             let project = Project(id: a + "-" + b, kind: "route", a: a, b: b, a_name: ta.name, b_name: tb.name, mode: Path, route_id: "", plan: plan, start_tick: world.tick, ready_tick: world.tick + time)
-            let message = "Construction started: " + ta.name + " to " + tb.name + ", ready in " + int_text(time) + " cycles."
+            let message = "Construction started: " + ta.name + " to " + tb.name + ", ready in " + duration_text(time) + "."
             let w3 = record(w2, message)
             ProjectStart(world: w3, project: project, ok: true, message: message, from: "", to: "")
 
@@ -1873,7 +1914,7 @@ fn begin_upgrade(world: World, id: Text) -> ProjectStart:
           _ => w1
         let time = construction_time(world, r.a, r.b, r.plan, next_mode)
         let project = Project(id: r.id + "-upgrade", kind: "upgrade", a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: next_mode, route_id: r.id, plan: r.plan, start_tick: world.tick, ready_tick: world.tick + time)
-        let message = "Upgrade started: " + r.a_name + " to " + r.b_name + " as " + route_text(next_mode) + ", ready in " + int_text(time) + " cycles."
+        let message = "Upgrade started: " + r.a_name + " to " + r.b_name + " as " + route_text(next_mode) + ", ready in " + duration_text(time) + "."
         let w3 = record(w2, message)
         ProjectStart(world: w3, project: project, ok: true, message: message, from: "", to: "")
 
@@ -1897,7 +1938,7 @@ fn complete_message(project: Project) -> Text:
     true => "Construction finished: " + project.a_name + " to " + project.b_name + " is open."
     false => "Upgrade finished: " + project.a_name + " to " + project.b_name + " is now " + route_text(project.mode) + "."
 
-fn advance_projects(world: World, projects: List<Project>, i: Int, kept: List<Project>, messages: List<Text>) -> ProjectOutcome:
+export fn advance_projects(world: World, projects: List<Project>, i: Int, kept: List<Project>, messages: List<Text>) -> ProjectOutcome:
   match list_get(projects, i):
     None => ProjectOutcome(world: world, projects: kept, messages: messages)
     Some(p) => match p.ready_tick <= world.tick:
@@ -2423,7 +2464,7 @@ export fn build_blocker(game: Game) -> Text:
 
 export fn construction_preview(game: Game) -> Text:
   match game.sel.ready:
-    true => int_text(construction_time(game.world, game.sel.from, game.sel.to, game.sel.draft, Path)) + " cycles"
+    true => duration_text(construction_time(game.world, game.sel.from, game.sel.to, game.sel.draft, Path))
     false => "-"
 
 export fn build_button_text(game: Game) -> Text:
@@ -2442,7 +2483,7 @@ fn next_route_mode(mode: RouteMode) -> RouteMode:
     _ => Rail
 
 export fn upgrade_time_text(game: Game, route: Route) -> Text:
-  int_text(construction_time(game.world, route.a, route.b, route.plan, next_route_mode(route.mode))) + " cycles"
+  duration_text(construction_time(game.world, route.a, route.b, route.plan, next_route_mode(route.mode)))
 
 export fn project_remaining(p: Project, tick: Int) -> Int:
   max_int(0, p.ready_tick - tick)
@@ -2525,12 +2566,12 @@ export fn game_fee(game: Game, id: Text, delta: Int) -> Game:
 export fn upkeep_due(game: Game) -> Int:
   match game.auto_upkeep:
     true => 0
-    false => game.upkeep_per_cycle * max_int(0, game.world.tick - game.last_paid_tick)
+    false => game.upkeep_per_cycle * max_int(0, game.world.tick / hours_per_week() - game.last_paid_tick / hours_per_week())
 
 export fn neglect_ticks(game: Game) -> Int:
   match game.auto_upkeep:
     true => 0
-    false => max_int(0, game.world.tick - game.last_paid_tick)
+    false => max_int(0, game.world.tick / hours_per_week() - game.last_paid_tick / hours_per_week())
 
 fn refresh_inspect_light(world: World, id: Text, iv: InspectView) -> InspectView:
   let t = find_town(world.towns, id)
@@ -2546,7 +2587,7 @@ export fn game_tick(game: Game, n: Int) -> Game:
   let unpaid = neglect_ticks(game)
   let scale = match game.auto_upkeep:
     true => 100
-    false => match unpaid >= 5:
+    false => match unpaid >= 2:
       true => 50
       false => 100
   let ticked = run_ticks_scaled(game.world, n, scale)
@@ -2572,7 +2613,7 @@ export fn game_tick(game: Game, n: Int) -> Game:
     false => match game.auto_upkeep:
       true => world2.tick
       false => game.last_paid_tick
-  let base = "Advanced " + int_text(world_after.tick - before) + " cycles. Year " + int_text(world_after.tick) + "."
+  let base = "Advanced " + duration_text(world_after.tick - before) + ". " + calendar_text(world_after) + "."
   let extra = match completed:
     true => " " + join_nonempty(outcome.messages, 0, "")
     false => ""
@@ -2602,7 +2643,7 @@ export fn game_toggle_auto(game: Game) -> Game:
 export fn maintenance_text(game: Game) -> Text:
   match game.auto_upkeep:
     true => "automatic"
-    false => match neglect_ticks(game) >= 5:
+    false => match neglect_ticks(game) >= 2:
       true => "degraded"
       false => match upkeep_due(game) > 0:
         true => "due"
@@ -2611,7 +2652,7 @@ export fn maintenance_text(game: Game) -> Text:
 export fn maintenance_tone(game: Game) -> Text:
   match game.auto_upkeep:
     true => "ok"
-    false => match neglect_ticks(game) >= 5:
+    false => match neglect_ticks(game) >= 2:
       true => "bad"
       false => match upkeep_due(game) > 0:
         true => "warn"
@@ -2655,6 +2696,199 @@ export fn empty_game() -> Game:
   let world = World(seed: 7, tick: 0, money: 0, towns: [], sites: [], routes: [], log: [], history: [], tech_road: false, tech_river: false, tech_rail: false)
   server_game(world, [], false, 0, 0, empty_selection(), "Sign in to load your world.", true)
 
+# ---------------------------------------------------------------- period settlement
+
+export fn with_tick(world: World, tick: Int) -> World:
+  World(seed: world.seed, tick: tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+
+fn period_good(t: Town, i: Int, days: Int, can_tools: Bool, can_cloth: Bool, grain_eaten: Int, fish_eaten: Int, cloth_used: Int) -> Int:
+  let grain_at = good_index(Grain)
+  let timber_at = good_index(Timber)
+  let stone_at = good_index(Stone)
+  let ore_at = good_index(Ore)
+  let fiber_at = good_index(Fiber)
+  let tools_at = good_index(Tools)
+  let cloth_at = good_index(Cloth)
+  let fish_at = good_index(Fish)
+  let raw = nth_int(t.state.stock, i) + endowment(t, nth_good(i)) * days
+  let prod_value = match can_tools and (i == timber_at or i == stone_at or i == ore_at):
+    true => raw - days
+    false => match can_tools and i == tools_at:
+      true => raw + days
+      false => match can_cloth and i == fiber_at:
+        true => raw - days
+        false => match can_cloth and i == cloth_at:
+          true => raw + days
+          false => raw
+  match i == grain_at:
+    true => max_int(prod_value - grain_eaten, 0)
+    false => match i == fish_at:
+      true => max_int(prod_value - fish_eaten, 0)
+      false => match i == cloth_at:
+        true => max_int(prod_value - cloth_used, 0)
+        false => prod_value
+
+fn period_after(t: Town, days: Int) -> List<Int>:
+  let timber_at = good_index(Timber)
+  let stone_at = good_index(Stone)
+  let ore_at = good_index(Ore)
+  let fiber_at = good_index(Fiber)
+  let cloth_at = good_index(Cloth)
+  let grain_at = good_index(Grain)
+  let fish_at = good_index(Fish)
+  let timber_base = nth_int(t.state.stock, timber_at) + endowment(t, Timber) * days
+  let stone_base = nth_int(t.state.stock, stone_at) + endowment(t, Stone) * days
+  let ore_base = nth_int(t.state.stock, ore_at) + endowment(t, Ore) * days
+  let fiber_base = nth_int(t.state.stock, fiber_at) + endowment(t, Fiber) * days
+  let can_tools = timber_base >= days and stone_base >= days and ore_base >= days
+  let can_cloth = fiber_base >= days
+  let grain_prod = nth_int(t.state.stock, grain_at) + endowment(t, Grain) * days
+  let fish_prod = nth_int(t.state.stock, fish_at) + endowment(t, Fish) * days
+  let cloth_prod = nth_int(t.state.stock, cloth_at) + endowment(t, Cloth) * days + match can_cloth:
+    true => days
+    false => 0
+  let grain_eaten = min_int(grain_prod, t.state.pop * days)
+  let fish_eaten = min_int(fish_prod, (t.state.pop / 3 + 1) * days)
+  let cloth_used = min_int(cloth_prod, (t.state.pop / 4) * days)
+  for i in indices(len(goods())):
+    period_good(t, i, days, can_tools, can_cloth, grain_eaten, fish_eaten, cloth_used)
+
+fn growth_stock(after: List<Int>) -> List<Int>:
+  let grain_at = good_index(Grain)
+  let timber_at = good_index(Timber)
+  let stone_at = good_index(Stone)
+  for i in indices(len(after)):
+    match i == grain_at:
+      true => max_int(nth_int(after, i) - 2, 0)
+      false => match i == timber_at or i == stone_at:
+        true => max_int(nth_int(after, i) - 1, 0)
+        false => nth_int(after, i)
+
+fn period_keep(t: Town, after: List<Int>, prosperity: Int, research: Int) -> Town:
+  Town(id: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, endow: t.endow, state: TownState(pop: t.state.pop, prosperity: prosperity, research: research, stock: after))
+
+fn period_grow(t: Town, after: List<Int>, prosperity: Int, research: Int) -> Town:
+  let final = growth_stock(after)
+  Town(id: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, endow: t.endow, state: TownState(pop: t.state.pop + 1, prosperity: clamp(prosperity - 1, 0, 30), research: research, stock: final))
+
+fn period_shrink(t: Town, after: List<Int>, prosperity: Int, research: Int) -> Town:
+  Town(id: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, endow: t.endow, state: TownState(pop: t.state.pop - 1, prosperity: clamp(prosperity - 1, 0, 30), research: research, stock: after))
+
+fn period_cloth_used(t: Town, days: Int) -> Int:
+  let cloth_at = good_index(Cloth)
+  let fiber_at = good_index(Fiber)
+  let cloth_prod = nth_int(t.state.stock, cloth_at) + endowment(t, Cloth) * days + match nth_int(t.state.stock, fiber_at) + endowment(t, Fiber) * days >= days:
+    true => days
+    false => 0
+  min_int(cloth_prod, (t.state.pop / 4) * days)
+
+fn advance_town_days(t: Town, days: Int) -> Town:
+  match days <= 0:
+    true => t
+    false =>
+      let grain_at = good_index(Grain)
+      let fish_at = good_index(Fish)
+      let tools_at = good_index(Tools)
+      let after = period_after(t, days)
+      let cloth_used = period_cloth_used(t, days)
+      let need_grain = t.state.pop * days
+      let need_fish = (t.state.pop / 3 + 1) * days
+      let grain_eaten = min_int(nth_int(t.state.stock, grain_at) + endowment(t, Grain) * days, need_grain)
+      let fish_eaten = min_int(nth_int(t.state.stock, fish_at) + endowment(t, Fish) * days, need_fish)
+      let fed = grain_eaten + fish_eaten * 2
+      let target = need_grain + need_fish * 2
+      let food = match fed >= target:
+        true => 2
+        false => match fed * 2 >= target:
+          true => 1
+          false => 0
+      let score = count_positive(after, 0)
+      let comfort = bool_int(nth_int(after, tools_at) > 0) + bool_int(cloth_used > 0)
+      let delta = (food * 2 + min_int(score, 6) / 2 + comfort - 2) * days
+      let prosperity = clamp(t.state.prosperity + delta, 0, 30)
+      let research = t.state.research + (t.state.pop + score + prosperity / 6 + food) * days
+      let food_now = nth_int(after, grain_at) + nth_int(after, fish_at)
+      let can_grow = days >= 7 and prosperity >= 9 and food_now >= t.state.pop * 2 + 2 and nth_int(after, good_index(Timber)) >= 1 and nth_int(after, good_index(Stone)) >= 1
+      match can_grow:
+        true => period_grow(t, after, prosperity, research)
+        false => match days >= 7 and food == 0 and t.state.pop > 1 and prosperity <= 4:
+          true => period_shrink(t, after, prosperity, research)
+          false => period_keep(t, after, prosperity, research)
+
+fn trade_net_days(net: NetState, route: Route, scale: Int, days: Int) -> NetState:
+  let a = find_town(net.towns, route.a)
+  let b = find_town(net.towns, route.b)
+  match a.id == "" or b.id == "":
+    true => net
+    false =>
+      let cap = max_int(2, route.capacity * scale / 100 * days)
+      let moves = trade_moves(a, b, route, cap)
+      let result = apply_moves(a, b, moves)
+      let towns = replace_town(replace_town(net.towns, result.a), result.b)
+      let changed = Route(id: route.id, a: route.a, b: route.b, a_name: route.a_name, b_name: route.b_name, mode: route.mode, plan: route.plan, fee: route.fee, traffic: route.traffic + result.moved, capacity: route.capacity, upkeep: route.upkeep)
+      NetState(towns: towns, routes: replace_route(net.routes, changed))
+
+fn trade_pass_days(net: NetState, i: Int, scale: Int, days: Int) -> NetState:
+  match list_get(net.routes, i):
+    None => net
+    Some(r) => trade_pass_days(trade_net_days(net, r, scale, days), i + 1, scale, days)
+
+export fn market_period(world: World, days: Int, scale: Int) -> World:
+  match days <= 0:
+    true => world
+    false =>
+      let towns0 = for t in world.towns:
+        advance_town_days(t, days)
+      let net2 = trade_pass_days(NetState(towns: towns0, routes: reset_traffic(world.routes)), 0, scale, days)
+      let income = for r in net2.routes:
+        r.traffic * r.fee
+      World(seed: world.seed, tick: world.tick, money: world.money + total(income), towns: net2.towns, sites: world.sites, routes: net2.routes, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+
+fn boundary_in_period(start: Int, days: Int, cadence: Int) -> Bool:
+  let offset = mod_int(cadence - mod_int(start, cadence), cadence)
+  offset < days
+
+export fn finish_period(world: World, days: Int, from: Int) -> World:
+  match days <= 0:
+    true => world
+    false =>
+      let best = max_research(world.towns, 0)
+      let msgs_tech = tech_messages(world, best)
+      let road = world.tech_road or best >= road_research()
+      let river = world.tech_river or best >= river_research()
+      let rail = world.tech_rail or best >= rail_research()
+      let start_day = from / hours_per_day()
+      let ev1 = match boundary_in_period(start_day, days, 6):
+        true => harvest(world.towns, 0)
+        false => EventOutcome(towns: world.towns, messages: [])
+      let ev2 = match boundary_in_period(start_day, days, 9):
+        true => storm(ev1.towns, start_day, world.seed)
+        false => EventOutcome(towns: ev1.towns, messages: [])
+      let ev3 = match boundary_in_period(start_day, days, 11):
+        true => caravan(ev2.towns, start_day, world.seed)
+        false => EventOutcome(towns: ev2.towns, messages: [])
+      let log1 = append_messages(append_messages(append_messages(world.log, ev1.messages, 0), ev2.messages, 0), ev3.messages, 0)
+      let log2 = append_messages(log1, msgs_tech, 0)
+      World(seed: world.seed, tick: world.tick, money: world.money, towns: ev3.towns, sites: world.sites, routes: world.routes, log: log2, history: append_history_values(world.history, ev3.towns), tech_road: road, tech_river: river, tech_rail: rail)
+
+export fn game_finish_period(game: Game, days: Int, from: Int) -> Game:
+  let world_events = finish_period(game.world, days, from)
+  let weeks = max_int(0, world_events.tick / hours_per_week() - from / hours_per_week())
+  let money2 = match game.auto_upkeep:
+    true => world_events.money - game.upkeep_per_cycle * weeks
+    false => world_events.money
+  let world2 = set_money(world_events, money2)
+  let paid_tick = match game.auto_upkeep:
+    true => match weeks > 0:
+      true => (world_events.tick / hours_per_week()) * hours_per_week()
+      false => game.last_paid_tick
+    false => game.last_paid_tick
+  let notice = "Settled " + int_text(days) + " day" + match days == 1:
+    true => ""
+    false => "s"
+  + ". " + calendar_text(world2)
+  Game(world: world2, sel: game.sel, notice: notice, last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
+
 # ---------------------------------------------------------------- staged server tick
 
 export fn market_stage(world: World, scale: Int) -> World:
@@ -2688,11 +2922,11 @@ export fn game_market(game: Game) -> Game:
   let unpaid = neglect_ticks(game)
   let scale = match game.auto_upkeep:
     true => 100
-    false => match unpaid >= 5:
+    false => match unpaid >= 2:
       true => 50
       false => 100
   let world = market_stage(game.world, scale)
-  Game(world: world, sel: game.sel, notice: "Market cleared at year " + int_text(world.tick) + ". Treasury " + int_text(world.money) + ".", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
+  Game(world: world, sel: game.sel, notice: "Market cleared at " + calendar_text(world) + ". Treasury " + int_text(world.money) + ".", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
 
 export fn game_finish(game: Game) -> Game:
   let before = game.world.tick
@@ -2719,7 +2953,7 @@ export fn game_finish(game: Game) -> Game:
     false => match game.auto_upkeep:
       true => world2.tick
       false => game.last_paid_tick
-  let base = "Advanced " + int_text(world_after.tick - before) + " cycles. Year " + int_text(world_after.tick) + "."
+  let base = "Advanced " + duration_text(world_after.tick - before) + ". " + calendar_text(world_after) + "."
   let extra = match completed:
     true => " " + join_nonempty(outcome.messages, 0, "")
     false => ""

@@ -270,3 +270,36 @@ The remaining observed limit is the shared operations rate under rapid scripted
 load (around 120 RPCs in a few seconds). Ordinary one-click play stays well
 inside it. Splitting a cycle into more stages is still the extension point for
 larger worlds, but it is no longer required for the current caps.
+
+## Time model: hours with adaptive settlement
+
+`World.tick` is now an hour counter. The calendar uses 24-hour days,
+7-day weeks, 4-week months (28 days), and 12-month years (336 days).
+
+Construction and project readiness are tracked in hours. A dry three-league
+path takes three hours at base construction speed; upgrades add mode work and
+water crossings add bridge hours.
+
+The economy settlement cadence depends on the step the player chose:
+
+- `+1h` / `+6h`: construction only; a settlement runs only if a day boundary
+  was crossed.
+- `+1d`: one daily settlement.
+- `+3d`: one three-day settlement using daily rates.
+- `+1w`: one weekly settlement using seven days of flows.
+- `+1m`: one monthly settlement using 28 days of flows.
+
+That keeps small steps detailed without replaying 28 daily economies for a
+month jump. Population growth and negative growth are clamped to settlements
+of at least a week, so daily stepping cannot grow or shrink towns once per day.
+Events are evaluated once per settlement, so a month step resolves each event
+type at most once.
+
+Route upkeep is weekly. Auto-upkeep charges at week boundaries; manual upkeep
+accrues one week of debt at a time. The UI shows the calendar and offers
+hour/day/week/month step buttons. Travel times and cargo in transit remain a
+later phase.
+
+The schema and tick semantics changed, so use a fresh database when running the
+acceptance test or the local `runserv.sh` helper. The helper now defaults to
+`arteries_play` and creates that database when missing.

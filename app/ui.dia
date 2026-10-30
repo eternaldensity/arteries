@@ -113,8 +113,28 @@ export component Root:
   on build_route:
     game = server_adopt(rpc.start_route(sel.from, sel.to, sel.draft.bend))
 
-  on tick_one:
-    game = server_apply(game, rpc.advance_market())
+  on step_hour:
+    game = server_apply(game, rpc.advance_market(1, "daily"))
+    game = server_apply(game, rpc.advance_finish())
+
+  on step_six_hours:
+    game = server_apply(game, rpc.advance_market(6, "daily"))
+    game = server_apply(game, rpc.advance_finish())
+
+  on step_day:
+    game = server_apply(game, rpc.advance_market(24, "daily"))
+    game = server_apply(game, rpc.advance_finish())
+
+  on step_three_days:
+    game = server_apply(game, rpc.advance_market(72, "daily"))
+    game = server_apply(game, rpc.advance_finish())
+
+  on step_week:
+    game = server_apply(game, rpc.advance_market(168, "weekly"))
+    game = server_apply(game, rpc.advance_finish())
+
+  on step_month:
+    game = server_apply(game, rpc.advance_market(672, "monthly"))
     game = server_apply(game, rpc.advance_finish())
 
   on new_seed:
@@ -178,7 +198,7 @@ export component Root:
           <span class="brand-mark"></span>
           <div>
             <h1>ARTERIES</h1>
-            <p>A living transport economy · world <span class="mono">{world.seed}</span> · year <span class="mono">{world.tick}</span></p>
+            <p>A living transport economy · world <span class="mono">{world.seed}</span> · <span class="mono">{calendar_text(world)}</span></p>
           </div>
         </div>
         <div class="topbar-actions">
@@ -227,7 +247,12 @@ export component Root:
               <p>Click any settlement or site to inspect it. Use Survey route to begin a route; the survey follows the cheapest terrain corridor.</p>
             </div>
             <div class="time-controls">
-              <button class="primary" type="button" on-click={tick_one}>Advance 1 cycle</button>
+              <button class="primary" type="button" on-click={step_hour}>Advance 1 hour</button>
+              <button type="button" on-click={step_six_hours}>6 hours</button>
+              <button type="button" on-click={step_day}>1 day</button>
+              <button type="button" on-click={step_three_days}>3 days</button>
+              <button type="button" on-click={step_week}>1 week</button>
+              <button type="button" on-click={step_month}>1 month</button>
             </div>
           </div>
 
@@ -363,7 +388,7 @@ export component Root:
             </div>
             <p class="insight">{iv.insight}</p>
             <when test={not iv.is_site}>
-              <p class="endow-line">Natural production per cycle: <strong>{inspect_endow_text(iv)}</strong></p>
+              <p class="endow-line">Natural production per day: <strong>{inspect_endow_text(iv)}</strong></p>
             </when>
             <when test={iv.is_site}>
               <div class="site-inspect">
@@ -399,7 +424,7 @@ export component Root:
           <div class="maintenance">
             <div class="maint-block"><span>Upkeep due</span><strong>{upkeep_due(game)}</strong></div>
             <div class="maint-block"><span>Condition</span><strong class={"status " + maintenance_tone(game)}>{maintenance_text(game)}</strong></div>
-            <div class="maint-block"><span>Per cycle</span><strong>{game.upkeep_per_cycle}</strong></div>
+            <div class="maint-block"><span>Per week</span><strong>{game.upkeep_per_cycle}</strong></div>
             <div class="maint-actions">
               <button type="button" on-click={pay_upkeep} disabled={upkeep_due(game) <= 0}>Pay upkeep</button>
               <button class="ghost" type="button" on-click={toggle_auto}>Auto upkeep: {auto_text(game.auto_upkeep)}</button>
@@ -410,7 +435,7 @@ export component Root:
               <div class="projects-head">Under construction <span class="badge">{len(game.projects)}</span></div>
               <each items={game.projects} as="p" key={p.id}>
                 <div class="project-row">
-                  <div><strong>{project_title(p)}</strong><span>{project_action_text(p)} · {project_remaining(p, world.tick)} cycles left</span></div>
+                  <div><strong>{project_title(p)}</strong><span>{project_action_text(p)} · {duration_text(project_remaining(p, world.tick))} left</span></div>
                   <span class="project-tick">{world.tick} / {p.ready_tick}</span>
                 </div>
               </each>
@@ -428,7 +453,7 @@ export component Root:
                 <div class="route-top">
                   <div>
                     <strong>{route_direction(r)}</strong>
-                    <p>{r.plan.length} leagues · cap {r.capacity} · upkeep {r.upkeep}</p>
+                    <p>{r.plan.length} leagues · cap {r.capacity} · upkeep {r.upkeep}/wk</p>
                   </div>
                   <span class={"mode-chip " + route_mode_class(r.mode)}>{route_short(r.mode)}</span>
                 </div>
@@ -451,7 +476,7 @@ export component Root:
         </section>
 
         <section class="card log-card">
-          <div class="card-head"><h2>Chronicle</h2><span class="badge">year {world.tick}</span></div>
+          <div class="card-head"><h2>Chronicle</h2><span class="badge">{calendar_text(world)}</span></div>
           <ul class="chronicle">
             <each items={feed_idx} as="i" key={int_text(i)}>
               <li>{nth_text(feed_items, i)}</li>
@@ -462,7 +487,7 @@ export component Root:
 
       <footer class="footer">
         <span>Arteries prototype · every seed produces a different frontier</span>
-        <span class="mono">seed {world.seed} · {len(world.towns)} settlements · {tech_summary(world)}</span>
+        <span class="mono">seed {world.seed} · {calendar_text(world)} · {tech_summary(world)}</span>
       </footer>
     </main>
     </when>

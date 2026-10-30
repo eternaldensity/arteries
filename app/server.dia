@@ -30,6 +30,8 @@ type WorldRow:
   upkeep_per_cycle: Int
   phase: Int
   epoch: Int
+  settle_days: Int
+  settle_from: Int
 
 type NewWorldRow:
   seed: Int
@@ -43,6 +45,8 @@ type NewWorldRow:
   upkeep_per_cycle: Int
   phase: Int
   epoch: Int
+  settle_days: Int
+  settle_from: Int
 
 type EditWorldRow:
   seed: Int
@@ -56,6 +60,8 @@ type EditWorldRow:
   upkeep_per_cycle: Int
   phase: Int
   epoch: Int
+  settle_days: Int
+  settle_from: Int
 
 type TownRow:
   id: TownId
@@ -308,6 +314,8 @@ type Loaded:
   upkeep_per_cycle: Int
   phase: Int
   epoch: Int
+  settle_days: Int
+  settle_from: Int
 
 # ---------------------------------------------------------------- resources
 
@@ -422,7 +430,7 @@ fn load_world(row: WorldRow) -> Result<Loaded, DataError>:
   let world = World(seed: base.seed, tick: base.tick, money: base.money, towns: base.towns, sites: base.sites, routes: loaded_routes, log: [], history: [], tech_road: base.tech_road, tech_river: base.tech_river, tech_rail: base.tech_rail)
   let loaded_projects = for r in project_rows:
     project_from_row(world, r)
-  Ok(Loaded(id: row.id, world: world, projects: loaded_projects, auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: row.phase, epoch: row.epoch))
+  Ok(Loaded(id: row.id, world: world, projects: loaded_projects, auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: row.phase, epoch: row.epoch, settle_days: row.settle_days, settle_from: row.settle_from))
 
 fn state_game(loaded: Loaded, notice: Text) -> Game:
   raw_game(loaded.world, loaded.projects, loaded.auto_upkeep, loaded.last_paid_tick, loaded.upkeep_per_cycle, initial_selection(loaded.world), notice, true)
@@ -438,7 +446,7 @@ fn load_state() -> Result<Loaded, DataError>:
       let id = match list_get(saved_rows, 0):
         Some(row) => row.id
         None => WorldId("missing")
-      Ok(Loaded(id: id, world: World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: [], history: [], tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail), projects: [], auto_upkeep: false, last_paid_tick: 0, upkeep_per_cycle: 0, phase: 0, epoch: 0))
+      Ok(Loaded(id: id, world: World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: [], history: [], tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail), projects: [], auto_upkeep: false, last_paid_tick: 0, upkeep_per_cycle: 0, phase: 0, epoch: 0, settle_days: 0, settle_from: 0))
     Some(row) =>
       load_world(row)
 
@@ -602,10 +610,13 @@ fn attach_streams(world: WorldId, epoch: Int, game: Game) -> Result<Game, DataEr
   Ok(raw_game(streamed, game.projects, game.auto_upkeep, game.last_paid_tick, game.upkeep_per_cycle, game.sel, game.notice, game.last_ok))
 
 fn save_game(game: Game, phase: Int, epoch: Int) -> Result<Game, DataError>:
+  save_game_window(game, phase, epoch, 0, 0)
+
+fn save_game_window(game: Game, phase: Int, epoch: Int, settle_days: Int, settle_from: Int) -> Result<Game, DataError>:
   let rows = worlds.select(limit: 1)?
   match list_get(rows, 0):
     None =>
-      let created = worlds.create(NewWorldRow(seed: game.world.seed, tick: game.world.tick, money: game.world.money, tech_road: game.world.tech_road, tech_river: game.world.tech_river, tech_rail: game.world.tech_rail, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: phase, epoch: epoch))?
+      let created = worlds.create(NewWorldRow(seed: game.world.seed, tick: game.world.tick, money: game.world.money, tech_road: game.world.tech_road, tech_river: game.world.tech_river, tech_rail: game.world.tech_rail, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: phase, epoch: epoch, settle_days: settle_days, settle_from: settle_from))?
       save_children(created.id, game)?
       let log_base = logs.count(world: created.id, epoch: epoch)?
       save_logs(game.world.log, created.id, epoch, log_base, 0)?
@@ -613,7 +624,7 @@ fn save_game(game: Game, phase: Int, epoch: Int) -> Result<Game, DataError>:
       save_history(game.world.history, created.id, epoch, history_base, 0)?
       attach_streams(created.id, epoch, game)
     Some(row) =>
-      let updated = worlds.update(row.id, EditWorldRow(seed: game.world.seed, tick: game.world.tick, money: game.world.money, tech_road: game.world.tech_road, tech_river: game.world.tech_river, tech_rail: game.world.tech_rail, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: phase, epoch: epoch))?
+      let updated = worlds.update(row.id, EditWorldRow(seed: game.world.seed, tick: game.world.tick, money: game.world.money, tech_road: game.world.tech_road, tech_river: game.world.tech_river, tech_rail: game.world.tech_rail, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: phase, epoch: epoch, settle_days: settle_days, settle_from: settle_from))?
       save_children(row.id, game)?
       let log_base = logs.count(world: row.id, epoch: epoch)?
       save_logs(game.world.log, row.id, epoch, log_base, 0)?
@@ -633,23 +644,62 @@ fn bounded_steps(n: Int) -> Int:
       true => 10
       false => n
 
-export fn advance_market() -> Result<Game, DataError>:
+fn bounded_hours(hours: Int) -> Int:
+  match hours < 1:
+    true => 1
+    false => match hours > 672:
+      true => 672
+      false => hours
+
+fn settlement_days(start: Int, target: Int, cadence: Text) -> Int:
+  match cadence == "weekly":
+    true => (target / hours_per_week() - start / hours_per_week()) * days_per_week()
+    false => match cadence == "monthly":
+      true => (target / hours_per_month() - start / hours_per_month()) * days_per_month()
+      false => target / hours_per_day() - start / hours_per_day()
+
+export fn advance_market(hours: Int, cadence: Text) -> Result<Game, DataError>:
   let state = load_state()?
   let current = state_game(state, "")
   match state.phase == 1:
     true => attach_streams(state.id, state.epoch, current)
     false =>
-      let game = game_market(current)
-      save_game(game, 1, state.epoch)
+      let start = current.world.tick
+      let target = start + bounded_hours(hours)
+      let days = settlement_days(start, target, cadence)
+      let ready = advance_projects(with_tick(current.world, target), current.projects, 0, [], [])
+      let upkeep = total_upkeep(ready.world.routes)
+      let done = match len(ready.messages) > 0:
+        true => " " + nth_text(ready.messages, 0)
+        false => ""
+      let notice = "Advanced to " + calendar_text(ready.world) + "." + done
+      match days <= 0:
+        true =>
+          let base = raw_game(ready.world, ready.projects, current.auto_upkeep, current.last_paid_tick, upkeep, current.sel, notice, true)
+          save_game_window(base, 0, state.epoch, 0, 0)
+        false =>
+          let unpaid = neglect_ticks(current)
+          let scale = match current.auto_upkeep:
+            true => 100
+            false => match unpaid >= 2:
+              true => 50
+              false => 100
+          let market = market_period(ready.world, days, scale)
+          let summary = notice + " Market settled for " + int_text(days) + " day" + match days == 1:
+            true => ""
+            false => "s"
+          + "."
+          let staged = raw_game(market, ready.projects, current.auto_upkeep, current.last_paid_tick, upkeep, current.sel, summary, true)
+          save_game_window(staged, 1, state.epoch, days, start)
 
 export fn advance_finish() -> Result<Game, DataError>:
   let state = load_state()?
   let current = state_game(state, "")
   match state.phase == 0:
-    true => attach_streams(state.id, state.epoch, current)
+    true => attach_streams(state.id, state.epoch, state_game(state, "Advanced to " + calendar_text(current.world) + "."))
     false =>
-      let game = game_finish(current)
-      save_game(game, 0, state.epoch)
+      let game = game_finish_period(current, state.settle_days, state.settle_from)
+      save_game_window(game, 0, state.epoch, 0, 0)
 
 export fn start_route(from: Text, to: Text, bend: Int) -> Result<Game, DataError>:
   let state = load_state()?

@@ -129,7 +129,7 @@ button.tiny { padding: 2px 8px; font-size: 13px; border-radius: 6px; }
 .panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
 .panel-head h2, .card-head h2 { margin: 0; font-size: 13px; letter-spacing: .13em; text-transform: uppercase; color: var(--amber-soft); }
 .panel-head p { margin: 3px 0 0; color: var(--muted); font-size: 12px; max-width: 620px; }
-.time-controls { display: flex; gap: 8px; flex-shrink: 0; }
+.time-controls { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
 
 /* map ---------------------------------------------------------------- */
 .map-frame {
@@ -504,8 +504,11 @@ button.tiny { padding: 2px 8px; font-size: 13px; border-radius: 6px; }
   box-shadow: 0 0 6px var(--rg, rgba(231,196,125,.6));
   z-index: 3;
 }
-.maint-block { gap: 2px; }
+.maintenance { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin: 8px 0 10px; }
+.maint-block { display: flex; flex-direction: column; gap: 2px; min-width: 68px; }
+.maint-block span { color: var(--faint); font-size: 9px; text-transform: uppercase; letter-spacing: .09em; }
 .maint-block strong { line-height: 1.1; }
+.maint-actions { display: flex; gap: 6px; margin-left: auto; }
 
 .site-row { width: 100%; text-align: left; color: var(--text); }
 .site-row:hover { border-color: #4c5c35; background: #17251a; }
