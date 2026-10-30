@@ -5,6 +5,7 @@ export component Root:
   derived active_links: Int = route_active(world.ab) + route_active(world.ac) + route_active(world.ad) + route_active(world.bc) + route_active(world.bd) + route_active(world.cd)
   derived total_prosperity: Int = world.a.prosperity + world.b.prosperity + world.c.prosperity + world.d.prosperity
   derived total_research: Int = world.a.research + world.b.research + world.c.research + world.d.research
+  derived tech_text: Text = tech_summary(world)
 
   on tick_once:
     world = tick(world)
@@ -51,6 +52,7 @@ export component Root:
         <div class="metric"><span class="label">Active routes</span><strong>{active_links}</strong></div>
         <div class="metric"><span class="label">Total prosperity</span><strong>{total_prosperity}</strong></div>
         <div class="metric"><span class="label">Total research</span><strong>{total_research}</strong></div>
+        <div class="metric"><span class="label">Tech</span><strong>{tech_text}</strong></div>
       </section>
 
       <section class="controls">
