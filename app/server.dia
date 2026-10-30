@@ -1,2 +1,701 @@
+# Arteries authoritative server.
+#
+# The browser keeps the selection/draft view; the world, settlements, routes,
+# projects, chronicle and history live in PostgreSQL. Every action reconstructs
+# a checked World, runs the shared pure simulation, and saves the result in one
+# serializable RPC transaction.
+
+type UserId = Id<"user">
+type WorldId = Id<"world">
+type TownId = Id<"town">
+type SiteId = Id<"site">
+type RouteId = Id<"route">
+type ProjectId = Id<"project">
+type LogId = Id<"log">
+type HistoryId = Id<"history">
+
+# ---------------------------------------------------------------- records
+
+type WorldRow:
+  id: WorldId
+  owner: UserId @created_by_principal
+  seed: Int
+  tick: Int
+  money: Int
+  tech_road: Bool
+  tech_river: Bool
+  tech_rail: Bool
+  auto_upkeep: Bool
+  last_paid_tick: Int
+  upkeep_per_cycle: Int
+  phase: Int
+  epoch: Int
+
+type NewWorldRow:
+  seed: Int
+  tick: Int
+  money: Int
+  tech_road: Bool
+  tech_river: Bool
+  tech_rail: Bool
+  auto_upkeep: Bool
+  last_paid_tick: Int
+  upkeep_per_cycle: Int
+  phase: Int
+  epoch: Int
+
+type EditWorldRow:
+  seed: Int
+  tick: Int
+  money: Int
+  tech_road: Bool
+  tech_river: Bool
+  tech_rail: Bool
+  auto_upkeep: Bool
+  last_paid_tick: Int
+  upkeep_per_cycle: Int
+  phase: Int
+  epoch: Int
+
+type TownRow:
+  id: TownId
+  owner: UserId @created_by_principal
+  world: WorldId
+  ord: Int
+  key: Text
+  name: Text
+  x: Int
+  y: Int
+  terrain: Terrain
+  pop: Int
+  prosperity: Int
+  research: Int
+  endow0: Int
+  endow1: Int
+  endow2: Int
+  endow3: Int
+  endow4: Int
+  endow5: Int
+  endow6: Int
+  endow7: Int
+  stock0: Int
+  stock1: Int
+  stock2: Int
+  stock3: Int
+  stock4: Int
+  stock5: Int
+  stock6: Int
+  stock7: Int
+
+type NewTownRow:
+  world: WorldId
+  ord: Int
+  key: Text
+  name: Text
+  x: Int
+  y: Int
+  terrain: Terrain
+  pop: Int
+  prosperity: Int
+  research: Int
+  endow0: Int
+  endow1: Int
+  endow2: Int
+  endow3: Int
+  endow4: Int
+  endow5: Int
+  endow6: Int
+  endow7: Int
+  stock0: Int
+  stock1: Int
+  stock2: Int
+  stock3: Int
+  stock4: Int
+  stock5: Int
+  stock6: Int
+  stock7: Int
+
+type SiteRow:
+  id: SiteId
+  owner: UserId @created_by_principal
+  world: WorldId
+  ord: Int
+  key: Text
+  name: Text
+  x: Int
+  y: Int
+  terrain: Terrain
+  resource: Good
+  richness: Int
+  founded: Bool
+
+type NewSiteRow:
+  world: WorldId
+  ord: Int
+  key: Text
+  name: Text
+  x: Int
+  y: Int
+  terrain: Terrain
+  resource: Good
+  richness: Int
+  founded: Bool
+
+type RouteRow:
+  id: RouteId
+  owner: UserId @created_by_principal
+  world: WorldId
+  ord: Int
+  key: Text
+  a: Text
+  b: Text
+  a_name: Text
+  b_name: Text
+  mode: RouteMode
+  bend: Int
+  fee: Int
+  traffic: Int
+  capacity: Int
+  upkeep: Int
+
+type NewRouteRow:
+  world: WorldId
+  ord: Int
+  key: Text
+  a: Text
+  b: Text
+  a_name: Text
+  b_name: Text
+  mode: RouteMode
+  bend: Int
+  fee: Int
+  traffic: Int
+  capacity: Int
+  upkeep: Int
+
+type ProjectRow:
+  id: ProjectId
+  owner: UserId @created_by_principal
+  world: WorldId
+  ord: Int
+  key: Text
+  kind: Text
+  a: Text
+  b: Text
+  a_name: Text
+  b_name: Text
+  mode: RouteMode
+  route_id: Text
+  bend: Int
+  start_tick: Int
+  ready_tick: Int
+
+type NewProjectRow:
+  world: WorldId
+  ord: Int
+  key: Text
+  kind: Text
+  a: Text
+  b: Text
+  a_name: Text
+  b_name: Text
+  mode: RouteMode
+  route_id: Text
+  bend: Int
+  start_tick: Int
+  ready_tick: Int
+
+type LogRow:
+  id: LogId
+  owner: UserId @created_by_principal
+  world: WorldId
+  epoch: Int
+  seq: Int
+  message: Text
+
+type NewLogRow:
+  world: WorldId
+  epoch: Int
+  seq: Int
+  message: Text
+
+type HistoryRow:
+  id: HistoryId
+  owner: UserId @created_by_principal
+  world: WorldId
+  epoch: Int
+  seq: Int
+  value: Int
+
+type NewHistoryRow:
+  world: WorldId
+  epoch: Int
+  seq: Int
+  value: Int
+
+type EditTownRow:
+  ord: Int
+  key: Text
+  name: Text
+  x: Int
+  y: Int
+  terrain: Terrain
+  pop: Int
+  prosperity: Int
+  research: Int
+  endow0: Int
+  endow1: Int
+  endow2: Int
+  endow3: Int
+  endow4: Int
+  endow5: Int
+  endow6: Int
+  endow7: Int
+  stock0: Int
+  stock1: Int
+  stock2: Int
+  stock3: Int
+  stock4: Int
+  stock5: Int
+  stock6: Int
+  stock7: Int
+
+type EditSiteRow:
+  ord: Int
+  key: Text
+  name: Text
+  x: Int
+  y: Int
+  terrain: Terrain
+  resource: Good
+  richness: Int
+  founded: Bool
+
+type EditRouteRow:
+  ord: Int
+  key: Text
+  a: Text
+  b: Text
+  a_name: Text
+  b_name: Text
+  mode: RouteMode
+  bend: Int
+  fee: Int
+  traffic: Int
+  capacity: Int
+  upkeep: Int
+
+type EditProjectRow:
+  ord: Int
+  key: Text
+  kind: Text
+  a: Text
+  b: Text
+  a_name: Text
+  b_name: Text
+  mode: RouteMode
+  route_id: Text
+  bend: Int
+  start_tick: Int
+  ready_tick: Int
+
+type Loaded:
+  id: WorldId
+  world: World
+  projects: List<Project>
+  auto_upkeep: Bool
+  last_paid_tick: Int
+  upkeep_per_cycle: Int
+  phase: Int
+  epoch: Int
+
+# ---------------------------------------------------------------- resources
+
+resource Worlds: WorldRow
+resource Towns: TownRow
+resource Sites: SiteRow
+resource Routes: RouteRow
+resource Projects: ProjectRow
+resource Logs: LogRow
+resource History: HistoryRow
+
+policy Worlds:
+  read(row, by principal):
+    principal.is_user(row.owner)
+  create(row, by principal):
+    principal.is_user(row.owner)
+  update(before, after, by principal):
+    before.owner == after.owner and principal.is_user(before.owner)
+
+policy Towns:
+  read(row, by principal):
+    principal.is_user(row.owner)
+  create(row, by principal):
+    principal.is_user(row.owner)
+  update(before, after, by principal):
+    before.owner == after.owner and principal.is_user(before.owner)
+  delete(row, by principal):
+    principal.is_user(row.owner)
+
+policy Sites:
+  read(row, by principal):
+    principal.is_user(row.owner)
+  create(row, by principal):
+    principal.is_user(row.owner)
+  update(before, after, by principal):
+    before.owner == after.owner and principal.is_user(before.owner)
+  delete(row, by principal):
+    principal.is_user(row.owner)
+
+policy Routes:
+  read(row, by principal):
+    principal.is_user(row.owner)
+  create(row, by principal):
+    principal.is_user(row.owner)
+  update(before, after, by principal):
+    before.owner == after.owner and principal.is_user(before.owner)
+  delete(row, by principal):
+    principal.is_user(row.owner)
+
+policy Projects:
+  read(row, by principal):
+    principal.is_user(row.owner)
+  create(row, by principal):
+    principal.is_user(row.owner)
+  update(before, after, by principal):
+    before.owner == after.owner and principal.is_user(before.owner)
+  delete(row, by principal):
+    principal.is_user(row.owner)
+
+policy Logs:
+  read(row, by principal):
+    principal.is_user(row.owner)
+  create(row, by principal):
+    principal.is_user(row.owner)
+  update(before, after, by principal):
+    before.owner == after.owner and principal.is_user(before.owner)
+  delete(row, by principal):
+    principal.is_user(row.owner)
+
+policy History:
+  read(row, by principal):
+    principal.is_user(row.owner)
+  create(row, by principal):
+    principal.is_user(row.owner)
+  update(before, after, by principal):
+    before.owner == after.owner and principal.is_user(before.owner)
+  delete(row, by principal):
+    principal.is_user(row.owner)
+
+# ---------------------------------------------------------------- row mapping
+
+fn town_from_row(row: TownRow) -> Town:
+  Town(id: row.key, name: row.name, x: row.x, y: row.y, terrain: row.terrain, endow: [row.endow0, row.endow1, row.endow2, row.endow3, row.endow4, row.endow5, row.endow6, row.endow7], state: TownState(pop: row.pop, prosperity: row.prosperity, research: row.research, stock: [row.stock0, row.stock1, row.stock2, row.stock3, row.stock4, row.stock5, row.stock6, row.stock7]))
+
+fn site_from_row(row: SiteRow) -> Site:
+  Site(id: row.key, name: row.name, x: row.x, y: row.y, terrain: row.terrain, resource: row.resource, richness: row.richness, founded: row.founded)
+
+fn route_from_row(world: World, row: RouteRow) -> Route:
+  Route(id: row.key, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, plan: plan_route_bend(world, row.a, row.b, row.bend), fee: row.fee, traffic: row.traffic, capacity: row.capacity, upkeep: row.upkeep)
+
+fn project_from_row(world: World, row: ProjectRow) -> Project:
+  Project(id: row.key, kind: row.kind, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, route_id: row.route_id, plan: plan_route_bend(world, row.a, row.b, row.bend), start_tick: row.start_tick, ready_tick: row.ready_tick)
+
+# ---------------------------------------------------------------- loading
+
+fn initial_selection(world: World) -> Selection:
+  Selection(selected: "t0", from: "", to: "", draft: empty_plan(), ready: false, routing: false, notice: "Click any settlement or site to inspect it, or use Survey route to begin.")
+
+fn load_world(row: WorldRow) -> Result<Loaded, DataError>:
+  let town_rows = towns.page(world: row.id, order: "ord", after: "", limit: 100)?
+  let site_rows = sites.page(world: row.id, order: "ord", after: "", limit: 100)?
+  let route_rows = routes.page(world: row.id, order: "ord", after: "", limit: 100)?
+  let project_rows = projects.page(world: row.id, order: "ord", after: "", limit: 100)?
+  let loaded_towns = for r in town_rows:
+    town_from_row(r)
+  let loaded_sites = for r in site_rows:
+    site_from_row(r)
+  let empty_routes = []
+  let base = World(seed: row.seed, tick: row.tick, money: row.money, towns: loaded_towns, sites: loaded_sites, routes: empty_routes, log: [], history: [], tech_road: row.tech_road, tech_river: row.tech_river, tech_rail: row.tech_rail)
+  let loaded_routes = for r in route_rows:
+    route_from_row(base, r)
+  let world = World(seed: base.seed, tick: base.tick, money: base.money, towns: base.towns, sites: base.sites, routes: loaded_routes, log: [], history: [], tech_road: base.tech_road, tech_river: base.tech_river, tech_rail: base.tech_rail)
+  let loaded_projects = for r in project_rows:
+    project_from_row(world, r)
+  Ok(Loaded(id: row.id, world: world, projects: loaded_projects, auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: row.phase, epoch: row.epoch))
+
+fn state_game(loaded: Loaded, notice: Text) -> Game:
+  raw_game(loaded.world, loaded.projects, loaded.auto_upkeep, loaded.last_paid_tick, loaded.upkeep_per_cycle, initial_selection(loaded.world), notice, true)
+
+fn load_state() -> Result<Loaded, DataError>:
+  let rows = worlds.select(limit: 1)?
+  match list_get(rows, 0):
+    None =>
+      let world = new_world(7)
+      let fresh = raw_game(world, [], false, 0, 0, initial_selection(world), "New world generated. Connect complementary settlements to start the economy.", true)
+      save_game(fresh, 0, 0)?
+      let saved_rows = worlds.select(limit: 1)?
+      let id = match list_get(saved_rows, 0):
+        Some(row) => row.id
+        None => WorldId("missing")
+      Ok(Loaded(id: id, world: World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: [], history: [], tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail), projects: [], auto_upkeep: false, last_paid_tick: 0, upkeep_per_cycle: 0, phase: 0, epoch: 0))
+    Some(row) =>
+      load_world(row)
+
+export fn load_game() -> Result<Game, DataError>:
+  let loaded = load_state()?
+  let game = state_game(loaded, "World loaded.")
+  attach_streams(loaded.id, loaded.epoch, game)
+
+# ---------------------------------------------------------------- saving
+
+fn clear_towns(rows: List<TownRow>, i: Int) -> Result<Bool, DataError>:
+  match list_get(rows, i):
+    None => Ok(true)
+    Some(row) =>
+      let removed = towns.delete(row.id)?
+      clear_towns(rows, i + 1)
+
+fn clear_sites(rows: List<SiteRow>, i: Int) -> Result<Bool, DataError>:
+  match list_get(rows, i):
+    None => Ok(true)
+    Some(row) =>
+      let removed = sites.delete(row.id)?
+      clear_sites(rows, i + 1)
+
+fn clear_routes(rows: List<RouteRow>, i: Int) -> Result<Bool, DataError>:
+  match list_get(rows, i):
+    None => Ok(true)
+    Some(row) =>
+      let removed = routes.delete(row.id)?
+      clear_routes(rows, i + 1)
+
+fn clear_projects(rows: List<ProjectRow>, i: Int) -> Result<Bool, DataError>:
+  match list_get(rows, i):
+    None => Ok(true)
+    Some(row) =>
+      let removed = projects.delete(row.id)?
+      clear_projects(rows, i + 1)
+
+fn new_town_row(t: Town, world: WorldId, ord: Int) -> NewTownRow:
+  let e = t.endow
+  let s = t.state.stock
+  NewTownRow(world: world, ord: ord, key: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, endow0: nth_int(e, 0), endow1: nth_int(e, 1), endow2: nth_int(e, 2), endow3: nth_int(e, 3), endow4: nth_int(e, 4), endow5: nth_int(e, 5), endow6: nth_int(e, 6), endow7: nth_int(e, 7), stock0: nth_int(s, 0), stock1: nth_int(s, 1), stock2: nth_int(s, 2), stock3: nth_int(s, 3), stock4: nth_int(s, 4), stock5: nth_int(s, 5), stock6: nth_int(s, 6), stock7: nth_int(s, 7))
+
+fn edit_town_row(t: Town, ord: Int) -> EditTownRow:
+  let e = t.endow
+  let s = t.state.stock
+  EditTownRow(ord: ord, key: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, endow0: nth_int(e, 0), endow1: nth_int(e, 1), endow2: nth_int(e, 2), endow3: nth_int(e, 3), endow4: nth_int(e, 4), endow5: nth_int(e, 5), endow6: nth_int(e, 6), endow7: nth_int(e, 7), stock0: nth_int(s, 0), stock1: nth_int(s, 1), stock2: nth_int(s, 2), stock3: nth_int(s, 3), stock4: nth_int(s, 4), stock5: nth_int(s, 5), stock6: nth_int(s, 6), stock7: nth_int(s, 7))
+
+fn new_site_row(x: Site, world: WorldId, ord: Int) -> NewSiteRow:
+  NewSiteRow(world: world, ord: ord, key: x.id, name: x.name, x: x.x, y: x.y, terrain: x.terrain, resource: x.resource, richness: x.richness, founded: x.founded)
+
+fn edit_site_row(x: Site, ord: Int) -> EditSiteRow:
+  EditSiteRow(ord: ord, key: x.id, name: x.name, x: x.x, y: x.y, terrain: x.terrain, resource: x.resource, richness: x.richness, founded: x.founded)
+
+fn new_route_row(x: Route, world: WorldId, ord: Int) -> NewRouteRow:
+  NewRouteRow(world: world, ord: ord, key: x.id, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, bend: x.plan.bend, fee: x.fee, traffic: x.traffic, capacity: x.capacity, upkeep: x.upkeep)
+
+fn edit_route_row(x: Route, ord: Int) -> EditRouteRow:
+  EditRouteRow(ord: ord, key: x.id, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, bend: x.plan.bend, fee: x.fee, traffic: x.traffic, capacity: x.capacity, upkeep: x.upkeep)
+
+fn new_project_row(x: Project, world: WorldId, ord: Int) -> NewProjectRow:
+  NewProjectRow(world: world, ord: ord, key: x.id, kind: x.kind, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, route_id: x.route_id, bend: x.plan.bend, start_tick: x.start_tick, ready_tick: x.ready_tick)
+
+fn edit_project_row(x: Project, ord: Int) -> EditProjectRow:
+  EditProjectRow(ord: ord, key: x.id, kind: x.kind, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, route_id: x.route_id, bend: x.plan.bend, start_tick: x.start_tick, ready_tick: x.ready_tick)
+
+fn save_towns(items: List<Town>, world: WorldId, existing: List<TownRow>, i: Int) -> Result<Bool, DataError>:
+  match list_get(items, i):
+    None => match len(existing) <= i:
+      true => Ok(true)
+      false => clear_towns(list_slice(existing, i, len(existing) - i), 0)
+    Some(t) =>
+      match list_get(existing, i):
+        Some(row) =>
+          let updated = towns.update(row.id, edit_town_row(t, i))?
+          save_towns(items, world, existing, i + 1)
+        None =>
+          let created = towns.create(new_town_row(t, world, i))?
+          save_towns(items, world, existing, i + 1)
+
+fn save_sites(items: List<Site>, world: WorldId, existing: List<SiteRow>, i: Int) -> Result<Bool, DataError>:
+  match list_get(items, i):
+    None => match len(existing) <= i:
+      true => Ok(true)
+      false => clear_sites(list_slice(existing, i, len(existing) - i), 0)
+    Some(s) =>
+      match list_get(existing, i):
+        Some(row) =>
+          let updated = sites.update(row.id, edit_site_row(s, i))?
+          save_sites(items, world, existing, i + 1)
+        None =>
+          let created = sites.create(new_site_row(s, world, i))?
+          save_sites(items, world, existing, i + 1)
+
+fn save_routes(items: List<Route>, world: WorldId, existing: List<RouteRow>, i: Int) -> Result<Bool, DataError>:
+  match list_get(items, i):
+    None => match len(existing) <= i:
+      true => Ok(true)
+      false => clear_routes(list_slice(existing, i, len(existing) - i), 0)
+    Some(r) =>
+      match list_get(existing, i):
+        Some(row) =>
+          let updated = routes.update(row.id, edit_route_row(r, i))?
+          save_routes(items, world, existing, i + 1)
+        None =>
+          let created = routes.create(new_route_row(r, world, i))?
+          save_routes(items, world, existing, i + 1)
+
+fn save_projects(items: List<Project>, world: WorldId, existing: List<ProjectRow>, i: Int) -> Result<Bool, DataError>:
+  match list_get(items, i):
+    None => match len(existing) <= i:
+      true => Ok(true)
+      false => clear_projects(list_slice(existing, i, len(existing) - i), 0)
+    Some(p) =>
+      match list_get(existing, i):
+        Some(row) =>
+          let updated = projects.update(row.id, edit_project_row(p, i))?
+          save_projects(items, world, existing, i + 1)
+        None =>
+          let created = projects.create(new_project_row(p, world, i))?
+          save_projects(items, world, existing, i + 1)
+
+fn save_logs(items: List<Text>, world: WorldId, epoch: Int, base: Int, i: Int) -> Result<Bool, DataError>:
+  match list_get(items, i):
+    None => Ok(true)
+    Some(message) =>
+      let created = logs.create(NewLogRow(world: world, epoch: epoch, seq: base + i, message: message))?
+      save_logs(items, world, epoch, base, i + 1)
+
+fn save_history(items: List<Int>, world: WorldId, epoch: Int, base: Int, i: Int) -> Result<Bool, DataError>:
+  match list_get(items, i):
+    None => Ok(true)
+    Some(value) =>
+      let created = history.create(NewHistoryRow(world: world, epoch: epoch, seq: base + i, value: value))?
+      save_history(items, world, epoch, base, i + 1)
+
+fn save_children(world: WorldId, game: Game) -> Result<Bool, DataError>:
+  let town_rows = towns.page(world: world, order: "ord", after: "", limit: 100)?
+  let site_rows = sites.page(world: world, order: "ord", after: "", limit: 100)?
+  let route_rows = routes.page(world: world, order: "ord", after: "", limit: 100)?
+  let project_rows = projects.page(world: world, order: "ord", after: "", limit: 100)?
+  save_towns(game.world.towns, world, town_rows, 0)?
+  save_sites(game.world.sites, world, site_rows, 0)?
+  save_routes(game.world.routes, world, route_rows, 0)?
+  save_projects(game.projects, world, project_rows, 0)?
+  Ok(true)
+
+fn with_streams(world: World, entries: List<Text>, values: List<Int>) -> World:
+  World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: entries, history: values, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+
+fn attach_streams(world: WorldId, epoch: Int, game: Game) -> Result<Game, DataError>:
+  let log_rows = logs.page(world: world, epoch: epoch, order: "seq", descending: true, after: "", limit: 12)?
+  let history_rows = history.page(world: world, epoch: epoch, order: "seq", descending: true, after: "", limit: 24)?
+  let messages = for r in log_rows:
+    r.message
+  let numbers = for r in history_rows:
+    r.value
+  let entries = list_reverse(messages)
+  let values = list_reverse(numbers)
+  let streamed = with_streams(game.world, entries, values)
+  Ok(raw_game(streamed, game.projects, game.auto_upkeep, game.last_paid_tick, game.upkeep_per_cycle, game.sel, game.notice, game.last_ok))
+
+fn save_game(game: Game, phase: Int, epoch: Int) -> Result<Game, DataError>:
+  let rows = worlds.select(limit: 1)?
+  match list_get(rows, 0):
+    None =>
+      let created = worlds.create(NewWorldRow(seed: game.world.seed, tick: game.world.tick, money: game.world.money, tech_road: game.world.tech_road, tech_river: game.world.tech_river, tech_rail: game.world.tech_rail, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: phase, epoch: epoch))?
+      save_children(created.id, game)?
+      let log_base = logs.count(world: created.id, epoch: epoch)?
+      save_logs(game.world.log, created.id, epoch, log_base, 0)?
+      let history_base = history.count(world: created.id, epoch: epoch)?
+      save_history(game.world.history, created.id, epoch, history_base, 0)?
+      attach_streams(created.id, epoch, game)
+    Some(row) =>
+      let updated = worlds.update(row.id, EditWorldRow(seed: game.world.seed, tick: game.world.tick, money: game.world.money, tech_road: game.world.tech_road, tech_river: game.world.tech_river, tech_rail: game.world.tech_rail, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: phase, epoch: epoch))?
+      save_children(row.id, game)?
+      let log_base = logs.count(world: row.id, epoch: epoch)?
+      save_logs(game.world.log, row.id, epoch, log_base, 0)?
+      let history_base = history.count(world: row.id, epoch: epoch)?
+      save_history(game.world.history, row.id, epoch, history_base, 0)?
+      attach_streams(row.id, epoch, game)
+
+# ---------------------------------------------------------------- actions
+
 export fn main() -> Text:
-  "Arteries transport economy prototype"
+  "Arteries authoritative simulation"
+
+fn bounded_steps(n: Int) -> Int:
+  match n < 1:
+    true => 1
+    false => match n > 10:
+      true => 10
+      false => n
+
+export fn advance_market() -> Result<Game, DataError>:
+  let state = load_state()?
+  let current = state_game(state, "")
+  match state.phase == 1:
+    true => attach_streams(state.id, state.epoch, current)
+    false =>
+      let game = game_market(current)
+      save_game(game, 1, state.epoch)
+
+export fn advance_finish() -> Result<Game, DataError>:
+  let state = load_state()?
+  let current = state_game(state, "")
+  match state.phase == 0:
+    true => attach_streams(state.id, state.epoch, current)
+    false =>
+      let game = game_finish(current)
+      save_game(game, 0, state.epoch)
+
+export fn start_route(from: Text, to: Text, bend: Int) -> Result<Game, DataError>:
+  let state = load_state()?
+  let current = state_game(state, "")
+  let sel = survey_selection(current.world, from, to, bend)
+  let prepared = raw_game(current.world, current.projects, current.auto_upkeep, current.last_paid_tick, current.upkeep_per_cycle, sel, "", true)
+  match can_build_route(prepared):
+    false =>
+      let blocked = raw_game(current.world, current.projects, current.auto_upkeep, current.last_paid_tick, current.upkeep_per_cycle, current.sel, build_blocker(prepared), false)
+      attach_streams(state.id, state.epoch, blocked)
+    true =>
+      let game = game_build(prepared)
+      save_game(game, 0, state.epoch)
+
+export fn order_upgrade(route: Text) -> Result<Game, DataError>:
+  let state = load_state()?
+  let current = state_game(state, "")
+  let game = game_upgrade(current, route)
+  save_game(game, 0, state.epoch)
+
+export fn dismantle(route: Text) -> Result<Game, DataError>:
+  let state = load_state()?
+  let current = state_game(state, "")
+  let game = game_demolish(current, route)
+  save_game(game, 0, state.epoch)
+
+export fn set_fee(route: Text, delta: Int) -> Result<Game, DataError>:
+  let state = load_state()?
+  let current = state_game(state, "")
+  let game = game_fee(current, route, delta)
+  save_game(game, 0, state.epoch)
+
+export fn pay_upkeep() -> Result<Game, DataError>:
+  let state = load_state()?
+  let current = state_game(state, "")
+  let game = game_pay_upkeep(current)
+  save_game(game, 0, state.epoch)
+
+export fn toggle_auto() -> Result<Game, DataError>:
+  let state = load_state()?
+  let current = state_game(state, "")
+  let game = game_toggle_auto(current)
+  save_game(game, 0, state.epoch)
+
+export fn new_seed() -> Result<Game, DataError>:
+  let state = load_state()?
+  let current = state_game(state, "")
+  let game = game_new_seed(current)
+  save_game(game, 0, state.epoch + 1)

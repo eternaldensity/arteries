@@ -5,16 +5,18 @@
  * Requires:
  *   - a server for the current build, e.g.
  *       diamond serve .diamond/app-build --listen 127.0.0.1:3010
+ *   - a freshly initialized PostgreSQL database and provisioned account
  *   - playwright-core and a Chromium executable
  *
  * Run:
  *   PLAYWRIGHT_CORE=/path/to/node_modules/playwright-core \
  *   CHROMIUM_PATH=/path/to/chrome \
  *   UI_URL=http://127.0.0.1:3010/ \
+ *   UI_USER=yria UI_PASSWORD='...' \
  *   node tests/ui-smoke.js
  *
- * The test is deterministic for world seed 7. It fails on component errors,
- * console errors, or a missing expected state change.
+ * The test is deterministic for a fresh world seed 7. It fails on component
+ * errors, console errors, or a missing expected state change.
  */
 const path = require('path');
 
@@ -24,6 +26,8 @@ const executablePath =
   process.env.CHROMIUM_PATH ||
   '/home/yria/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome';
 const url = process.env.UI_URL || 'http://127.0.0.1:3010/';
+const username = process.env.UI_USER || 'yria';
+const password = process.env.UI_PASSWORD || 'Arteries password 42!';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -66,33 +70,33 @@ function assert(condition, message) {
   const tick = async (n = 1) => {
     for (let i = 0; i < n; i++) {
       await page.getByRole('button', { name: 'Advance 1 cycle' }).click();
-      await page.waitForTimeout(190);
+      await page.waitForTimeout(450);
     }
   };
 
   const build = async (a, b) => {
     await town(a).click();
-    await page.waitForTimeout(80);
+    await page.waitForTimeout(200);
     const survey = page.getByRole('button', { name: /Survey route from/ });
     assert((await survey.count()) > 0, `no survey action for ${a}`);
     await survey.click();
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(300);
     await town(b).click();
-    await page.waitForTimeout(180);
+    await page.waitForTimeout(450);
     assert(
       (await page.locator('.shape-row').count()) > 0,
       `no waypoint shaping controls for ${a}-${b}`
     );
     await page.getByRole('button', { name: 'Bend route right' }).click();
-    await page.waitForTimeout(160);
+    await page.waitForTimeout(450);
     await page.getByRole('button', { name: 'Auto shape' }).click();
-    await page.waitForTimeout(160);
+    await page.waitForTimeout(450);
     const before = await page.locator('.route-card').count();
     const button = page.getByRole('button', { name: /Start construction/ });
     assert((await button.count()) > 0, `no construction action for ${a}-${b}`);
     assert(await button.isEnabled(), `survey for ${a}-${b} is not buildable`);
     await button.click();
-    await page.waitForTimeout(280);
+    await page.waitForTimeout(700);
     assert(
       (await page.locator('.notice').textContent()).startsWith('Construction started:'),
       `route ${a}-${b} did not start construction`
@@ -104,7 +108,7 @@ function assert(condition, message) {
     for (let i = 0; i < 12; i++) {
       if ((await page.locator('.route-card').count()) > before) return;
       await page.getByRole('button', { name: 'Advance 1 cycle' }).click();
-      await page.waitForTimeout(190);
+      await page.waitForTimeout(450);
     }
     throw new Error(`construction for ${a}-${b} did not finish`);
   };
@@ -112,6 +116,14 @@ function assert(condition, message) {
   try {
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.waitForTimeout(300);
+    await page.fill('#username', username);
+    await page.fill('#password', password);
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.waitForTimeout(1800);
+    assert(
+      (await page.locator('.app .topbar').count()) > 0,
+      'sign in did not load the authoritative world'
+    );
 
     let s = await state();
     assert(!s.error, 'initial component error: ' + s.error);
@@ -124,7 +136,7 @@ function assert(condition, message) {
 
     // Any site can be inspected without starting or cancelling a survey.
     await page.locator('.map-grid button.site-marker').first().click();
-    await page.waitForTimeout(160);
+    await page.waitForTimeout(450);
     assert(
       (await page.locator('.site-inspect').count()) > 0,
       'clicking a site did not open the site inspector'
@@ -134,7 +146,7 @@ function assert(condition, message) {
       'site inspector has no name'
     );
     await town('Riverford').click();
-    await page.waitForTimeout(120);
+    await page.waitForTimeout(300);
 
     for (const [a, b] of [
       ['Riverford', 'Hillcrest'],
@@ -152,11 +164,11 @@ function assert(condition, message) {
 
     // Route cap: a fifth survey must be refused, not rendered as buildable.
     await town('Hillcrest').click();
-    await page.waitForTimeout(80);
+    await page.waitForTimeout(200);
     await page.getByRole('button', { name: /Survey route from/ }).click();
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(300);
     await town('Riverford').click();
-    await page.waitForTimeout(180);
+    await page.waitForTimeout(450);
     s = await state();
     assert(
       s.notice.includes('Three trunk routes already exist'),
@@ -178,7 +190,7 @@ function assert(condition, message) {
     );
 
     await page.getByRole('button', { name: 'Pay upkeep' }).click();
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(500);
     s = await state();
     assert(s.maintenance[0] === '0', 'paying upkeep did not clear the debt');
     assert(
@@ -188,7 +200,7 @@ function assert(condition, message) {
 
     // Automatic upkeep: cycles must keep running and clear the debt.
     await page.getByRole('button', { name: /Auto upkeep/ }).click();
-    await page.waitForTimeout(160);
+    await page.waitForTimeout(450);
     await tick(12);
     s = await state();
     assert(!s.error, 'component error during automatic upkeep: ' + s.error);
@@ -200,21 +212,21 @@ function assert(condition, message) {
 
     // Inspector and settlement selection.
     await page.locator('.settlement-row', { hasText: 'Greenvale' }).click();
-    await page.waitForTimeout(160);
+    await page.waitForTimeout(450);
     s = await state();
     assert(s.inspector === 'Greenvale', 'inspector did not switch to Greenvale');
     assert((await page.locator('.good-chip').count()) === 8, 'expected eight goods');
 
     // Dismantling frees a route slot.
     await page.locator('.route-card button.danger').first().click();
-    await page.waitForTimeout(260);
+    await page.waitForTimeout(650);
     s = await state();
     assert(s.routes === 2, `expected 2 routes after dismantle, got ${s.routes}`);
     assert(!s.error, 'component error after dismantle: ' + s.error);
 
     // New world must reset routes, selection, and upkeep.
     await page.getByRole('button', { name: 'New world' }).click();
-    await page.waitForTimeout(320);
+    await page.waitForTimeout(700);
     s = await state();
     assert(!s.error, 'component error after new world: ' + s.error);
     assert(s.seed === '8', 'new world did not advance the seed');

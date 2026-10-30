@@ -4,7 +4,7 @@ name = "ArteriesWeb"
 server = "server"
 browser = "ui"
 component = "Root"
-provides = []
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>"]
 styles = ["app.css"]
 
 [modules.shared]
@@ -15,8 +15,80 @@ target = "shared"
 path = "server.dia"
 target = "server"
 imports = ["shared"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>"]
 
 [modules.ui]
 path = "ui.dia"
 target = "browser"
 imports = ["shared"]
+
+[rpc]
+load_game = "server.load_game"
+advance_market = "server.advance_market"
+advance_finish = "server.advance_finish"
+start_route = "server.start_route"
+order_upgrade = "server.order_upgrade"
+dismantle = "server.dismantle"
+set_fee = "server.set_fee"
+pay_upkeep = "server.pay_upkeep"
+toggle_auto = "server.toggle_auto"
+new_seed = "server.new_seed"
+
+[storage]
+profile = "relational-v1"
+version = 1
+
+[storage.resources.Worlds]
+scope = "id"
+
+[storage.resources.Towns]
+scope = "world"
+unique = [["world", "ord"]]
+
+[storage.resources.Towns.references.world]
+resource = "Worlds"
+fields = { world = "id" }
+
+[storage.resources.Sites]
+scope = "world"
+unique = [["world", "ord"]]
+
+[storage.resources.Sites.references.world]
+resource = "Worlds"
+fields = { world = "id" }
+
+[storage.resources.Routes]
+scope = "world"
+unique = [["world", "ord"]]
+
+[storage.resources.Routes.references.world]
+resource = "Worlds"
+fields = { world = "id" }
+
+[storage.resources.Projects]
+scope = "world"
+unique = [["world", "ord"]]
+
+[storage.resources.Projects.references.world]
+resource = "Worlds"
+fields = { world = "id" }
+
+[storage.resources.Logs]
+scope = "world"
+unique = [["world", "epoch", "seq"]]
+
+[storage.resources.Logs.references.world]
+resource = "Worlds"
+fields = { world = "id" }
+
+[storage.resources.History]
+scope = "world"
+unique = [["world", "epoch", "seq"]]
+
+[storage.resources.History.references.world]
+resource = "Worlds"
+fields = { world = "id" }
+
+[identity]
+profile = "accounts-v1"
+enrollment = "invite"

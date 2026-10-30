@@ -226,3 +226,47 @@ Diamond only orchestrating UI and persistence.
 - `Diamond/docs/connected-apps.md` — RPC, PostgreSQL, request limits.
 - `Diamond/docs/jobs-and-live-apps.md` — job/workflow boundaries.
 - `Diamond/src/project/render.rs` — server page evaluation.
+
+## Implemented migration: server-authoritative staged tick
+
+The prototype now runs the authoritative simulation on the Diamond server with
+PostgreSQL-backed state. The browser is a renderer plus local selection/draft
+state, and the tick is split into two RPC phases:
+
+1. `advance_market` — production, trade, traffic and toll income. It sets a
+   persisted `phase` marker and saves towns, routes and treasury.
+2. `advance_finish` — research/unlocks, events, cycle increment, history,
+   project completion and automatic upkeep. It clears the phase marker.
+
+The phase marker makes a partial failure recoverable: retrying the market phase
+is a no-op when the phase is already `1`, and retrying the finish phase is a
+no-op when it is already `0`. Both RPCs are independent evaluation phases, so
+neither carries the whole cycle plus persistence in one 100k-fuel budget.
+
+Relational resources: `Worlds`, `Towns`, `Sites`, `Routes`, `Projects`, `Logs`
+and `History`. Child rows are scoped to a world with owner-checked policies.
+Rows are synchronized in place rather than deleted and recreated. Chronicle and
+history are append-only streams filtered by a monotonic `epoch`, so starting a
+new world does not require deleting the previous stream in a deep recursive
+loop.
+
+The browser now requires an `accounts-v1` login. Each account owns one world.
+Use a fresh database for acceptance tests because the smoke test expects seed 7,
+year 0.
+
+```sh
+export DIAMOND_POSTGRES_URL='host=/tmp/opencode/arteries-pg port=55432 dbname=arteries user=yria'
+diamond build app/diamond.toml --out build
+diamond project-init build --postgres-env DIAMOND_POSTGRES_URL
+printf 'a disposable development password\n' | \
+  diamond project-user-add build --postgres-env DIAMOND_POSTGRES_URL --user alice --password-stdin
+diamond serve build --listen 127.0.0.1:3032 \
+  --postgres-env DIAMOND_POSTGRES_URL \
+  --identity-mailbox /path/to/mail --origin http://127.0.0.1:3032
+UI_URL=http://127.0.0.1:3032/ UI_USER=alice UI_PASSWORD='...' node tests/ui-smoke.js
+```
+
+The remaining observed limit is the shared operations rate under rapid scripted
+load (around 120 RPCs in a few seconds). Ordinary one-click play stays well
+inside it. Splitting a cycle into more stages is still the extension point for
+larger worlds, but it is no longer required for the current caps.

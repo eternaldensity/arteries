@@ -41,7 +41,12 @@ export component MapCanvas(seed: Int, groups: List<RouteNodeGroup>, draft: List<
     </div>
 
 export component Root:
-  state game: Game = new_game(7)
+  state game: Game = empty_game()
+  state signed_in: Text = ""
+  state loaded: Bool = false
+  state username: Text = "yria"
+  state password: Text = ""
+  state auth_notice: Text = "Sign in to load the authoritative world."
 
   derived world: World = game.world
   derived iv: InspectView = game.inspect
@@ -66,6 +71,27 @@ export component Root:
   derived origin_name: Text = marker_name(world, sel.from)
   derived destination_name: Text = marker_name(world, sel.to)
 
+  on mount:
+    signed_in = session.user()
+
+  on sign_in:
+    signed_in = session.login(username, password)
+    password = ""
+    game = server_adopt(rpc.load_game())
+    loaded = true
+    auth_notice = "Signed in. The world is authoritative on the server."
+
+  on resume:
+    game = server_adopt(rpc.load_game())
+    loaded = true
+    auth_notice = "World loaded."
+
+  on sign_out:
+    signed_in = session.logout()
+    loaded = false
+    game = empty_game()
+    auth_notice = "Signed out."
+
   on pick(id: Text):
     game = game_pick(game, id)
 
@@ -85,36 +111,67 @@ export component Root:
     game = game_cancel(game)
 
   on build_route:
-    game = game_build(game)
+    game = server_adopt(rpc.start_route(sel.from, sel.to, sel.draft.bend))
 
   on tick_one:
-    game = game_tick(game, 1)
+    game = server_apply(game, rpc.advance_market())
+    game = server_apply(game, rpc.advance_finish())
 
   on new_seed:
-    game = game_new_seed(game)
+    game = server_adopt(rpc.new_seed())
 
   on upgrade(id: Text):
-    game = game_upgrade(game, id)
+    game = server_apply(game, rpc.order_upgrade(id))
 
   on dismantle(id: Text):
-    game = game_demolish(game, id)
+    game = server_apply(game, rpc.dismantle(id))
 
   on fee_up(id: Text):
-    game = game_fee(game, id, 1)
+    game = server_apply(game, rpc.set_fee(id, 1))
 
   on fee_down(id: Text):
-    game = game_fee(game, id, -1)
+    game = server_apply(game, rpc.set_fee(id, -1))
 
   on pay_upkeep:
-    game = game_pay_upkeep(game)
+    game = server_apply(game, rpc.pay_upkeep())
 
   on toggle_auto:
-    game = game_toggle_auto(game)
+    game = server_apply(game, rpc.toggle_auto())
 
   on refresh_inspect:
     game = game_refresh(game)
 
   html:
+    <when test={signed_in == ""}>
+      <main class="app login-shell">
+        <section class="login-card">
+          <h1>ARTERIES</h1>
+          <p>A server-authoritative transport economy. Sign in to load your world.</p>
+          <form on-submit={sign_in}>
+            <label for="username">Account</label>
+            <input id="username" bind-value={username} maxlength="128">
+            <label for="password">Password</label>
+            <input id="password" type="password" bind-value={password} maxlength="256">
+            <button class="primary" type="submit" disabled={username == "" or password == ""}>Sign in</button>
+          </form>
+          <p class="notice">{auth_notice}</p>
+        </section>
+      </main>
+    </when>
+
+    <when test={signed_in != "" and not loaded}>
+      <main class="app login-shell">
+        <section class="login-card">
+          <h1>ARTERIES</h1>
+          <p>Signed in as <strong>{signed_in}</strong>. Resume the saved world to continue.</p>
+          <button class="primary" type="button" on-click={resume}>Resume world</button>
+          <button class="ghost" type="button" on-click={sign_out}>Sign out</button>
+          <p class="notice">Your saved world is stored on the server.</p>
+        </section>
+      </main>
+    </when>
+
+    <when test={signed_in != "" and loaded}>
     <main class="app">
       <header class="topbar">
         <div class="brand">
@@ -130,6 +187,7 @@ export component Root:
             <strong class={money_class(world)}>{world.money}</strong>
           </div>
           <button class="ghost" type="button" on-click={new_seed}>New world</button>
+          <button class="ghost" type="button" on-click={sign_out}>Sign out</button>
         </div>
       </header>
 
@@ -407,3 +465,4 @@ export component Root:
         <span class="mono">seed {world.seed} · {len(world.towns)} settlements · {tech_summary(world)}</span>
       </footer>
     </main>
+    </when>
