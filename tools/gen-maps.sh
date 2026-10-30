@@ -2,7 +2,11 @@
 # Regenerate static terrain assets from the checked Diamond terrain generator.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-DIAMOND=${DIAMOND:-/home/yria/dev/Diamond/target/debug/diamond}
+DIAMOND=${DIAMOND:-$(command -v diamond || true)}
+if [ -z "$DIAMOND" ]; then
+  echo "diamond not found; install it on PATH or set DIAMOND=/path/to/diamond" >&2
+  exit 1
+fi
 GEN="$ROOT/.diamond/gen_terrain.dia"
 TXT="$ROOT/.diamond/terrain.txt"
 mkdir -p "$ROOT/.diamond" "$ROOT/app/assets"
