@@ -177,6 +177,9 @@ button.tiny { padding: 2px 8px; font-size: 13px; border-radius: 6px; }
 .draft-node::after { background: repeating-linear-gradient(90deg, #5eead4 0 3px, transparent 3px 6px); box-shadow: 0 0 8px rgba(94,234,212,.5); }
 .marker { position: relative; z-index: 6; display: block; width: 100%; height: 100%; }
 .marker button { position: absolute; left: 50%; top: 50%; }
+/* Keep the map pin centered while pressed; the global button:active rule
+   would otherwise replace its translate(-50%, -50%) centering transform. */
+.town-marker:active, .site-marker:active { transform: translate(-50%, calc(-50% + 1px)); }
 
 .t-plains { background: linear-gradient(135deg, #283d30, #213428); }
 .t-forest { background:

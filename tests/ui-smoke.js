@@ -134,6 +134,22 @@ function assert(condition, message) {
     assert(s.badge === 'idle', 'route desk should start idle');
     assert((await page.locator('.map-image').count()) === 1, 'no terrain asset was rendered');
 
+    // Pressing a pin must not move it; the click target must stay under the cursor.
+    const pin = page.locator('.map-grid button.town-marker').first();
+    await pin.scrollIntoViewIfNeeded();
+    const pinBefore = await pin.boundingBox();
+    assert(pinBefore, 'map pin has no bounding box');
+    await page.mouse.move(pinBefore.x + pinBefore.width / 2, pinBefore.y + pinBefore.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(120);
+    const pinDuring = await pin.boundingBox();
+    await page.mouse.up();
+    assert(
+      Math.abs(pinDuring.x - pinBefore.x) < 2 &&
+        Math.abs(pinDuring.y - pinBefore.y) < 3,
+      `map pin moved while pressed: dx=${pinDuring.x - pinBefore.x} dy=${pinDuring.y - pinBefore.y}`
+    );
+
     // Any site can be inspected without starting or cancelling a survey.
     await page.locator('.map-grid button.site-marker').first().click();
     await page.waitForTimeout(450);
