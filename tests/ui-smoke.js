@@ -72,18 +72,41 @@ function assert(condition, message) {
 
   const build = async (a, b) => {
     await town(a).click();
-    await page.waitForTimeout(60);
+    await page.waitForTimeout(80);
+    const survey = page.getByRole('button', { name: /Survey route from/ });
+    assert((await survey.count()) > 0, `no survey action for ${a}`);
+    await survey.click();
+    await page.waitForTimeout(100);
     await town(b).click();
     await page.waitForTimeout(180);
-    const button = page.getByRole('button', { name: 'Build pack route' });
-    assert((await button.count()) > 0, `no survey was produced for ${a}-${b}`);
+    assert(
+      (await page.locator('.shape-row').count()) > 0,
+      `no waypoint shaping controls for ${a}-${b}`
+    );
+    await page.getByRole('button', { name: 'Bend route right' }).click();
+    await page.waitForTimeout(160);
+    await page.getByRole('button', { name: 'Auto shape' }).click();
+    await page.waitForTimeout(160);
+    const before = await page.locator('.route-card').count();
+    const button = page.getByRole('button', { name: /Start construction/ });
+    assert((await button.count()) > 0, `no construction action for ${a}-${b}`);
     assert(await button.isEnabled(), `survey for ${a}-${b} is not buildable`);
     await button.click();
-    await page.waitForTimeout(290);
+    await page.waitForTimeout(280);
     assert(
-      (await page.locator('.notice').textContent()).startsWith('Route built.'),
-      `route ${a}-${b} did not build`
+      (await page.locator('.notice').textContent()).startsWith('Construction started:'),
+      `route ${a}-${b} did not start construction`
     );
+    assert(
+      (await page.locator('.project-row').count()) > 0,
+      `no project row for ${a}-${b}`
+    );
+    for (let i = 0; i < 12; i++) {
+      if ((await page.locator('.route-card').count()) > before) return;
+      await page.getByRole('button', { name: 'Advance 1 cycle' }).click();
+      await page.waitForTimeout(190);
+    }
+    throw new Error(`construction for ${a}-${b} did not finish`);
   };
 
   try {
@@ -94,16 +117,29 @@ function assert(condition, message) {
     assert(!s.error, 'initial component error: ' + s.error);
     assert(s.year === '0', 'world did not start at year 0');
     assert(s.seed === '7', 'expected deterministic seed 7');
-    assert(s.towns.length === 4, 'expected 4 starting settlements');
+    assert(s.towns.length === 3, 'expected 3 starting settlements');
     assert(s.inspector === 'Riverford', 'expected Riverford to be selected');
     assert(s.badge === 'idle', 'route desk should start idle');
     assert((await page.locator('.patch').count()) > 0, 'no terrain was rendered');
 
+    // Any site can be inspected without starting or cancelling a survey.
+    await page.locator('.map-grid button.site-marker').first().click();
+    await page.waitForTimeout(160);
+    assert(
+      (await page.locator('.site-inspect').count()) > 0,
+      'clicking a site did not open the site inspector'
+    );
+    assert(
+      (await page.locator('.inspector-title h3').textContent()).length > 0,
+      'site inspector has no name'
+    );
+    await town('Riverford').click();
+    await page.waitForTimeout(120);
+
     for (const [a, b] of [
       ['Riverford', 'Hillcrest'],
       ['Hillcrest', 'Greenvale'],
-      ['Greenvale', 'Portmere'],
-      ['Hillcrest', 'Portmere'],
+      ['Riverford', 'Greenvale'],
     ]) {
       await build(a, b);
       await tick(2);
@@ -111,25 +147,23 @@ function assert(condition, message) {
 
     s = await state();
     assert(!s.error, 'component error after building routes: ' + s.error);
-    assert(s.routes === 4, `expected 4 routes, got ${s.routes}`);
-    assert(s.towns.length === 5, 'expected one founded settlement after four routes');
-    assert(
-      (await page.locator('.helper.cap').count()) > 0,
-      'expected the settlement charter-limit note'
-    );
+    assert(s.routes === 3, `expected 3 routes, got ${s.routes}`);
+    assert(s.towns.length === 4, 'expected one founded settlement after three routes');
 
     // Route cap: a fifth survey must be refused, not rendered as buildable.
-    await town('Portmere').click();
-    await page.waitForTimeout(60);
     await town('Hillcrest').click();
+    await page.waitForTimeout(80);
+    await page.getByRole('button', { name: /Survey route from/ }).click();
+    await page.waitForTimeout(100);
+    await town('Riverford').click();
     await page.waitForTimeout(180);
     s = await state();
     assert(
-      s.notice.includes('Four trunk routes already exist'),
+      s.notice.includes('Three trunk routes already exist'),
       'expected the four-route cap notice'
     );
     assert(
-      (await page.getByRole('button', { name: 'Build pack route' }).count()) === 0,
+      (await page.getByRole('button', { name: /Start construction/ }).count()) === 0,
       'a fifth survey should not expose a build action'
     );
 
@@ -175,7 +209,7 @@ function assert(condition, message) {
     await page.locator('.route-card button.danger').first().click();
     await page.waitForTimeout(260);
     s = await state();
-    assert(s.routes === 3, `expected 3 routes after dismantle, got ${s.routes}`);
+    assert(s.routes === 2, `expected 2 routes after dismantle, got ${s.routes}`);
     assert(!s.error, 'component error after dismantle: ' + s.error);
 
     // New world must reset routes, selection, and upkeep.
@@ -186,7 +220,7 @@ function assert(condition, message) {
     assert(s.seed === '8', 'new world did not advance the seed');
     assert(s.year === '0', 'new world did not reset the year');
     assert(s.routes === 0, 'new world kept old routes');
-    assert(s.towns.length === 4, 'new world should start with 4 settlements');
+    assert(s.towns.length === 3, 'new world should start with 3 settlements');
     assert(s.maintenance[1] === 'maintained', 'new world upkeep should be clear');
 
     assert(errors.length === 0, 'browser errors: ' + errors.join(' | '));

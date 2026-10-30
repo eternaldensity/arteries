@@ -63,6 +63,7 @@ export type Site:
 
 export type RoutePlan:
   path: List<Point>
+  bend: Int
   length: Int
   water: Int
   mountain: Int
@@ -105,6 +106,32 @@ export type BuildResult:
   message: Text
   from: Text
   to: Text
+
+export type Project:
+  id: Text
+  kind: Text
+  a: Text
+  b: Text
+  a_name: Text
+  b_name: Text
+  mode: RouteMode
+  route_id: Text
+  plan: RoutePlan
+  start_tick: Int
+  ready_tick: Int
+
+export type ProjectStart:
+  world: World
+  project: Project
+  ok: Bool
+  message: Text
+  from: Text
+  to: Text
+
+export type ProjectOutcome:
+  world: World
+  projects: List<Project>
+  messages: List<Text>
 
 export type TradeResult:
   a: Town
@@ -158,6 +185,7 @@ export type BaseRow:
 export type MarkerInfo:
   id: Text
   name: Text
+  detail: Text
   is_town: Bool
   x: Int
   y: Int
@@ -191,13 +219,18 @@ export type Selection:
   to: Text
   draft: RoutePlan
   ready: Bool
+  routing: Bool
   notice: Text
 
 export type InspectView:
   ready: Bool
+  is_site: Bool
   name: Text
   status: Text
   tone: Text
+  resource: Text
+  richness: Int
+  founded: Bool
   pop: Int
   prosperity: Int
   research: Int
@@ -219,6 +252,7 @@ export type Game:
   auto_upkeep: Bool
   last_paid_tick: Int
   upkeep_per_cycle: Int
+  projects: List<Project>
   inspect: InspectView
 
 # ---------------------------------------------------------------- constants
@@ -230,16 +264,19 @@ export fn map_h() -> Int:
   6
 
 export fn max_log() -> Int:
-  8
+  6
 
 export fn max_history() -> Int:
-  12
+  8
 
 export fn max_settlements() -> Int:
-  5
+  4
 
 export fn max_routes() -> Int:
-  4
+  3
+
+export fn max_projects() -> Int:
+  2
 
 export fn road_research() -> Int:
   45
@@ -689,10 +726,10 @@ fn empty_town() -> Town:
   Town(id: "", name: "Unknown", x: 0, y: 0, terrain: Plains, endow: zeros(len(goods())), state: TownState(pop: 0, prosperity: 0, research: 0, stock: zeros(len(goods()))))
 
 export fn empty_plan() -> RoutePlan:
-  RoutePlan(path: [], length: 0, water: 0, mountain: 0, forest: 0, money: 0, timber: 0, stone: 0, min_y: 0, max_y: 0)
+  RoutePlan(path: [], bend: 0, length: 0, water: 0, mountain: 0, forest: 0, money: 0, timber: 0, stone: 0, min_y: 0, max_y: 0)
 
 fn make_towns(seed: Int) -> List<Town>:
-  for i in indices(4):
+  for i in indices(3):
     make_town(seed, i)
 
 fn make_sites(seed: Int) -> List<Site>:
@@ -721,6 +758,16 @@ export fn town_exists(world: World, id: Text) -> Bool:
   match id == "":
     true => false
     false => find_town(world.towns, id).id != ""
+
+export fn find_site(sites: List<Site>, id: Text) -> Site:
+  find_site_at(sites, id, 0)
+
+fn find_site_at(sites: List<Site>, id: Text, i: Int) -> Site:
+  match list_get(sites, i):
+    None => Site(id: "", name: "", x: 0, y: 0, terrain: Plains, resource: Grain, richness: 0, founded: false)
+    Some(s) => match s.id == id:
+      true => s
+      false => find_site_at(sites, id, i + 1)
 
 export fn replace_town(towns: List<Town>, t: Town) -> List<Town>:
   for x in towns:
@@ -800,7 +847,9 @@ fn bend_offset(seed: Int, ax: Int, ay: Int, bx: Int, by: Int) -> Int:
   pick_bend(seed, ax, ay, bx, by, 0, 0, 100000)
 
 fn plan_points(seed: Int, ax: Int, ay: Int, bx: Int, by: Int) -> List<Point>:
-  let off = bend_offset(seed, ax, ay, bx, by)
+  plan_points_offset(seed, ax, ay, bx, by, bend_offset(seed, ax, ay, bx, by))
+
+fn plan_points_offset(seed: Int, ax: Int, ay: Int, bx: Int, by: Int, off: Int) -> List<Point>:
   let dx = bx - ax
   let dy = by - ay
   let px = sign(-dy)
@@ -855,13 +904,22 @@ export fn plan_route(world: World, a: Text, b: Text) -> RoutePlan:
   let tb = find_town(world.towns, b)
   match ta.id == "" or tb.id == "" or ta.id == tb.id:
     true => empty_plan()
-    false =>
-      let points = plan_points(world.seed, ta.x, ta.y, tb.x, tb.y)
-      let length = path_length(points)
-      let water = count_water(points, world.seed, 0)
-      let mountain = count_mountain(points, world.seed, 0)
-      let forest = count_forest(points, world.seed, 0)
-      RoutePlan(path: points, length: length, water: water, mountain: mountain, forest: forest, money: 8 + length + water * 5 + mountain * 8, timber: 1 + length / 14 + water, stone: 1 + length / 18 + mountain * 2, min_y: min_point_y(points, 0, map_h()), max_y: max_point_y(points, 0, 0))
+    false => plan_with_offset(world, ta, tb, bend_offset(world.seed, ta.x, ta.y, tb.x, tb.y))
+
+export fn plan_route_bend(world: World, a: Text, b: Text, bend: Int) -> RoutePlan:
+  let ta = find_town(world.towns, a)
+  let tb = find_town(world.towns, b)
+  match ta.id == "" or tb.id == "" or ta.id == tb.id:
+    true => empty_plan()
+    false => plan_with_offset(world, ta, tb, clamp(bend, -5, 5))
+
+fn plan_with_offset(world: World, ta: Town, tb: Town, off: Int) -> RoutePlan:
+  let points = plan_points_offset(world.seed, ta.x, ta.y, tb.x, tb.y, off)
+  let length = path_length(points)
+  let water = count_water(points, world.seed, 0)
+  let mountain = count_mountain(points, world.seed, 0)
+  let forest = count_forest(points, world.seed, 0)
+  RoutePlan(path: points, bend: off, length: length, water: water, mountain: mountain, forest: forest, money: 8 + length + water * 5 + mountain * 8, timber: 1 + length / 14 + water, stone: 1 + length / 18 + mountain * 2, min_y: min_point_y(points, 0, map_h()), max_y: max_point_y(points, 0, 0))
 
 fn near_segment(px: Int, py: Int, a: Point, b: Point) -> Bool:
   let vx = b.x - a.x
@@ -996,12 +1054,12 @@ export fn map_cell_class(world: World, c: MapCell) -> Text:
   map_cell_class_raw(c.terrain, c.route, c.draft)
 
 fn empty_marker() -> MarkerInfo:
-  MarkerInfo(id: "", name: "", is_town: false, x: 0, y: 0, terrain: Plains)
+  MarkerInfo(id: "", name: "", detail: "", is_town: false, x: 0, y: 0, terrain: Plains)
 
 fn marker_search(towns: List<Town>, sites: List<Site>, x: Int, y: Int, i: Int) -> MarkerInfo:
   match list_get(towns, i):
     Some(t) => match t.x == x and t.y == y:
-      true => MarkerInfo(id: t.id, name: t.name, is_town: true, x: t.x, y: t.y, terrain: t.terrain)
+      true => MarkerInfo(id: t.id, name: t.name, detail: "", is_town: true, x: t.x, y: t.y, terrain: t.terrain)
       false => marker_search(towns, sites, x, y, i + 1)
     None => site_marker_search(sites, x, y, 0)
 
@@ -1011,16 +1069,16 @@ fn site_marker_search(sites: List<Site>, x: Int, y: Int, i: Int) -> MarkerInfo:
     Some(s) => match s.founded:
       true => site_marker_search(sites, x, y, i + 1)
       false => match s.x == x and s.y == y:
-        true => MarkerInfo(id: s.id, name: s.name, is_town: false, x: s.x, y: s.y, terrain: s.terrain)
+        true => MarkerInfo(id: s.id, name: s.name, detail: good_short(s.resource) + " " + int_text(s.richness), is_town: false, x: s.x, y: s.y, terrain: s.terrain)
         false => site_marker_search(sites, x, y, i + 1)
 
 export fn make_markers(world: World) -> List<MarkerInfo>:
   let towns = for t in world.towns:
-    MarkerInfo(id: t.id, name: t.name, is_town: true, x: t.x, y: t.y, terrain: t.terrain)
+    MarkerInfo(id: t.id, name: t.name, detail: "", is_town: true, x: t.x, y: t.y, terrain: t.terrain)
   let groups = for s in world.sites:
     match s.founded:
       true => []
-      false => [MarkerInfo(id: s.id, name: s.name, is_town: false, x: s.x, y: s.y, terrain: s.terrain)]
+      false => [MarkerInfo(id: s.id, name: s.name, detail: good_short(s.resource) + " " + int_text(s.richness), is_town: false, x: s.x, y: s.y, terrain: s.terrain)]
   let sites = flatten_markers(groups, 0, [])
   concat_markers(towns, sites)
 
@@ -1155,17 +1213,21 @@ export fn marker_button_class(sel: Selection, m: MarkerInfo) -> Text:
 
 export fn marker_button_class_selected(selected: Text, m: MarkerInfo) -> Text:
   match m.is_town:
-    false => "site-marker"
+    false => match selected == m.id:
+      true => "site-marker selected"
+      false => "site-marker"
     true => match selected == m.id:
       true => "town-marker selected"
       false => "town-marker"
 
 export fn survey_badge(sel: Selection) -> Text:
-  match sel.ready:
-    true => "survey ready"
-    false => match sel.from == "":
-      true => "idle"
-      false => "choose destination"
+  match sel.routing:
+    false => "idle"
+    true => match sel.ready:
+      true => "survey ready"
+      false => match sel.from == "":
+        true => "idle"
+        false => "choose destination"
 
 export fn tech_next_text(world: World) -> Text:
   match world.tech_rail:
@@ -1181,12 +1243,28 @@ export fn good_detail(t: Town, g: Good) -> Text:
   good_name(g) + ": " + int_text(stock(t, g)) + " stock · need " + int_text(need_of(t, g)) + " · endowment " + int_text(endow_of(t, g))
 
 fn empty_inspect() -> InspectView:
-  InspectView(ready: false, name: "", status: "", tone: "ok", pop: 0, prosperity: 0, research: 0, terrain: "", value: 0, insight: "", shortages: "none", connected: 0, goods: zeros(len(goods())), needs: zeros(len(goods())), endows: zeros(len(goods())))
+  InspectView(ready: false, is_site: false, name: "", status: "", tone: "ok", resource: "", richness: 0, founded: false, pop: 0, prosperity: 0, research: 0, terrain: "", value: 0, insight: "", shortages: "none", connected: 0, goods: zeros(len(goods())), needs: zeros(len(goods())), endows: zeros(len(goods())))
 
 export fn inspect_view(world: World, id: Text) -> InspectView:
   let t = find_town(world.towns, id)
   match t.id == "":
-    true => empty_inspect()
+    true =>
+      let s = find_site(world.sites, id)
+      match s.id == "":
+        true => empty_inspect()
+        false =>
+          let status = match s.founded:
+            true => "founded"
+            false => "unclaimed"
+          let tone = match s.founded:
+            true => "ok"
+            false => "warn"
+          let insight = match s.founded:
+            true => s.name + " has already been founded."
+            false => match len(world.towns) >= max_settlements():
+              true => "Unclaimed " + good_name(s.resource) + " site. The frontier charter has reached its settlement limit."
+              false => "Unclaimed " + good_name(s.resource) + " site. Route a line within one tile to found a settlement here."
+          InspectView(ready: true, is_site: true, name: s.name, status: status, tone: tone, resource: good_name(s.resource), richness: s.richness, founded: s.founded, pop: 0, prosperity: 0, research: 0, terrain: terrain_name(s.terrain), value: s.richness, insight: insight, shortages: "none", connected: 0, goods: zeros(len(goods())), needs: zeros(len(goods())), endows: zeros(len(goods())))
     false =>
       let goods_now = for g in goods():
         stock(t, g)
@@ -1194,7 +1272,7 @@ export fn inspect_view(world: World, id: Text) -> InspectView:
         need_of(t, g)
       let endows = for g in goods():
         endow_of(t, g)
-      InspectView(ready: true, name: t.name, status: status_text(t), tone: status_tone(t), pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, terrain: terrain_name(t.terrain), value: market_value(t), insight: town_insight(world, t), shortages: shortage_text(t), connected: connected_routes(world, t.id), goods: goods_now, needs: needs, endows: endows)
+      InspectView(ready: true, is_site: false, name: t.name, status: status_text(t), tone: status_tone(t), resource: "", richness: 0, founded: false, pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, terrain: terrain_name(t.terrain), value: market_value(t), insight: town_insight(world, t), shortages: shortage_text(t), connected: connected_routes(world, t.id), goods: goods_now, needs: needs, endows: endows)
 
 export fn inspect_stock(iv: InspectView, g: Good) -> Int:
   nth_int(iv.goods, good_index(g))
@@ -1212,6 +1290,13 @@ export fn upkeep_signal_text(game: Game) -> Text:
   "Upkeep due: " + int_text(upkeep_due(game)) + " crowns. " + match maintenance_text(game) == "degraded":
     true => "Capacity is degraded."
     false => "Pay it to keep routes maintained."
+
+export fn survey_action_text(iv: InspectView) -> Text:
+  match iv.ready:
+    false => "Select a settlement to survey"
+    true => match iv.is_site:
+      true => "Select a settlement to survey"
+      false => "Survey route from " + iv.name
 
 # ---------------------------------------------------------------- presentation
 
@@ -1618,6 +1703,135 @@ export fn adjust_fee(world: World, id: Text, delta: Int) -> World:
       let changed = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: clamp(r.fee + delta, 0, 5), traffic: r.traffic, capacity: r.capacity, upkeep: r.upkeep)
       with_routes(world, replace_route(world.routes, changed))
 
+fn empty_project() -> Project:
+  empty_project()
+
+fn mode_work(mode: RouteMode) -> Int:
+  match mode:
+    NoRoute => 0
+    Path => 2
+    Road => 4
+    River => 5
+    Rail => 6
+
+fn town_build_speed(t: Town) -> Int:
+  match t.state.research >= 160:
+    true => 2
+    false => match t.state.research >= 80:
+      true => 1
+      false => 0
+
+fn construction_speed(world: World, a: Text, b: Text, mode: RouteMode) -> Int:
+  let ta = find_town(world.towns, a)
+  let tb = find_town(world.towns, b)
+  let best = max_int(ta.state.research, tb.state.research)
+  let tech = match mode:
+    Path => match best >= 50:
+      true => 1
+      false => 0
+    Road => match world.tech_road:
+      true => 2
+      false => 0
+    River => match world.tech_river:
+      true => 2
+      false => 0
+    Rail => match world.tech_rail:
+      true => 2
+      false => 0
+    NoRoute => 0
+  1 + town_build_speed(ta) + town_build_speed(tb) + tech
+
+export fn construction_time(world: World, a: Text, b: Text, plan: RoutePlan, mode: RouteMode) -> Int:
+  let work = plan.length / 2 + mode_work(mode)
+  let speed = construction_speed(world, a, b, mode)
+  max_int(1, (work + speed - 1) / speed)
+
+fn begin_route(world: World, a: Text, b: Text, plan: RoutePlan) -> ProjectStart:
+  match a == "" or b == "" or a == b:
+    true => ProjectStart(world: world, project: empty_project(), ok: false, message: "Choose two different settlements.", from: a, to: b)
+    false => match route_exists(world.routes, a, b, 0):
+      true => ProjectStart(world: world, project: empty_project(), ok: false, message: "A route already connects these settlements.", from: a, to: b)
+      false => match world.money < plan.money:
+        true => ProjectStart(world: world, project: empty_project(), ok: false, message: "The treasury needs " + int_text(plan.money) + " crowns for this survey.", from: a, to: b)
+        false => match combined_stock(world, a, b, Timber) < plan.timber or combined_stock(world, a, b, Stone) < plan.stone:
+          true => ProjectStart(world: world, project: empty_project(), ok: false, message: "Materials are short: " + int_text(plan.timber) + " timber and " + int_text(plan.stone) + " stone are needed.", from: a, to: b)
+          false =>
+            let paid = pay_plan_list(world.towns, a, b, plan)
+            let w1 = with_towns(world, paid)
+            let w2 = with_resources(w1, world.money - plan.money, w1.log)
+            let time = construction_time(world, a, b, plan, Path)
+            let ta = find_town(world.towns, a)
+            let tb = find_town(world.towns, b)
+            let project = Project(id: a + "-" + b, kind: "route", a: a, b: b, a_name: ta.name, b_name: tb.name, mode: Path, route_id: "", plan: plan, start_tick: world.tick, ready_tick: world.tick + time)
+            let message = "Construction started: " + ta.name + " to " + tb.name + ", ready in " + int_text(time) + " cycles."
+            let w3 = record(w2, message)
+            ProjectStart(world: w3, project: project, ok: true, message: message, from: "", to: "")
+
+fn begin_upgrade(world: World, id: Text) -> ProjectStart:
+  let r = route_by_id(world.routes, id, 0)
+  match r.id == "":
+    true => ProjectStart(world: world, project: empty_project(), ok: false, message: "Route not found.", from: "", to: "")
+    false => match can_upgrade(world, r):
+      false => ProjectStart(world: world, project: empty_project(), ok: false, message: "Not enough technology, crowns, or materials to upgrade " + r.a_name + " to " + r.b_name + ".", from: "", to: "")
+      true =>
+        let next_mode = match r.mode:
+          Path => Road
+          Road => River
+          River => Rail
+          _ => Rail
+        let cost = match r.mode:
+          Path => 35
+          Road => 60
+          River => 90
+          _ => 0
+        let pay_kind = match r.mode:
+          Path => Stone
+          Road => Timber
+          River => Stone
+          _ => Stone
+        let pay_amount = match r.mode:
+          Path => 2
+          Road => 4
+          River => 4
+          _ => 0
+        let paid = pay_good(world, r.a, r.b, pay_kind, pay_amount)
+        let w1 = with_towns(world, paid)
+        let w2 = match r.mode:
+          River => with_towns(w1, pay_good(w1, r.a, r.b, Tools, 2))
+          _ => w1
+        let time = construction_time(world, r.a, r.b, r.plan, next_mode)
+        let project = Project(id: r.id + "-upgrade", kind: "upgrade", a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: next_mode, route_id: r.id, plan: r.plan, start_tick: world.tick, ready_tick: world.tick + time)
+        let message = "Upgrade started: " + r.a_name + " to " + r.b_name + " as " + route_text(next_mode) + ", ready in " + int_text(time) + " cycles."
+        let w3 = record(w2, message)
+        ProjectStart(world: w3, project: project, ok: true, message: message, from: "", to: "")
+
+fn complete_project(world: World, project: Project) -> World:
+  match project.kind == "route":
+    true =>
+      let route = Route(id: project.a + "-" + project.b, a: project.a, b: project.b, a_name: project.a_name, b_name: project.b_name, mode: project.mode, plan: project.plan, fee: 1, traffic: 0, capacity: route_capacity(project.mode, project.plan), upkeep: route_upkeep(project.mode, project.plan))
+      let log1 = append_message(world.log, "Construction finished: " + project.a_name + " to " + project.b_name + " is open.")
+      let found = found_lists(world.towns, world.sites, log1, project.plan, 0, 1)
+      World(seed: world.seed, tick: world.tick, money: world.money, towns: found.towns, sites: found.sites, routes: list_append(world.routes, route), log: found.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+    false =>
+      let r = route_by_id(world.routes, project.route_id, 0)
+      match r.id == "":
+        true => record(world, project.a_name + " to " + project.b_name + " upgrade was abandoned because the route no longer exists.")
+        false =>
+          let upgraded = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: project.mode, plan: r.plan, fee: r.fee, traffic: r.traffic, capacity: route_capacity(project.mode, r.plan), upkeep: route_upkeep(project.mode, r.plan))
+          record(with_routes(world, replace_route(world.routes, upgraded)), "Construction finished: " + r.a_name + " to " + r.b_name + " is now a " + route_text(project.mode) + ".")
+
+fn complete_message(project: Project) -> Text:
+  match project.kind == "route":
+    true => "Construction finished: " + project.a_name + " to " + project.b_name + " is open."
+    false => "Upgrade finished: " + project.a_name + " to " + project.b_name + " is now " + route_text(project.mode) + "."
+
+fn advance_projects(world: World, projects: List<Project>, i: Int, kept: List<Project>, messages: List<Text>) -> ProjectOutcome:
+  match list_get(projects, i):
+    None => ProjectOutcome(world: world, projects: kept, messages: messages)
+    Some(p) => match p.ready_tick <= world.tick:
+      true => advance_projects(complete_project(world, p), projects, i + 1, kept, list_append(messages, complete_message(p)))
+      false => advance_projects(world, projects, i + 1, list_append(kept, p), messages)
+
 # ---------------------------------------------------------------- simulation
 
 fn nth_good(i: Int) -> Good:
@@ -1905,6 +2119,7 @@ fn flatten_texts(xs: List<List<Text>>, i: Int, acc: List<Text>) -> List<Text>:
 fn is_plain(t: Terrain) -> Bool:
   match t:
     Plains => true
+    Forest => true
     _ => false
 
 fn node_css(mode: Int) -> Text:
@@ -1998,25 +2213,15 @@ fn length_class(n: Int) -> Text:
                         true => "l11"
                         false => "l12"
 
+fn delta_class(dx: Int, dy: Int) -> Text:
+  "d-" + int_text(dx) + "-" + int_text(dy)
+
 fn segment_nodes(a: Point, b: Point, seg: Int, rid: Text, css: Text) -> List<RouteNode>:
   let dx = b.x - a.x
   let dy = b.y - a.y
-  let steps = max_int(abs_int(dx), abs_int(dy))
-  match steps <= 0:
+  match dx == 0 and dy == 0:
     true => []
-    false =>
-      let chunks = (steps + 1) / 2
-      for i in indices(chunks):
-        let t0 = i * 2
-        let t1 = min_int(t0 + 2, steps)
-        let px = lerp(a.x, b.x, t0, steps)
-        let py = lerp(a.y, b.y, t0, steps)
-        let qx = lerp(a.x, b.x, t1, steps)
-        let qy = lerp(a.y, b.y, t1, steps)
-        let sdx = qx - px
-        let sdy = qy - py
-        let span = max_int(abs_int(sdx), abs_int(sdy)) + (min_int(abs_int(sdx), abs_int(sdy)) + 1) / 2
-        RouteNode(key: rid + "-" + int_text(seg) + "-" + int_text(i), position: position_class(px, py), css: css + " " + angle_class(sdx, sdy) + " " + length_class(clamp(span, 1, 12)))
+    false => [RouteNode(key: rid + "-" + int_text(seg), position: position_class(a.x, a.y), css: css + " " + delta_class(dx, dy))]
 
 fn path_nodes(path: List<Point>, seg: Int, rid: Text, css: Text) -> List<RouteNode>:
   match list_get(path, seg):
@@ -2047,54 +2252,136 @@ export fn draft_nodes(plan: RoutePlan, ready: Bool) -> List<RouteNode>:
 # ---------------------------------------------------------------- selection and game
 
 export fn empty_selection() -> Selection:
-  Selection(selected: "", from: "", to: "", draft: empty_plan(), ready: false, notice: "Click a settlement to inspect it, then click a second settlement to survey a route.")
+  Selection(selected: "", from: "", to: "", draft: empty_plan(), ready: false, routing: false, notice: "Click any settlement or site to inspect it. Use Survey route in the inspector to begin a route.")
 
-fn selection_with(sel: Selection, selected: Text, from: Text, to: Text, draft: RoutePlan, ready: Bool, notice: Text) -> Selection:
-  Selection(selected: selected, from: from, to: to, draft: draft, ready: ready, notice: notice)
+fn selection_with(sel: Selection, selected: Text, from: Text, to: Text, draft: RoutePlan, ready: Bool, routing: Bool, notice: Text) -> Selection:
+  Selection(selected: selected, from: from, to: to, draft: draft, ready: ready, routing: routing, notice: notice)
 
 export fn selection_pick(world: World, sel: Selection, id: Text) -> Selection:
+  let t = find_town(world.towns, id)
   let name = marker_name(world, id)
-  match find_town(world.towns, id).id == "":
-    true => selection_with(sel, sel.selected, sel.from, sel.to, sel.draft, sel.ready, name + " is an unclaimed site. Build a route past it to found a settlement.")
-    false => selection_pick_town(world, sel, id, name)
+  match t.id == "":
+    true =>
+      let s = find_site(world.sites, id)
+      let notice = match s.id == "":
+        true => "Nothing is here."
+        false => s.name + " · " + good_name(s.resource) + " site · richness " + int_text(s.richness) + ". Route a line within one tile to found it."
+      selection_with(sel, id, sel.from, sel.to, sel.draft, sel.ready, sel.routing, notice)
+    false => match sel.routing:
+      false => selection_with(sel, id, "", "", empty_plan(), false, false, name + " selected. Use Survey route in the inspector to begin.")
+      true => selection_pick_town(world, sel, id, name)
 
 fn selection_pick_town(world: World, sel: Selection, id: Text, name: Text) -> Selection:
   match sel.from == "":
-    true => selection_with(sel, id, id, "", empty_plan(), false, "Origin: " + name + ". Click a destination to survey a route.")
+    true => selection_with(sel, id, id, "", empty_plan(), false, true, "Origin: " + name + ". Click a destination to survey a route.")
     false => match sel.from == id:
-      true => selection_with(sel, id, "", "", empty_plan(), false, "Route selection cleared.")
+      true => selection_with(sel, id, "", "", empty_plan(), false, false, "Route selection cleared.")
       false => match sel.to == "":
         true => match len(world.routes) >= max_routes():
-          true => selection_with(sel, id, "", "", empty_plan(), false, "Four trunk routes already exist. Dismantle one before surveying another.")
+          true => selection_with(sel, id, "", "", empty_plan(), false, false, "Three trunk routes already exist. Dismantle one before surveying another.")
           false =>
             let plan = plan_route(world, sel.from, id)
             let ready = plan.length > 0
             let notice = match ready:
               true => "Survey ready: " + int_text(plan.length) + " leagues, " + int_text(plan.money) + " crowns, " + int_text(plan.timber) + " timber, " + int_text(plan.stone) + " stone."
               false => "That pair cannot be surveyed."
-            selection_with(sel, id, sel.from, id, plan, ready, notice)
-        false => selection_with(sel, id, id, "", empty_plan(), false, "Origin moved to " + name + ". Click a destination.")
+            selection_with(sel, id, sel.from, id, plan, ready, true, notice)
+        false => selection_with(sel, id, id, "", empty_plan(), false, true, "Origin moved to " + name + ". Click a destination.")
+
+export fn selection_start(world: World, sel: Selection) -> Selection:
+  let t = find_town(world.towns, sel.selected)
+  match t.id == "":
+    true => selection_with(sel, sel.selected, sel.from, sel.to, sel.draft, sel.ready, sel.routing, "Select a settlement before starting a route survey.")
+    false => selection_with(sel, sel.selected, sel.selected, "", empty_plan(), false, true, "Origin: " + t.name + ". Click a destination to survey a route.")
+
+export fn selection_bend(world: World, sel: Selection, delta: Int) -> Selection:
+  match sel.ready:
+    false => sel
+    true =>
+      let bend = clamp(sel.draft.bend + delta, -5, 5)
+      let plan = plan_route_bend(world, sel.from, sel.to, bend)
+      selection_with(sel, sel.selected, sel.from, sel.to, plan, plan.length > 0, true, "Route shape: bend " + int_text(bend) + ". " + int_text(plan.length) + " leagues, " + int_text(plan.money) + " crowns.")
+
+export fn selection_auto_shape(world: World, sel: Selection) -> Selection:
+  match sel.ready:
+    false => sel
+    true =>
+      let plan = plan_route(world, sel.from, sel.to)
+      selection_with(sel, sel.selected, sel.from, sel.to, plan, true, true, "Route shape reset to the terrain survey.")
 
 export fn selection_cancel(sel: Selection) -> Selection:
   empty_selection()
 
-export fn can_build_route(world: World, sel: Selection) -> Bool:
-  sel.ready and len(world.routes) < max_routes() and world.money >= sel.draft.money and combined_stock(world, sel.from, sel.to, Timber) >= sel.draft.timber and combined_stock(world, sel.from, sel.to, Stone) >= sel.draft.stone and not route_exists(world.routes, sel.from, sel.to, 0)
+fn route_project_count(projects: List<Project>) -> Int:
+  let flags = for p in projects:
+    bool_int(p.kind == "route")
+  total(flags)
 
-export fn build_blocker(world: World, sel: Selection) -> Text:
+fn has_project_for(projects: List<Project>, id: Text) -> Bool:
+  let flags = for p in projects:
+    bool_int(p.route_id == id or p.id == id)
+  total(flags) > 0
+
+export fn can_build_route(game: Game) -> Bool:
+  let sel = game.sel
+  let slots = len(game.world.routes) + route_project_count(game.projects)
+  sel.ready and slots < max_routes() and len(game.projects) < max_projects() and not has_project_for(game.projects, sel.from + "-" + sel.to) and game.world.money >= sel.draft.money and combined_stock(game.world, sel.from, sel.to, Timber) >= sel.draft.timber and combined_stock(game.world, sel.from, sel.to, Stone) >= sel.draft.stone and not route_exists(game.world.routes, sel.from, sel.to, 0)
+
+export fn build_blocker(game: Game) -> Text:
+  let sel = game.sel
+  let world = game.world
+  let slots = len(world.routes) + route_project_count(game.projects)
   match sel.ready:
     false => "Survey a route first."
-    true => match len(world.routes) >= max_routes():
-      true => "Four trunk routes already exist. Dismantle one before surveying another."
-      false => match route_exists(world.routes, sel.from, sel.to, 0):
-        true => "A route already connects these settlements."
-        false => match world.money < sel.draft.money:
-          true => "Need " + int_text(sel.draft.money) + " crowns; treasury has " + int_text(world.money) + "."
-          false => match combined_stock(world, sel.from, sel.to, Timber) < sel.draft.timber:
-            true => "Need " + int_text(sel.draft.timber) + " timber at the endpoints."
-            false => match combined_stock(world, sel.from, sel.to, Stone) < sel.draft.stone:
-              true => "Need " + int_text(sel.draft.stone) + " stone at the endpoints."
-              false => "Ready to build."
+    true => match len(game.projects) >= max_projects():
+      true => "Two construction projects are already active. Wait for one to finish."
+      false => match has_project_for(game.projects, sel.from + "-" + sel.to):
+        true => "A route between these settlements is already under construction."
+        false => match slots >= max_routes():
+          true => "Three trunk routes are already built or under construction."
+          false => match route_exists(world.routes, sel.from, sel.to, 0):
+            true => "A route already connects these settlements."
+            false => match world.money < sel.draft.money:
+              true => "Need " + int_text(sel.draft.money) + " crowns; treasury has " + int_text(world.money) + "."
+              false => match combined_stock(world, sel.from, sel.to, Timber) < sel.draft.timber:
+                true => "Need " + int_text(sel.draft.timber) + " timber at the endpoints."
+                false => match combined_stock(world, sel.from, sel.to, Stone) < sel.draft.stone:
+                  true => "Need " + int_text(sel.draft.stone) + " stone at the endpoints."
+                  false => "Ready to start construction."
+
+export fn construction_preview(game: Game) -> Text:
+  match game.sel.ready:
+    true => int_text(construction_time(game.world, game.sel.from, game.sel.to, game.sel.draft, Path)) + " cycles"
+    false => "-"
+
+export fn build_button_text(game: Game) -> Text:
+  match game.sel.ready:
+    true => "Start construction · " + construction_preview(game)
+    false => "Start construction"
+
+export fn can_start_upgrade(game: Game, route: Route) -> Bool:
+  len(game.projects) < max_projects() and not has_project_for(game.projects, route.id) and can_upgrade(game.world, route)
+
+fn next_route_mode(mode: RouteMode) -> RouteMode:
+  match mode:
+    Path => Road
+    Road => River
+    River => Rail
+    _ => Rail
+
+export fn upgrade_time_text(game: Game, route: Route) -> Text:
+  int_text(construction_time(game.world, route.a, route.b, route.plan, next_route_mode(route.mode))) + " cycles"
+
+export fn project_remaining(p: Project, tick: Int) -> Int:
+  max_int(0, p.ready_tick - tick)
+
+export fn project_title(p: Project) -> Text:
+  p.a_name + " → " + p.b_name
+
+export fn project_action_text(p: Project) -> Text:
+  match p.kind == "route":
+    true => "new " + route_text(p.mode)
+    false => "upgrade to " + route_text(p.mode)
 
 fn route_rows(routes: List<Route>) -> List<List<Int>>:
   for y in indices(map_h()):
@@ -2105,39 +2392,63 @@ fn route_at_cell(routes: List<Route>, x: Int, y: Int) -> Int:
   best_route_code(routes, x, y, 0, 0)
 
 fn first_selection(world: World) -> Selection:
-  Selection(selected: "t0", from: "", to: "", draft: empty_plan(), ready: false, notice: "Riverford is selected. Inspect the frontier, then click two settlements to survey a route.")
+  Selection(selected: "t0", from: "", to: "", draft: empty_plan(), ready: false, routing: false, notice: "Riverford is selected. Click any settlement or site to inspect it, or use Survey route to begin.")
 
 export fn new_game(seed: Int) -> Game:
   let world = new_world(seed)
-  Game(world: world, sel: first_selection(world), notice: "New world generated. Connect complementary settlements to start the economy.", last_ok: true, route_groups: route_groups(world.routes), auto_upkeep: false, last_paid_tick: 0, upkeep_per_cycle: total_upkeep(world.routes), inspect: inspect_view(world, "t0"))
+  Game(world: world, sel: first_selection(world), notice: "New world generated. Connect complementary settlements to start the economy.", last_ok: true, route_groups: route_groups(world.routes), auto_upkeep: false, last_paid_tick: 0, upkeep_per_cycle: total_upkeep(world.routes), projects: [], inspect: inspect_view(world, "t0"))
 
 export fn game_pick(game: Game, id: Text) -> Game:
   let sel = selection_pick(game.world, game.sel, id)
-  Game(world: game.world, sel: sel, notice: sel.notice, last_ok: game.last_ok, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: inspect_view(game.world, sel.selected))
+  Game(world: game.world, sel: sel, notice: sel.notice, last_ok: game.last_ok, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: inspect_view(game.world, sel.selected))
 
 export fn game_cancel(game: Game) -> Game:
-  Game(world: game.world, sel: empty_selection(), notice: "Route selection cleared.", last_ok: game.last_ok, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: empty_inspect())
+  Game(world: game.world, sel: empty_selection(), notice: "Route selection cleared.", last_ok: game.last_ok, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: empty_inspect())
+
+export fn game_start_route(game: Game) -> Game:
+  let sel = selection_start(game.world, game.sel)
+  Game(world: game.world, sel: sel, notice: sel.notice, last_ok: game.last_ok, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: inspect_view(game.world, sel.selected))
+
+export fn game_bend(game: Game, delta: Int) -> Game:
+  let sel = selection_bend(game.world, game.sel, delta)
+  Game(world: game.world, sel: sel, notice: sel.notice, last_ok: game.last_ok, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
+
+export fn game_auto_shape(game: Game) -> Game:
+  let sel = selection_auto_shape(game.world, game.sel)
+  Game(world: game.world, sel: sel, notice: sel.notice, last_ok: game.last_ok, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
+
+fn drop_projects(projects: List<Project>, id: Text, i: Int, acc: List<Project>) -> List<Project>:
+  match i >= len(projects):
+    true => list_reverse(acc)
+    false =>
+      let p = match list_get(projects, i):
+        Some(v) => v
+        None => empty_project()
+      match p.route_id == id or p.id == id:
+        true => drop_projects(projects, id, i + 1, acc)
+        false => drop_projects(projects, id, i + 1, list_append(acc, p))
 
 export fn game_build(game: Game) -> Game:
-  let result = build_route(game.world, game.sel.from, game.sel.to, game.sel.draft)
-  let next_sel = match result.ok:
-    true => Selection(selected: game.sel.to, from: "", to: "", draft: empty_plan(), ready: false, notice: "")
-    false => game.sel
-  let chosen = match result.ok:
-    true => next_sel.selected
-    false => game.sel.selected
-  Game(world: result.world, sel: next_sel, notice: result.message, last_ok: result.ok, route_groups: route_groups(result.world.routes), auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: total_upkeep(result.world.routes), inspect: inspect_view(result.world, chosen))
+  let result = begin_route(game.world, game.sel.from, game.sel.to, game.sel.draft)
+  match result.ok:
+    false => Game(world: game.world, sel: game.sel, notice: result.message, last_ok: false, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
+    true =>
+      let next_sel = Selection(selected: game.sel.to, from: "", to: "", draft: empty_plan(), ready: false, routing: false, notice: "")
+      Game(world: result.world, sel: next_sel, notice: result.message, last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: list_append(game.projects, result.project), inspect: inspect_view(result.world, next_sel.selected))
 
 export fn game_upgrade(game: Game, id: Text) -> Game:
-  let result = upgrade_route(game.world, id)
-  Game(world: result.world, sel: game.sel, notice: result.message, last_ok: result.ok, route_groups: route_groups(result.world.routes), auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: total_upkeep(result.world.routes), inspect: inspect_view(result.world, game.sel.selected))
+  let result = begin_upgrade(game.world, id)
+  match result.ok:
+    false => Game(world: game.world, sel: game.sel, notice: result.message, last_ok: false, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
+    true => Game(world: result.world, sel: game.sel, notice: result.message, last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: list_append(game.projects, result.project), inspect: inspect_view(result.world, game.sel.selected))
 
 export fn game_demolish(game: Game, id: Text) -> Game:
   let result = demolish_route(game.world, id)
-  Game(world: result.world, sel: game.sel, notice: result.message, last_ok: result.ok, route_groups: route_groups(result.world.routes), auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: total_upkeep(result.world.routes), inspect: inspect_view(result.world, game.sel.selected))
+  let projects = drop_projects(game.projects, id, 0, [])
+  Game(world: result.world, sel: game.sel, notice: result.message, last_ok: result.ok, route_groups: route_groups(result.world.routes), auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: total_upkeep(result.world.routes), projects: projects, inspect: inspect_view(result.world, game.sel.selected))
 
 export fn game_fee(game: Game, id: Text, delta: Int) -> Game:
-  Game(world: adjust_fee(game.world, id, delta), sel: game.sel, notice: "Toll adjusted on the selected route.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: game.inspect)
+  Game(world: adjust_fee(game.world, id, delta), sel: game.sel, notice: "Toll adjusted on the selected route.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
 
 export fn upkeep_due(game: Game) -> Int:
   match game.auto_upkeep:
@@ -2156,7 +2467,7 @@ fn refresh_inspect_light(world: World, id: Text, iv: InspectView) -> InspectView
     false =>
       let goods_now = for g in goods():
         stock(t, g)
-      InspectView(ready: true, name: t.name, status: status_text(t), tone: status_tone(t), pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, terrain: terrain_name(t.terrain), value: market_value(t), insight: iv.insight, shortages: iv.shortages, connected: connected_routes(world, t.id), goods: goods_now, needs: iv.needs, endows: iv.endows)
+      InspectView(ready: true, is_site: false, name: t.name, status: status_text(t), tone: status_tone(t), resource: "", richness: 0, founded: false, pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, terrain: terrain_name(t.terrain), value: market_value(t), insight: iv.insight, shortages: iv.shortages, connected: connected_routes(world, t.id), goods: goods_now, needs: iv.needs, endows: iv.endows)
 
 export fn game_tick(game: Game, n: Int) -> Game:
   let before = game.world.tick
@@ -2166,29 +2477,43 @@ export fn game_tick(game: Game, n: Int) -> Game:
     false => match unpaid >= 3:
       true => 50
       false => 100
-  let world = run_ticks_scaled(game.world, n, scale)
+  let ticked = run_ticks_scaled(game.world, n, scale)
+  let outcome = match len(game.projects) == 0:
+    true => ProjectOutcome(world: ticked, projects: [], messages: [])
+    false => advance_projects(ticked, game.projects, 0, [], [])
+  let world_after = outcome.world
+  let completed = len(outcome.messages) > 0
+  let groups = match completed:
+    true => route_groups(world_after.routes)
+    false => game.route_groups
+  let upkeep = match completed:
+    true => total_upkeep(world_after.routes)
+    false => game.upkeep_per_cycle
   let money2 = match game.auto_upkeep:
-    true => world.money - game.upkeep_per_cycle * n
-    false => world.money
+    true => world_after.money - game.upkeep_per_cycle * n
+    false => world_after.money
   let world2 = match game.auto_upkeep:
-    true => set_money(world, money2)
-    false => world
+    true => set_money(world_after, money2)
+    false => world_after
   let paid_tick = match game.auto_upkeep:
     true => world2.tick
     false => game.last_paid_tick
-  let iv = game.inspect
-  Game(world: world2, sel: game.sel, notice: "Advanced " + int_text(world.tick - before) + " cycles. Year " + int_text(world.tick) + ".", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: iv)
+  let base = "Advanced " + int_text(world_after.tick - before) + " cycles. Year " + int_text(world_after.tick) + "."
+  let extra = match completed:
+    true => " " + join_nonempty(outcome.messages, 0, "")
+    false => ""
+  Game(world: world2, sel: game.sel, notice: base + extra, last_ok: true, route_groups: groups, auto_upkeep: game.auto_upkeep, last_paid_tick: paid_tick, upkeep_per_cycle: upkeep, projects: outcome.projects, inspect: game.inspect)
 
 export fn game_pay_upkeep(game: Game) -> Game:
   let due = upkeep_due(game)
   match due <= 0:
-    true => Game(world: game.world, sel: game.sel, notice: "No upkeep is due.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: game.inspect)
+    true => Game(world: game.world, sel: game.sel, notice: "No upkeep is due.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
     false => match game.world.money < due:
-      true => Game(world: game.world, sel: game.sel, notice: "The treasury cannot cover " + int_text(due) + " crowns of upkeep.", last_ok: false, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: game.inspect)
-      false => Game(world: set_money(game.world, game.world.money - due), sel: game.sel, notice: "Paid " + int_text(due) + " crowns of upkeep. Routes are maintained.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.world.tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: game.inspect)
+      true => Game(world: game.world, sel: game.sel, notice: "The treasury cannot cover " + int_text(due) + " crowns of upkeep.", last_ok: false, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
+      false => Game(world: set_money(game.world, game.world.money - due), sel: game.sel, notice: "Paid " + int_text(due) + " crowns of upkeep. Routes are maintained.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.world.tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
 
 export fn game_refresh(game: Game) -> Game:
-  Game(world: game.world, sel: game.sel, notice: "Inspector refreshed.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: inspect_view(game.world, game.sel.selected))
+  Game(world: game.world, sel: game.sel, notice: "Inspector refreshed.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: inspect_view(game.world, game.sel.selected))
 
 export fn game_toggle_auto(game: Game) -> Game:
   let on = not game.auto_upkeep
@@ -2198,7 +2523,7 @@ export fn game_toggle_auto(game: Game) -> Game:
   let paid_tick = match on:
     true => game.world.tick
     false => game.last_paid_tick
-  Game(world: game.world, sel: game.sel, notice: notice, last_ok: true, route_groups: game.route_groups, auto_upkeep: on, last_paid_tick: paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, inspect: game.inspect)
+  Game(world: game.world, sel: game.sel, notice: notice, last_ok: true, route_groups: game.route_groups, auto_upkeep: on, last_paid_tick: paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
 
 export fn maintenance_text(game: Game) -> Text:
   match game.auto_upkeep:
@@ -2226,7 +2551,7 @@ export fn auto_text(on: Bool) -> Text:
 export fn game_new_seed(game: Game) -> Game:
   let seed = game.world.seed + 1
   let world = new_world(seed)
-  Game(world: world, sel: first_selection(world), notice: "Generated world " + int_text(seed) + ".", last_ok: true, route_groups: route_groups(world.routes), auto_upkeep: false, last_paid_tick: 0, upkeep_per_cycle: total_upkeep(world.routes), inspect: inspect_view(world, "t0"))
+  Game(world: world, sel: first_selection(world), notice: "Generated world " + int_text(seed) + ".", last_ok: true, route_groups: route_groups(world.routes), auto_upkeep: false, last_paid_tick: 0, upkeep_per_cycle: total_upkeep(world.routes), projects: [], inspect: inspect_view(world, "t0"))
 
 
 fn nth_int_list(xs: List<List<Int>>, i: Int) -> List<Int>:

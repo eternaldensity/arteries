@@ -31,9 +31,11 @@ Every seed produces a different 10 × 6 frontier:
 - terrain is generated from the seed (plains, forest, hills, mountains, water,
   coast, marsh);
 - a meandering river, a coastline, hills, and forest cover are laid over it;
-- four settlements start in different corners of the map with complementary
+- three settlements start in different corners of the map with complementary
   endowments;
-- three unclaimed resource sites can be founded by routing past them.
+- three unclaimed resource sites can be founded by routing past them;
+- site markers show their resource and richness directly on the map, and any
+  site can be clicked for a full inspector panel.
 
 The map is implicit: terrain is a pure function of `(seed, x, y)`, so the same
 seed always reproduces the same world. Settlement layouts are mirrored by the
@@ -46,6 +48,10 @@ Routes are not fixed links. Click two settlements to survey one:
 - the survey proposes a five-point polyline;
 - each waypoint bends toward cheaper terrain, so routes visibly avoid water,
   mountains, and bad ground where they can;
+- the Route desk can bend the interior waypoints left or right before building,
+  or return to the automatic terrain survey;
+- built routes are drawn as exact 2D segments, so diagonals follow their real
+  angle and length;
 - length, river crossings, mountain crossings, construction cost, material
   cost, capacity, and upkeep all derive from that geometry;
 - built routes are drawn as real line segments across the map, one segment per
@@ -83,6 +89,20 @@ frontier moving. Discoveries are local: a settlement's research unlocks a
 transport mode for the whole map, but the research itself has to happen
 somewhere connected.
 
+### Construction takes time
+
+Links are not instant. Starting a new route or an upgrade creates a project:
+
+- the project pays its crowns and materials up front;
+- construction time depends on route length and the type of link being built;
+- settlements contribute construction speed through their research: settlements
+  at 80+ research speed work up, and at 160+ research they speed it up further;
+- the relevant transport technology adds another speed bonus for roads, river
+  barges, and rail;
+- a maximum of two projects can run at once;
+- a new settlement is founded only when the route that passes its site opens,
+  not when construction starts.
+
 ### Manual upkeep, optional automation
 
 New worlds start with **manual upkeep**:
@@ -106,29 +126,35 @@ then trades, grows, and researches like any other settlement.
 The prototype has deliberate charter limits so it stays inside the runtime's
 bounded evaluation budget:
 
-- **4 settlements** at start;
+- **3 settlements** at start;
 - **3 unclaimed sites**;
-- at most **5 settlements** total;
-- at most **4 trunk routes** at once.
+- at most **4 settlements** total;
+- at most **3 trunk routes** at once;
+- at most **2 construction projects** at once.
 
 Dismantle a route to free a slot. The UI explains both caps when you reach them.
 
 ## Using the interface
 
-- **Frontier survey** — click a settlement to select it, then click a second
-  settlement to survey. The Route desk shows the real length, crown cost,
-  material cost, river crossings, and forest crossings. Build when the cost is
-  met; cancel to clear the survey.
+- **Frontier survey** — click any settlement or site to inspect it. Use
+  **Survey route** from the selected settlement, then click a destination. The
+  Route desk shows the real length, crown cost, material cost, river crossings,
+  forest crossings, and construction time. Adjust the waypoint bend and start
+  construction when the cost is met.
 - **Settlements** — a compact list with population and prosperity status.
 - **Signals** — food shortages, congestion, treasury trouble, and upkeep debt.
 - **Inspector** — the selected settlement's population, prosperity, research,
   goods, needs, endowments, connected routes, and a plain-language explanation
-  of what is limiting it. Use **Refresh** after running cycles.
-- **Network** — tolls, traffic, capacity, upkeep, upgrades, dismantling, and
-  manual/automatic maintenance.
+  of what is limiting it. Selecting an unclaimed site shows its resource,
+  richness, terrain, and founding status. Use **Refresh** after running cycles.
+- **Network** — tolls, traffic, capacity, upkeep, upgrades, dismantling,
+  manual/automatic maintenance, and active construction projects with their
+  remaining cycles.
 - **Chronicle** — the latest events and a prosperity history.
-- **Advance 1 cycle** — step the simulation. There is intentionally no
-  auto-run or speed control in this prototype.
+- **Advance 1 cycle** — step the simulation. Construction and upgrades take
+  time; newly started projects appear in the Network panel and open when their
+  countdown completes. There is intentionally no auto-run or speed control in
+  this prototype.
 
 ## Architecture
 
@@ -150,7 +176,7 @@ terrain layers are isolated from the dashboard.
 
 The runtime limits every browser event to 100,000 evaluation steps and a
 bounded managed-value budget. The app is deliberately sized to fit those
-limits: the compact map, four-route cap, bounded history, bounded log, and
+limits: the compact map, three-route cap, bounded history, bounded log, and
 materialised inspector state are all part of that budget discipline, not
 arbitrary restrictions.
 
@@ -177,9 +203,10 @@ UI_URL=http://127.0.0.1:3010/ \
 node tests/ui-smoke.js
 ```
 
-The script exercises: initial render and inspector, four route builds, route
-cap, manual upkeep debt and degradation, paying upkeep, automatic upkeep,
-settlement inspection, dismantling, and new-world generation. It fails on page
+The script exercises: initial render, settlement and site inspection, waypoint
+shaping, three route builds with construction projects, route cap, manual
+upkeep debt and degradation, paying upkeep, automatic upkeep, dismantling, and
+new-world generation. It fails on page
 errors, console errors, missing UI state, or unexpected cycle failures.
 
 ## Known limits / next steps
@@ -188,11 +215,12 @@ This is a prototype, not the full design in
 `transport-economy-game-design.md`:
 
 - one compact region, not a zoomable world of 100–300 settlements;
+- at most three trunk routes and four settlements;
 - no save/load, auto-run, speed control, or scenario selection;
 - no sea/rail variants beyond the four modes, no hubs, no cargo restrictions;
 - economy and research are deliberately simplified;
 - events are deterministic and limited to harvest/storm/caravan;
-- the four-route/five-settlement caps are runtime-budget constraints.
+- the three-route/four-settlement caps are runtime-budget constraints.
 
 The natural next steps are a save format, a larger level-of-detail map, cargo
-allow/deny rules, and multiple regions.
+allow/deny rules, project cancellation, and multiple regions.

@@ -23,7 +23,7 @@ export component MapCanvas(patches: List<TerrainRow>, groups: List<RouteNodeGrou
         <span class={"marker " + position_class(m.x, m.y)}>
           <button class={marker_button_class_selected(selected, m)} type="button" on-click={pick(m.id)} title={m.name}>
             <when test={m.is_town}><span class="town-dot"></span><span class="town-label">{m.name}</span></when>
-            <when test={not m.is_town}><span class="site-diamond"></span><span class="site-label">{m.name}</span></when>
+            <when test={not m.is_town}><span class="site-diamond"></span><span class="site-label">{m.name} · {m.detail}</span></when>
           </button>
         </span>
       </each>
@@ -51,13 +51,25 @@ export component Root:
   derived feed_items: List<Text> = log_feed(world)
   derived feed_idx: List<Int> = indices(len(feed_items))
   derived history_idx: List<Int> = indices(len(world.history))
-  derived can_build: Bool = can_build_route(world, sel)
-  derived blocker: Text = build_blocker(world, sel)
+  derived can_build: Bool = can_build_route(game)
+  derived blocker: Text = build_blocker(game)
   derived origin_name: Text = marker_name(world, sel.from)
   derived destination_name: Text = marker_name(world, sel.to)
 
   on pick(id: Text):
     game = game_pick(game, id)
+
+  on start_route:
+    game = game_start_route(game)
+
+  on bend_left:
+    game = game_bend(game, -1)
+
+  on bend_right:
+    game = game_bend(game, 1)
+
+  on shape_auto:
+    game = game_auto_shape(game)
 
   on cancel_route:
     game = game_cancel(game)
@@ -145,7 +157,7 @@ export component Root:
           <div class="panel-head">
             <div>
               <h2>Frontier survey</h2>
-              <p>Click a settlement to inspect it. Click two to survey a route; routes follow the cheapest terrain corridor.</p>
+              <p>Click any settlement or site to inspect it. Use Survey route to begin a route; the survey follows the cheapest terrain corridor.</p>
             </div>
             <div class="time-controls">
               <button class="primary" type="button" on-click={tick_one}>Advance 1 cycle</button>
@@ -182,13 +194,16 @@ export component Root:
               <span class="badge">{survey_badge(sel)}</span>
             </div>
             <p class="notice">{game.notice}</p>
-            <when test={sel.from == ""}>
+            <when test={not sel.routing}>
               <div class="empty-state">
                 <strong>No survey in progress</strong>
-                <p>Select an origin settlement on the map. A second click surveys a route and shows its real cost.</p>
+                <p>Select a settlement to inspect it, then use <em>Survey route</em>. Sites can be inspected at any time without cancelling a survey.</p>
+                <div class="actions">
+                  <button class="primary" type="button" on-click={start_route} disabled={not iv.ready or iv.is_site}>{survey_action_text(iv)}</button>
+                </div>
               </div>
             </when>
-            <when test={sel.from != ""}>
+            <when test={sel.routing}>
               <div class="route-draft">
                 <div class="endpoints">
                   <span><span class="origin-dot"></span>{origin_name}</span>
@@ -206,10 +221,17 @@ export component Root:
                     <div><span>Stone</span><strong>{sel.draft.stone}</strong></div>
                     <div><span>River</span><strong>{sel.draft.water}</strong></div>
                     <div><span>Forest</span><strong>{sel.draft.forest}</strong></div>
+                    <div><span>Build time</span><strong>{construction_preview(game)}</strong></div>
+                  </div>
+                  <div class="shape-row">
+                    <span>Waypoint bend <strong>{sel.draft.bend}</strong></span>
+                    <button class="tiny" type="button" on-click={bend_left} aria-label="Bend route left">←</button>
+                    <button class="tiny" type="button" on-click={bend_right} aria-label="Bend route right">→</button>
+                    <button class="ghost tiny" type="button" on-click={shape_auto}>Auto shape</button>
                   </div>
                   <p class="blocker">{blocker}</p>
                   <div class="actions">
-                    <button class="primary" type="button" on-click={build_route} disabled={not can_build}>Build pack route</button>
+                    <button class="primary" type="button" on-click={build_route} disabled={not can_build}>{build_button_text(game)}</button>
                     <button class="ghost" type="button" on-click={cancel_route}>Cancel</button>
                   </div>
                 </when>
@@ -258,24 +280,40 @@ export component Root:
             <div class="inspector-title">
               <div>
                 <h3>{iv.name}</h3>
-                <p>{iv.connected} routes · {iv.terrain} · site value {iv.value}</p>
+                <p>
+                  <when test={iv.is_site}>{iv.resource} site · richness {iv.richness} · {iv.terrain}</when>
+                  <when test={not iv.is_site}>{iv.connected} routes · {iv.terrain} · site value {iv.value}</when>
+                </p>
               </div>
               <div class="inspector-numbers">
-                <div><span>Pop</span><strong>{iv.pop}</strong></div>
-                <div><span>Prosperity</span><strong>{iv.prosperity}</strong></div>
-                <div><span>Research</span><strong>{iv.research}</strong></div>
+                <when test={not iv.is_site}>
+                  <div><span>Pop</span><strong>{iv.pop}</strong></div>
+                  <div><span>Prosperity</span><strong>{iv.prosperity}</strong></div>
+                  <div><span>Research</span><strong>{iv.research}</strong></div>
+                </when>
               </div>
             </div>
             <p class="insight">{iv.insight}</p>
-            <div class="goods">
-              <each items={goods()} as="g" key={good_name(g)}>
-                <span class="good-chip" title={inspect_good_title(iv, g)}>{good_short(g)} <strong>{inspect_stock(iv, g)}</strong></span>
-              </each>
-            </div>
-            <div class="inspector-foot">
-              <span>Shortages: <strong>{iv.shortages}</strong></span>
-              <span>Connected routes: <strong>{iv.connected}</strong></span>
-            </div>
+            <when test={iv.is_site}>
+              <div class="site-inspect">
+                <div><span>Resource</span><strong>{iv.resource}</strong></div>
+                <div><span>Richness</span><strong>{iv.richness}</strong></div>
+                <div><span>Terrain</span><strong>{iv.terrain}</strong></div>
+                <div><span>Status</span><strong>{iv.status}</strong></div>
+              </div>
+              <p class="helper">A route passing within one tile founds a settlement here. Founding is automatic when construction completes.</p>
+            </when>
+            <when test={not iv.is_site}>
+              <div class="goods">
+                <each items={goods()} as="g" key={good_name(g)}>
+                  <span class="good-chip" title={inspect_good_title(iv, g)}>{good_short(g)} <strong>{inspect_stock(iv, g)}</strong></span>
+                </each>
+              </div>
+              <div class="inspector-foot">
+                <span>Shortages: <strong>{iv.shortages}</strong></span>
+                <span>Connected routes: <strong>{iv.connected}</strong></span>
+              </div>
+            </when>
           </when>
           <when test={not iv.ready}>
             <div class="empty-state">
@@ -296,6 +334,17 @@ export component Root:
               <button class="ghost" type="button" on-click={toggle_auto}>Auto upkeep: {auto_text(game.auto_upkeep)}</button>
             </div>
           </div>
+          <when test={len(game.projects) > 0}>
+            <div class="projects">
+              <div class="projects-head">Under construction <span class="badge">{len(game.projects)}</span></div>
+              <each items={game.projects} as="p" key={p.id}>
+                <div class="project-row">
+                  <div><strong>{project_title(p)}</strong><span>{project_action_text(p)} · {project_remaining(p, world.tick)} cycles left</span></div>
+                  <span class="project-tick">{world.tick} / {p.ready_tick}</span>
+                </div>
+              </each>
+            </div>
+          </when>
           <when test={routes_count == 0}>
             <div class="empty-state">
               <strong>The frontier is disconnected</strong>
@@ -321,30 +370,11 @@ export component Root:
                   <div class="route-actions">
                     <button class="tiny" type="button" on-click={fee_down(r.id)} aria-label="Lower toll">−</button>
                     <button class="tiny" type="button" on-click={fee_up(r.id)} aria-label="Raise toll">+</button>
-                    <button class="small" type="button" on-click={upgrade(r.id)} disabled={not can_upgrade(world, r)}>Upgrade</button>
+                    <button class="small" type="button" on-click={upgrade(r.id)} disabled={not can_start_upgrade(game, r)}>Upgrade</button>
                     <button class="small danger" type="button" on-click={dismantle(r.id)}>Dismantle</button>
                   </div>
                 </div>
-                <p class="route-hint">Next: {upgrade_cost_text(r)}</p>
               </article>
-            </each>
-          </div>
-        </section>
-
-        <section class="card sites-card">
-          <div class="card-head"><h2>Unclaimed sites</h2><span class="badge">{len(world.sites)}</span></div>
-          <p class="helper">Route a line within one tile of a site and a new settlement is founded there automatically.</p>
-          <when test={len(world.towns) >= max_settlements()}>
-            <p class="helper cap">Charter limit reached: this frontier supports six settlements.</p>
-          </when>
-          <div class="site-list">
-            <each items={world.sites} as="s" key={s.id}>
-              <when test={not s.founded}>
-                <div class="site-row" title={site_title(s)}>
-                  <span class="site-diamond"></span>
-                  <div><strong>{s.name}</strong><span>{good_name(s.resource)} · richness {s.richness}</span></div>
-                </div>
-              </when>
             </each>
           </div>
         </section>
@@ -356,14 +386,6 @@ export component Root:
               <li>{nth_text(feed_items, i)}</li>
             </each>
           </ul>
-          <div class="chart">
-            <div class="chart-head"><span>Prosperity history</span><span>last {len(world.history)} cycles</span></div>
-            <div class="bars">
-              <each items={history_idx} as="i" key={int_text(i)}>
-                <span class={"bar " + bar_class(nth_int(world.history, i))} title={"Prosperity " + int_text(nth_int(world.history, i))}></span>
-              </each>
-            </div>
-          </div>
         </section>
       </div>
 
