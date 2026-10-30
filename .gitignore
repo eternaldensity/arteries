@@ -1,3 +1,6 @@
 .diamond/
 
 /build/
+
+# Local helper with machine-specific PostgreSQL paths and dev credentials.
+/runserv.sh
