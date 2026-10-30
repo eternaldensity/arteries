@@ -128,6 +128,8 @@ export component Root:
           <when test={route_active(world.bc) == 1 and curved_routes == false}><div class="route-seg seg-bc-1"></div><div class="route-seg seg-bc-2"></div></when>
           <when test={route_active(world.bd) == 1 and curved_routes == false}><div class="route-seg seg-bd-1"></div><div class="route-seg seg-bd-2"></div></when>
           <when test={route_active(world.cd) == 1 and curved_routes == false}><div class="route-seg seg-cd-1"></div><div class="route-seg seg-cd-2"></div></when>
+          <when test={route_active(world.ae) == 1 and curved_routes == false}><div class="route-seg seg-ae-1"></div><div class="route-seg seg-ae-2"></div></when>
+          <when test={route_active(world.ce) == 1 and curved_routes == false}><div class="route-seg seg-ce-1"></div><div class="route-seg seg-ce-2"></div></when>
 
           <when test={route_active(world.ab) == 1 and curved_routes}><div class="route-seg seg-ab-1 curved"></div><div class="route-seg seg-ab-2 curved"></div></when>
           <when test={route_active(world.ac) == 1 and curved_routes}><div class="route-seg seg-ac-1 curved"></div><div class="route-seg seg-ac-2 curved"></div></when>
@@ -135,6 +137,8 @@ export component Root:
           <when test={route_active(world.bc) == 1 and curved_routes}><div class="route-seg seg-bc-1 curved"></div><div class="route-seg seg-bc-2 curved"></div></when>
           <when test={route_active(world.bd) == 1 and curved_routes}><div class="route-seg seg-bd-1 curved"></div><div class="route-seg seg-bd-2 curved"></div></when>
           <when test={route_active(world.cd) == 1 and curved_routes}><div class="route-seg seg-cd-1 curved"></div><div class="route-seg seg-cd-2 curved"></div></when>
+          <when test={route_active(world.ae) == 1 and curved_routes}><div class="route-seg seg-ae-1 curved"></div><div class="route-seg seg-ae-2 curved"></div></when>
+          <when test={route_active(world.ce) == 1 and curved_routes}><div class="route-seg seg-ce-1 curved"></div><div class="route-seg seg-ce-2 curved"></div></when>
 
           <div class="node node-a"><strong>Riverford</strong><span>plains</span></div>
           <div class="node node-b"><strong>Hillcrest</strong><span>hills</span></div>

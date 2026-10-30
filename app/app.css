@@ -80,3 +80,7 @@ pre { background: #f4f4f4; padding: 1rem; border-radius: 0.5rem; white-space: pr
 .seg-cd-1 { left: 90px; top: 250px; width: 140px; transform: rotate(-4deg); }
 .seg-cd-2 { left: 230px; top: 244px; width: 130px; transform: rotate(-2deg); }
 .node-e { left: 220px; top: 150px; }
+.seg-ae-1 { left: 70px; top: 70px; width: 90px; transform: rotate(35deg); }
+.seg-ae-2 { left: 145px; top: 112px; width: 85px; transform: rotate(42deg); }
+.seg-ce-1 { left: 90px; top: 250px; width: 80px; transform: rotate(-55deg); }
+.seg-ce-2 { left: 145px; top: 195px; width: 85px; transform: rotate(-40deg); }
