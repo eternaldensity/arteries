@@ -13,22 +13,25 @@ export component Root:
     world = run_ticks(world, 12)
 
   on toggle_ab:
-    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: not world.ab, ac: world.ac, ad: world.ad, bc: world.bc, bd: world.bd, cd: world.cd)
+    world = toggle_ab(world)
 
   on toggle_ac:
-    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: world.ab, ac: not world.ac, ad: world.ad, bc: world.bc, bd: world.bd, cd: world.cd)
+    world = toggle_ac(world)
 
   on toggle_ad:
-    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: world.ab, ac: world.ac, ad: not world.ad, bc: world.bc, bd: world.bd, cd: world.cd)
-
-  on toggle_cd:
-    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: world.ab, ac: world.ac, ad: world.ad, bc: world.bc, bd: world.bd, cd: not world.cd)
+    world = toggle_ad(world)
 
   on toggle_bc:
-    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: world.ab, ac: world.ac, ad: world.ad, bc: not world.bc, bd: world.bd, cd: world.cd)
+    world = toggle_bc(world)
 
   on toggle_bd:
-    world = World(a: world.a, b: world.b, c: world.c, d: world.d, ab: world.ab, ac: world.ac, ad: world.ad, bc: world.bc, bd: not world.bd, cd: world.cd)
+    world = toggle_bd(world)
+
+  on toggle_cd:
+    world = toggle_cd(world)
+
+  on toggle_curve:
+    curved_routes = curved_routes == false
 
   on reset_connected:
     world = connected_world()
@@ -36,31 +39,28 @@ export component Root:
   on reset_isolated:
     world = base_world()
 
-  on toggle_curve:
-    curved_routes = curved_routes == false
-
   html:
     <main>
       <header>
         <h1>Arteries</h1>
-        <p>Steer a small economy through transport links alone. Toggle links, run time, and watch settlements respond.</p>
+        <p>Steer a small economy through transport routes. Build or remove routes, run time, and watch settlements respond.</p>
       </header>
 
       <section class="metrics">
-        <div class="metric"><span class="label">Active links</span><strong>{active_links}</strong></div>
+        <div class="metric"><span class="label">Money</span><strong>{world.money}</strong></div>
+        <div class="metric"><span class="label">Active routes</span><strong>{active_links}</strong></div>
         <div class="metric"><span class="label">Total prosperity</span><strong>{total_prosperity}</strong></div>
         <div class="metric"><span class="label">Total research</span><strong>{total_research}</strong></div>
       </section>
 
       <section class="controls">
         <div class="control-group">
-          <h2>Links</h2>
+          <h2>Routes</h2>
           <button type="button" on-click={toggle_ab}>A-B: {bool_text(world.ab)}</button>
           <button type="button" on-click={toggle_ac}>A-C: {bool_text(world.ac)}</button>
           <button type="button" on-click={toggle_ad}>A-D: {bool_text(world.ad)}</button>
           <button type="button" on-click={toggle_bc}>B-C: {bool_text(world.bc)}</button>
           <button type="button" on-click={toggle_bd}>B-D: {bool_text(world.bd)}</button>
-          <button type="button" on-click={toggle_cd}>C-D: {bool_text(world.cd)}</button>
           <button type="button" on-click={toggle_cd}>C-D: {bool_text(world.cd)}</button>
         </div>
         <div class="control-group">
@@ -102,33 +102,33 @@ export component Root:
           <div class="node node-c"><strong>Greenvale</strong><br>forest</div>
           <div class="node node-d"><strong>Portmere</strong><br>coast</div>
         </div>
-        <p class="legend">Lines show built transport routes between settlements across the landscape.</p>
+        <p class="legend">Routes cost 20 money, 2 timber, 1 stone to build; upkeep is 1 money per route per tick. Remove refunds 10 money and 1 timber.</p>
       </section>
 
       <section class="settlements">
         <article class="settlement">
           <h2>{world.a.name} <span class="status">{status(world.a)}</span></h2>
           <p>Pop {world.a.pop} · Prosperity {world.a.prosperity} · Research {world.a.research}</p>
-          <p>Grain {world.a.grain} · Timber {world.a.timber} · Ore {world.a.ore}</p>
-          <p>Endowments: grain {world.a.gEnd}, timber {world.a.tEnd}, ore {world.a.oEnd}</p>
+          <p>Grain {world.a.grain} · Timber {world.a.timber} · Stone {world.a.stone} · Ore {world.a.ore} · Tools {world.a.tools}</p>
+          <p>Endowments: grain {world.a.gEnd}, timber {world.a.tEnd}, stone {world.a.sEnd}, ore {world.a.oEnd}</p>
         </article>
         <article class="settlement">
           <h2>{world.b.name} <span class="status">{status(world.b)}</span></h2>
           <p>Pop {world.b.pop} · Prosperity {world.b.prosperity} · Research {world.b.research}</p>
-          <p>Grain {world.b.grain} · Timber {world.b.timber} · Ore {world.b.ore}</p>
-          <p>Endowments: grain {world.b.gEnd}, timber {world.b.tEnd}, ore {world.b.oEnd}</p>
+          <p>Grain {world.b.grain} · Timber {world.b.timber} · Stone {world.b.stone} · Ore {world.b.ore} · Tools {world.b.tools}</p>
+          <p>Endowments: grain {world.b.gEnd}, timber {world.b.tEnd}, stone {world.b.sEnd}, ore {world.b.oEnd}</p>
         </article>
         <article class="settlement">
           <h2>{world.c.name} <span class="status">{status(world.c)}</span></h2>
           <p>Pop {world.c.pop} · Prosperity {world.c.prosperity} · Research {world.c.research}</p>
-          <p>Grain {world.c.grain} · Timber {world.c.timber} · Ore {world.c.ore}</p>
-          <p>Endowments: grain {world.c.gEnd}, timber {world.c.tEnd}, ore {world.c.oEnd}</p>
+          <p>Grain {world.c.grain} · Timber {world.c.timber} · Stone {world.c.stone} · Ore {world.c.ore} · Tools {world.c.tools}</p>
+          <p>Endowments: grain {world.c.gEnd}, timber {world.c.tEnd}, stone {world.c.sEnd}, ore {world.c.oEnd}</p>
         </article>
         <article class="settlement">
           <h2>{world.d.name} <span class="status">{status(world.d)}</span></h2>
           <p>Pop {world.d.pop} · Prosperity {world.d.prosperity} · Research {world.d.research}</p>
-          <p>Grain {world.d.grain} · Timber {world.d.timber} · Ore {world.d.ore}</p>
-          <p>Endowments: grain {world.d.gEnd}, timber {world.d.tEnd}, ore {world.d.oEnd}</p>
+          <p>Grain {world.d.grain} · Timber {world.d.timber} · Stone {world.d.stone} · Ore {world.d.ore} · Tools {world.d.tools}</p>
+          <p>Endowments: grain {world.d.gEnd}, timber {world.d.tEnd}, stone {world.d.sEnd}, ore {world.d.oEnd}</p>
         </article>
       </section>
 
