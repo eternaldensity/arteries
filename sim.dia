@@ -340,3 +340,63 @@ fn toggle_cd(w: World) -> World:
   match w.cd:
     NoRoute => build_cd(w)
     _ => remove_cd(w)
+
+fn upgrade_ab(w: World) -> World:
+  match w.ab:
+    Path => match w.tech_road and w.money >= 30:
+      true => World(a: w.a, b: w.b, c: w.c, d: w.d, ab: Road, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, money: w.money - 30, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
+      false => w
+    Road => match w.tech_river and w.money >= 50:
+      true => World(a: w.a, b: w.b, c: w.c, d: w.d, ab: River, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, money: w.money - 50, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
+      false => w
+    _ => w
+
+fn upgrade_ac(w: World) -> World:
+  match w.ac:
+    Path => match w.tech_road and w.money >= 30:
+      true => World(a: w.a, b: w.b, c: w.c, d: w.d, ab: w.ab, ac: Road, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, money: w.money - 30, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
+      false => w
+    Road => match w.tech_river and w.money >= 50:
+      true => World(a: w.a, b: w.b, c: w.c, d: w.d, ab: w.ab, ac: River, ad: w.ad, bc: w.bc, bd: w.bd, cd: w.cd, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, money: w.money - 50, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
+      false => w
+    _ => w
+
+fn upgrade_ad(w: World) -> World:
+  match w.ad:
+    Path => match w.tech_road and w.money >= 30:
+      true => World(a: w.a, b: w.b, c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: Road, bc: w.bc, bd: w.bd, cd: w.cd, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, money: w.money - 30, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
+      false => w
+    Road => match w.tech_river and w.money >= 50:
+      true => World(a: w.a, b: w.b, c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: River, bc: w.bc, bd: w.bd, cd: w.cd, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, money: w.money - 50, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
+      false => w
+    _ => w
+
+fn upgrade_bc(w: World) -> World:
+  match w.bc:
+    Path => match w.tech_road and w.money >= 30:
+      true => World(a: w.a, b: w.b, c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: Road, bd: w.bd, cd: w.cd, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, money: w.money - 30, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
+      false => w
+    Road => match w.tech_river and w.money >= 50:
+      true => World(a: w.a, b: w.b, c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: River, bd: w.bd, cd: w.cd, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, money: w.money - 50, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
+      false => w
+    _ => w
+
+fn upgrade_bd(w: World) -> World:
+  match w.bd:
+    Path => match w.tech_road and w.money >= 30:
+      true => World(a: w.a, b: w.b, c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: Road, cd: w.cd, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, money: w.money - 30, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
+      false => w
+    Road => match w.tech_river and w.money >= 50:
+      true => World(a: w.a, b: w.b, c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: River, cd: w.cd, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, money: w.money - 50, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
+      false => w
+    _ => w
+
+fn upgrade_cd(w: World) -> World:
+  match w.cd:
+    Path => match w.tech_road and w.money >= 30:
+      true => World(a: w.a, b: w.b, c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: Road, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, money: w.money - 30, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
+      false => w
+    Road => match w.tech_river and w.money >= 50:
+      true => World(a: w.a, b: w.b, c: w.c, d: w.d, ab: w.ab, ac: w.ac, ad: w.ad, bc: w.bc, bd: w.bd, cd: River, fee_ab: w.fee_ab, fee_ac: w.fee_ac, fee_ad: w.fee_ad, fee_bc: w.fee_bc, fee_bd: w.fee_bd, fee_cd: w.fee_cd, money: w.money - 50, tech_road: w.tech_road, tech_river: w.tech_river, tick_count: w.tick_count)
+      false => w
+    _ => w
