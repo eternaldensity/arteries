@@ -47,6 +47,7 @@ export component Root:
   state username: Text = "yria"
   state password: Text = ""
   state auth_notice: Text = "Sign in to load the authoritative world."
+  state pending_dismantle: Text = ""
 
   derived world: World = game.world
   derived iv: InspectView = game.inspect
@@ -70,6 +71,16 @@ export component Root:
   derived blocker: Text = build_blocker(game)
   derived origin_name: Text = marker_name(world, sel.from)
   derived destination_name: Text = marker_name(world, sel.to)
+  derived pending_route: Route = route_lookup(world, pending_dismantle)
+  derived pending_salvage: Text = match pending_dismantle == "":
+    true => ""
+    false => salvage_text(pending_route)
+  derived alt_plans: List<RoutePlan> = []
+  derived alt_idx: List<Int> = indices(len(alt_plans))
+  derived alt_texts: List<Text> = match sel.ready:
+    true => for i in alt_idx:
+      survey_alt_text(nth_plan(alt_plans, i), i)
+    false => []
 
   on mount:
     signed_in = session.user()
@@ -112,6 +123,22 @@ export component Root:
 
   on build_route:
     game = server_adopt(rpc.start_route(sel.from, sel.to, sel.draft.bend))
+
+  on request_dismantle(id: Text):
+    pending_dismantle = id
+
+  on confirm_dismantle:
+    game = server_apply(game, rpc.dismantle(pending_dismantle))
+    pending_dismantle = ""
+
+  on cancel_dismantle:
+    pending_dismantle = ""
+
+  on cancel_project(id: Text):
+    game = server_apply(game, rpc.cancel_project(id))
+
+  on use_alt(idx: Int):
+    game = game_use_alt(game, idx)
 
   on step_hour:
     game = server_apply(game, rpc.advance_market(1, "daily"))
@@ -436,7 +463,10 @@ export component Root:
               <each items={game.projects} as="p" key={p.id}>
                 <div class="project-row">
                   <div><strong>{project_title(p)}</strong><span>{project_action_text(p)} · {duration_text(project_remaining(p, world.tick))} left</span></div>
-                  <span class="project-tick">{world.tick} / {p.ready_tick}</span>
+                  <div class="project-actions">
+                     <span class="project-tick">{world.tick} / {p.ready_tick}</span>
+                     <button class="tiny danger" type="button" on-click={cancel_project(p.id)} disabled={project_remaining(p, world.tick) <= 0}>Cancel</button>
+                   </div>
                 </div>
               </each>
             </div>
@@ -445,6 +475,15 @@ export component Root:
             <div class="empty-state">
               <strong>The frontier is disconnected</strong>
               <p>Build your first route. Goods only move along links you create, and traffic pays your tolls.</p>
+            </div>
+          </when>
+          <when test={pending_dismantle != ""}>
+            <div class="confirm-dismantle">
+              <p>Dismantle {route_direction(pending_route)}? {pending_salvage}</p>
+              <div class="actions">
+                <button class="small danger" type="button" on-click={confirm_dismantle}>Confirm dismantle</button>
+                <button class="ghost small" type="button" on-click={cancel_dismantle}>Cancel</button>
+              </div>
             </div>
           </when>
           <div class="route-list">
@@ -461,13 +500,14 @@ export component Root:
                   <div class={"usage " + usage_class(r)}><span></span></div>
                   <span class="usage-text">{r.traffic}/{r.capacity} used</span>
                 </div>
+
                 <div class="route-bottom">
                   <span>{fee_label(r)} · {income_label(r)}</span>
                   <div class="route-actions">
                     <button class="tiny" type="button" on-click={fee_down(r.id)} aria-label="Lower toll">−</button>
                     <button class="tiny" type="button" on-click={fee_up(r.id)} aria-label="Raise toll">+</button>
-                    <button class="small" type="button" on-click={upgrade(r.id)} disabled={not can_start_upgrade(game, r)}>Upgrade</button>
-                    <button class="small danger" type="button" on-click={dismantle(r.id)}>Dismantle</button>
+                    <button class="small" type="button" on-click={upgrade(r.id)} disabled={not can_start_upgrade(game, r)} title={upgrade_preview_text(r)}>Upgrade</button>
+                    <button class="small danger" type="button" on-click={request_dismantle(r.id)} title={salvage_text(r)}>Dismantle</button>
                   </div>
                 </div>
               </article>

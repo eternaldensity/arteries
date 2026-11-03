@@ -1,0 +1,120 @@
+# Appended by tools/check-rt-tables.sh after stripping `export` from
+# app/rt_tables.dia.  Verifies the emitted RT tables inside Diamond itself:
+# counts and anchors, an exhaustive scan of the packed seam data (involution
+# and crossing-map composition for all 120 directed seams), a sampled check of
+# the RtSeam accessor, and fixed-point unit vectors for every vertex and face
+# center.
+
+fn rt_abs(x: Int) -> Int:
+  match x < 0:
+    true => -x
+    false => x
+
+fn rt_min(a: Int, b: Int) -> Int:
+  match a < b:
+    true => a
+    false => b
+
+fn rt_bool_int(b: Bool) -> Int:
+  match b:
+    true => 1
+    false => 0
+
+fn rt_corner_u(i: Int) -> Int:
+  rt_min(i, 3 - i)
+
+fn rt_corner_v(i: Int) -> Int:
+  i / 2
+
+fn rt_map_u(s: RtSeam, u: Int, v: Int) -> Int:
+  s.au * u + s.bu * v + s.cu
+
+fn rt_map_v(s: RtSeam, u: Int, v: Int) -> Int:
+  s.av * u + s.bv * v + s.cv
+
+fn rt_corner_ok(s: RtSeam, t: RtSeam, i: Int) -> Int:
+  let u = rt_corner_u(i)
+  let v = rt_corner_v(i)
+  let mu = rt_map_u(s, u, v)
+  let mv = rt_map_v(s, u, v)
+  let bu = rt_map_u(t, mu, mv)
+  let bv = rt_map_v(t, mu, mv)
+  match bu == u and bv == v:
+    true => 1
+    false => 0
+
+fn rt_accessor_ok(i: Int) -> Int:
+  let s = rt_seam(i)
+  let p = rt_nth(rt_seam_data(), i)
+  let fields_ok = match s.face == rt_mod(p, 32) and s.edge == rt_mod(p / 32, 4) and s.neighbor == rt_mod(p / 128, 32) and s.neighbor_edge == rt_mod(p / 4096, 4) and s.au == rt_mod(p / 16384, 4) - 1 and s.bu == rt_mod(p / 65536, 4) - 1 and s.cu == rt_mod(p / 262144, 4) - 1 and s.av == rt_mod(p / 1048576, 4) - 1 and s.bv == rt_mod(p / 4194304, 4) - 1 and s.cv == rt_mod(p / 16777216, 4) - 1:
+    true => 1
+    false => 0
+  let t = rt_seam(s.neighbor * 4 + s.neighbor_edge)
+  let inv = match t.neighbor == s.face and t.neighbor_edge == s.edge:
+    true => 1
+    false => 0
+  fields_ok + inv + rt_corner_ok(s, t, 0) + rt_corner_ok(s, t, 1) + rt_corner_ok(s, t, 2) + rt_corner_ok(s, t, 3)
+
+fn rt_accessor_sample(i: Int, n: Int, step: Int) -> Int:
+  match n <= 0:
+    true => 0
+    false => rt_accessor_ok(i) + rt_accessor_sample(i + step, n - 1, step)
+
+fn rt_pack_corner(p: Int, q: Int, i: Int) -> Int:
+  let u = rt_corner_u(i)
+  let v = rt_corner_v(i)
+  let mu = (rt_mod(p / 16384, 4) - 1) * u + (rt_mod(p / 65536, 4) - 1) * v + (rt_mod(p / 262144, 4) - 1)
+  let mv = (rt_mod(p / 1048576, 4) - 1) * u + (rt_mod(p / 4194304, 4) - 1) * v + (rt_mod(p / 16777216, 4) - 1)
+  let bu = (rt_mod(q / 16384, 4) - 1) * mu + (rt_mod(q / 65536, 4) - 1) * mv + (rt_mod(q / 262144, 4) - 1)
+  let bv = (rt_mod(q / 1048576, 4) - 1) * mu + (rt_mod(q / 4194304, 4) - 1) * mv + (rt_mod(q / 16777216, 4) - 1)
+  match bu == u and bv == v:
+    true => 1
+    false => 0
+
+fn rt_seam_pack_ok(data: List<Int>, i: Int) -> Int:
+  let p = rt_nth(data, i)
+  let nbr = rt_mod(p / 128, 32)
+  let nbr_edge = rt_mod(p / 4096, 4)
+  let q = rt_nth(data, nbr * 4 + nbr_edge)
+  let inv = match rt_mod(q / 128, 32) == rt_mod(p, 32) and rt_mod(q / 4096, 4) == rt_mod(p / 32, 4):
+    true => 1
+    false => 0
+  inv + rt_pack_corner(p, q, 0) + rt_pack_corner(p, q, 1) + rt_pack_corner(p, q, 2) + rt_pack_corner(p, q, 3)
+
+fn rt_seam_stride(data: List<Int>, i: Int, n: Int, step: Int) -> Int:
+  match n <= 0:
+    true => 0
+    false => rt_seam_pack_ok(data, i) + rt_seam_stride(data, i + step, n - 1, step)
+
+fn rt_vec_ok(v: RtVec) -> Int:
+  let err = rt_abs(v.x * v.x + v.y * v.y + v.z * v.z - 1000000 * 1000000)
+  match err < 5000000:
+    true => 1
+    false => 0
+
+fn rt_vertex_block(start: Int, n: Int) -> Int:
+  match n <= 0:
+    true => 0
+    false => rt_vec_ok(rt_vertex(start)) + rt_vertex_block(start + 1, n - 1)
+
+fn rt_vertex_blocks(start: Int, n: Int) -> Int:
+  match n <= 0:
+    true => 0
+    false => rt_vertex_block(start, 4) + rt_vertex_blocks(start + 4, n - 1)
+
+fn rt_center_block(start: Int, n: Int) -> Int:
+  match n <= 0:
+    true => 0
+    false => rt_vec_ok(rt_face_center(start)) + rt_center_block(start + 1, n - 1)
+
+fn main() -> Text:
+  let data = rt_seam_data()
+  let counts_ok = rt_vertex_count() == 32 and rt_face_count() == 30 and rt_seam_count() == 120
+  let anchors_ok = len(rt_five_fold()) == 12 and len(rt_three_fold()) == 20
+  let scan_score = rt_seam_stride(data, 0, 24, 5)
+  let accessor_score = rt_accessor_sample(0, 4, 39)
+  let vert_score = rt_vertex_blocks(0, 8)
+  let center_score = rt_center_block(0, 28) + rt_center_block(28, 2)
+  match counts_ok and anchors_ok and scan_score == 120 and accessor_score == 24 and vert_score == 32 and center_score == 30:
+    true => "rt tables OK: 32 vertices, 30 faces, 120 directed seams"
+    false => "rt tables FAILED: counts " + int_text(rt_bool_int(counts_ok)) + " anchors " + int_text(rt_bool_int(anchors_ok)) + " scan " + int_text(scan_score) + " accessor " + int_text(accessor_score) + " verts " + int_text(vert_score) + " centers " + int_text(center_score)

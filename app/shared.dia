@@ -923,25 +923,22 @@ fn path_length_at(path: List<Point>, i: Int, acc: Int) -> Int:
       None => acc
       Some(q) => path_length_at(path, i + 1, acc + segment_length(p, q))
 
-fn bend_score(seed: Int, ax: Int, ay: Int, bx: Int, by: Int, off: Int) -> Int:
-  let dx = bx - ax
-  let dy = by - ay
-  let px = sign(-dy)
-  let py = sign(dx)
-  let p1x = clamp(lerp(ax, bx, 1, 4) + px * off * 3 / 4, 0, map_w() - 1)
-  let p1y = clamp(lerp(ay, by, 1, 4) + py * off * 3 / 4, 0, map_h() - 1)
-  let p2x = clamp(lerp(ax, bx, 1, 2) + px * off, 0, map_w() - 1)
-  let p2y = clamp(lerp(ay, by, 1, 2) + py * off, 0, map_h() - 1)
-  let p3x = clamp(lerp(ax, bx, 3, 4) + px * off * 3 / 4, 0, map_w() - 1)
-  let p3y = clamp(lerp(ay, by, 3, 4) + py * off * 3 / 4, 0, map_h() - 1)
-  terrain_cost(terrain_at(seed, p1x, p1y)) + terrain_cost(terrain_at(seed, p2x, p2y)) * 2 + terrain_cost(terrain_at(seed, p3x, p3y)) + abs_int(off) * 3
+# Fast heuristic cost for choosing an auto-shape bend. Uses the drawn
+# polyline's vertex samples (cheap) rather than the full rasterized count;
+# the displayed plan cost is recomputed from the rasterized counts.
+fn plan_cost_for_offset(seed: Int, ax: Int, ay: Int, bx: Int, by: Int, off: Int) -> Int:
+  let points = plan_points_offset(seed, ax, ay, bx, by, off)
+  let length = path_length(points)
+  let water = count_water(points, seed, 0)
+  let mountain = count_mountain(points, seed, 0)
+  8 + length + water * 5 + mountain * 8
 
 fn pick_bend(seed: Int, ax: Int, ay: Int, bx: Int, by: Int, i: Int, best: Int, best_cost: Int) -> Int:
   match i > 6:
     true => best
     false =>
       let off = i - 3
-      let cost = bend_score(seed, ax, ay, bx, by, off)
+      let cost = plan_cost_for_offset(seed, ax, ay, bx, by, off)
       match cost < best_cost:
         true => pick_bend(seed, ax, ay, bx, by, i + 1, off, cost)
         false => pick_bend(seed, ax, ay, bx, by, i + 1, best, best_cost)
@@ -991,6 +988,49 @@ fn count_forest(points: List<Point>, seed: Int, i: Int) -> Int:
   match list_get(points, i):
     None => 0
     Some(p) => wooded_terrain(terrain_at(seed, p.x, p.y)) + count_forest(points, seed, i + 1)
+
+# Count terrain cells actually crossed by the drawn line. kind: 0 water, 1
+# mountain, 2 forest. Iterates every cell once, so a cell is never counted
+# twice even where two segments meet. Split into a row helper so no single
+# recursion exceeds the Diamond call-depth limit.
+fn count_crossed_row(points: List<Point>, seed: Int, kind: Int, y: Int, x: Int, acc: Int) -> Int:
+  match x >= map_w():
+    true => acc
+    false =>
+      let add = match plan_crosses_at(points, x, y, 0):
+        true => match terrain_at(seed, x, y):
+          Water => match kind == 0:
+            true => 1
+            false => 0
+          Mountain => match kind == 1:
+            true => 1
+            false => 0
+          Forest => match kind == 2:
+            true => 1
+            false => 0
+          _ => 0
+        false => 0
+      count_crossed_row(points, seed, kind, y, x + 1, acc + add)
+
+# Single-pass tally of all three crossed terrain kinds. Returns a packed value:
+# water + mountain * 64 + forest * 4096 (each count is below 64).
+fn count_crossed_all_row(points: List<Point>, seed: Int, y: Int, x: Int, acc: Int) -> Int:
+  match x >= map_w():
+    true => acc
+    false =>
+      let acc2 = match plan_crosses_at(points, x, y, 0):
+        true => match terrain_at(seed, x, y):
+          Water => acc + 1
+          Mountain => acc + 64
+          Forest => acc + 4096
+          _ => acc
+        false => acc
+      count_crossed_all_row(points, seed, y, x + 1, acc2)
+
+fn count_crossed_all(points: List<Point>, seed: Int, y: Int, acc: Int) -> Int:
+  match y >= map_h():
+    true => acc
+    false => count_crossed_all(points, seed, y + 1, count_crossed_all_row(points, seed, y, 0, acc))
 
 fn min_point_y(points: List<Point>, i: Int, best: Int) -> Int:
   match list_get(points, i):
@@ -1345,6 +1385,19 @@ export fn signal_count(game: Game) -> Int:
 export fn good_detail(t: Town, g: Good) -> Text:
   good_name(g) + ": " + int_text(stock(t, g)) + " stock · need " + int_text(need_of(t, g)) + " · endowment " + int_text(endow_of(t, g))
 
+# ---------------------------------------------------------------- globe (RT)
+#
+# The rhombic triacontahedron tables live in rt_tables.dia. These wrappers keep
+# the module in the project graph and give the UI and renderer a single entry
+# point for globe work.
+
+export fn rt_grid_summary() -> Text:
+  int_text(rt_vertex_count()) + " vertices · " + int_text(rt_face_count()) + " faces · " + int_text(rt_seam_count()) + " directed seams"
+
+export fn rt_face_polygon(i: Int) -> List<RtVec>:
+  let f = rt_face(i)
+  [rt_vertex(f.a), rt_vertex(f.b), rt_vertex(f.c), rt_vertex(f.d)]
+
 export fn empty_inspect_view() -> InspectView:
   InspectView(ready: false, is_site: false, name: "", status: "", tone: "ok", resource: "", richness: 0, founded: false, pop: 0, prosperity: 0, research: 0, terrain: "", value: 0, insight: "", shortages: "none", connected: 0, goods: zeros(len(goods())), needs: zeros(len(goods())), endows: zeros(len(goods())))
 
@@ -1654,10 +1707,10 @@ fn mode_upkeep(mode: RouteMode) -> Int:
     River => 2
     Rail => 3
 
-fn route_capacity(mode: RouteMode, plan: RoutePlan) -> Int:
+export fn route_capacity(mode: RouteMode, plan: RoutePlan) -> Int:
   max_int(3, base_capacity(mode) - plan.length / 8 - plan.water - plan.mountain)
 
-fn route_upkeep(mode: RouteMode, plan: RoutePlan) -> Int:
+export fn route_upkeep(mode: RouteMode, plan: RoutePlan) -> Int:
   1 + plan.length / 16 + mode_upkeep(mode)
 
 fn make_route(towns: List<Town>, a: Text, b: Text, plan: RoutePlan) -> Route:
@@ -1717,6 +1770,9 @@ fn route_by_id(routes: List<Route>, id: Text, i: Int) -> Route:
     Some(r) => match r.id == id:
       true => r
       false => route_by_id(routes, id, i + 1)
+
+export fn route_lookup(world: World, id: Text) -> Route:
+  route_by_id(world.routes, id, 0)
 
 fn replace_route(routes: List<Route>, route: Route) -> List<Route>:
   for r in routes:
@@ -1807,6 +1863,148 @@ export fn total_upkeep(routes: List<Route>) -> Int:
   let values = for r in routes:
     r.upkeep
   total(values)
+
+# ---------------------------------------------------------------- survey helpers (Phase A)
+
+# Sites that a finished route with this plan would found (within one tile).
+export fn survey_found_sites(world: World, plan: RoutePlan) -> List<Site>:
+  let groups = for s in world.sites:
+    match s.founded:
+      true => []
+      false => match site_near_plan(plan, s):
+        true => [s]
+        false => []
+  flatten_sites(groups, 0, [])
+
+fn flatten_sites(xs: List<List<Site>>, i: Int, acc: List<Site>) -> List<Site>:
+  match list_get(xs, i):
+    None => acc
+    Some(row) => flatten_sites(xs, i + 1, concat_sites(acc, row))
+
+fn concat_sites(xs: List<Site>, ys: List<Site>) -> List<Site>:
+  match len(xs) == 0:
+    true => ys
+    false => concat_sites(list_slice(xs, 1, len(xs) - 1), list_append(ys, nth_site(xs, 0)))
+
+fn nth_site(xs: List<Site>, i: Int) -> Site:
+  match list_get(xs, i):
+    Some(s) => s
+    None => Site(id: "", name: "", x: 0, y: 0, terrain: Plains, resource: Grain, richness: 0, founded: false)
+
+export fn survey_found_text(world: World, plan: RoutePlan) -> Text:
+  let sites = survey_found_sites(world, plan)
+  match len(sites) == 0:
+    true => "Founds no new settlement."
+    false =>
+      let parts = for s in sites:
+        s.name + " (" + good_name(s.resource) + ")"
+      "Founds: " + join_nonempty(parts, 0, "")
+
+# Expected trade volume per cycle along a new route built as a pack route,
+# estimated from current surplus and need at the endpoints.
+export fn survey_trade_volume(world: World, from: Text, to: Text, plan: RoutePlan) -> Int:
+  let a = find_town(world.towns, from)
+  let b = find_town(world.towns, to)
+  match a.id == "" or b.id == "":
+    true => 0
+    false =>
+      let cap = route_capacity(Path, plan)
+      let moves = trade_moves(a, b, Route(id: "", a: a.id, b: b.id, a_name: a.name, b_name: b.name, mode: Path, plan: plan, fee: 1, traffic: 0, capacity: cap, upkeep: 0), cap)
+      moves.moved
+
+# How materials are split between endpoints when paying for the plan.
+export fn material_split_text(world: World, from: Text, to: Text, plan: RoutePlan) -> Text:
+  let a = find_town(world.towns, from)
+  let b = find_town(world.towns, to)
+  match a.id == "" or b.id == "":
+    true => ""
+    false =>
+      let timber_a = min_int(stock(a, Timber), plan.timber)
+      let stone_a = min_int(stock(a, Stone), plan.stone)
+      let timber_b = plan.timber - timber_a
+      let stone_b = plan.stone - stone_a
+      let parts = []
+      let t = match timber_a > 0:
+        true => [a.name + " " + int_text(timber_a) + " timber"]
+        false => []
+      let t2 = match timber_b > 0:
+        true => list_append(t, b.name + " " + int_text(timber_b) + " timber")
+        false => t
+      let s = match stone_a > 0:
+        true => list_append(t2, a.name + " " + int_text(stone_a) + " stone")
+        false => t2
+      let s2 = match stone_b > 0:
+        true => list_append(s, b.name + " " + int_text(stone_b) + " stone")
+        false => s
+      join_nonempty(s2, 0, "")
+
+# Warning if paying for the plan would push an endpoint below its needs.
+export fn material_warning(world: World, from: Text, to: Text, plan: RoutePlan) -> Text:
+  let a = find_town(world.towns, from)
+  let b = find_town(world.towns, to)
+  match a.id == "" or b.id == "":
+    true => ""
+    false =>
+      let timber_a = min_int(stock(a, Timber), plan.timber)
+      let stone_a = min_int(stock(a, Stone), plan.stone)
+      let timber_b = plan.timber - timber_a
+      let stone_b = plan.stone - stone_a
+      let warn_a = match stock(a, Timber) - timber_a < need_of(a, Timber) or stock(a, Stone) - stone_a < need_of(a, Stone):
+        true => a.name + " is left short of timber or stone."
+        false => ""
+      let warn_b = match stock(b, Timber) - timber_b < need_of(b, Timber) or stock(b, Stone) - stone_b < need_of(b, Stone):
+        true => b.name + " is left short of timber or stone."
+        false => ""
+      join_nonempty([warn_a, warn_b], 0, "")
+
+# Upgrade preview text for a route.
+export fn upgrade_preview_text(route: Route) -> Text:
+  match route.mode:
+    Path => "Upgrade to cart road: cap " + int_text(route_capacity(Road, route.plan)) + ", upkeep " + int_text(route_upkeep(Road, route.plan)) + "/wk"
+    Road => "Upgrade to river barge: cap " + int_text(route_capacity(River, route.plan)) + ", upkeep " + int_text(route_upkeep(River, route.plan)) + "/wk"
+    River => "Upgrade to rail: cap " + int_text(route_capacity(Rail, route.plan)) + ", upkeep " + int_text(route_upkeep(Rail, route.plan)) + "/wk"
+    _ => "Fully upgraded"
+
+# Salvage text for dismantling a route.
+export fn salvage_text(route: Route) -> Text:
+  "Recovers 1 timber, 1 stone, and " + int_text(route.upkeep * 2) + " crowns."
+
+# Candidate corridors for a survey: the best bend in each of a few named
+# families. Returns up to three distinct plans.
+export fn survey_alternatives(world: World, from: Text, to: Text) -> List<RoutePlan>:
+  let ta = find_town(world.towns, from)
+  let tb = find_town(world.towns, to)
+  match ta.id == "" or tb.id == "":
+    true => []
+    false =>
+      let candidates = for off in [-3, 0, 3]:
+        plan_route_bend(world, from, to, off)
+      dedupe_plans(candidates, 0, [])
+
+fn dedupe_plans(xs: List<RoutePlan>, i: Int, acc: List<RoutePlan>) -> List<RoutePlan>:
+  match list_get(xs, i):
+    None => acc
+    Some(p) =>
+      match plan_in_list(acc, p, 0):
+        true => dedupe_plans(xs, i + 1, acc)
+        false => match len(acc) >= 3:
+          true => acc
+          false => dedupe_plans(xs, i + 1, list_append(acc, p))
+
+fn plan_in_list(xs: List<RoutePlan>, p: RoutePlan, i: Int) -> Bool:
+  match list_get(xs, i):
+    None => false
+    Some(q) => match q.length == p.length and q.water == p.water and q.mountain == p.mountain and q.bend == p.bend:
+      true => true
+      false => plan_in_list(xs, p, i + 1)
+
+export fn survey_alt_text(plan: RoutePlan, i: Int) -> Text:
+  "Corridor " + int_text(i + 1) + ": " + int_text(plan.length) + " leagues · " + int_text(plan.money) + " crowns · " + int_text(plan.water) + " bridges"
+
+export fn nth_plan(xs: List<RoutePlan>, i: Int) -> RoutePlan:
+  match list_get(xs, i):
+    Some(p) => p
+    None => empty_plan()
 
 export fn adjust_fee(world: World, id: Text, delta: Int) -> World:
   let r = route_by_id(world.routes, id, 0)
@@ -2559,6 +2757,66 @@ export fn game_demolish(game: Game, id: Text) -> Game:
   let result = demolish_route(game.world, id)
   let projects = drop_projects(game.projects, id, 0, [])
   Game(world: result.world, sel: game.sel, notice: result.message, last_ok: result.ok, route_groups: route_groups(result.world.routes), auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: total_upkeep(result.world.routes), projects: projects, inspect: inspect_view(result.world, game.sel.selected))
+
+export fn game_use_alt(game: Game, idx: Int) -> Game:
+  let plans = survey_alternatives(game.world, game.sel.from, game.sel.to)
+  match list_get(plans, idx):
+    None => game
+    Some(p) =>
+      let sel = selection_with(game.sel, game.sel.selected, game.sel.from, game.sel.to, p, p.length > 0, true, "Corridor " + int_text(idx + 1) + ": " + int_text(p.length) + " leagues, " + int_text(p.money) + " crowns.")
+      Game(world: game.world, sel: sel, notice: sel.notice, last_ok: game.last_ok, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
+
+fn project_by_id(projects: List<Project>, id: Text, i: Int) -> Project:
+  match list_get(projects, i):
+    None => empty_project()
+    Some(p) => match p.id == id:
+      true => p
+      false => project_by_id(projects, id, i + 1)
+
+fn refund_pct(p: Project, tick: Int) -> Int:
+  let total = p.ready_tick - p.start_tick
+  let remaining = p.ready_tick - tick
+  match total <= 0:
+    true => 0
+    false => clamp(remaining * 100 / total, 0, 100)
+
+fn refund_route_project(world: World, p: Project, pct: Int) -> World:
+  let money = world.money + p.plan.money * pct / 100
+  let timber = p.plan.timber * pct / 100
+  let stone = p.plan.stone * pct / 100
+  let ta = find_town(world.towns, p.a)
+  let ta2 = add_stock(ta, Timber, timber)
+  let ta3 = add_stock(ta2, Stone, stone)
+  let towns = replace_town(world.towns, ta3)
+  set_money(with_towns(world, towns), money)
+
+fn refund_upgrade_project(world: World, p: Project, pct: Int) -> World:
+  let cost = match p.mode:
+    Road => 35
+    River => 60
+    Rail => 90
+    _ => 0
+  let money = world.money + cost * pct / 100
+  let towns = match p.mode:
+    Road => add_stock(find_town(world.towns, p.a), Stone, 2 * pct / 100)
+    River => add_stock(find_town(world.towns, p.a), Timber, 4 * pct / 100)
+    Rail => add_stock(add_stock(find_town(world.towns, p.a), Stone, 4 * pct / 100), Tools, 2 * pct / 100)
+    _ => find_town(world.towns, p.a)
+  set_money(with_towns(world, replace_town(world.towns, towns)), money)
+
+export fn game_cancel_project(game: Game, id: Text) -> Game:
+  let p = project_by_id(game.projects, id, 0)
+  match p.id == "":
+    true => Game(world: game.world, sel: game.sel, notice: "Project not found.", last_ok: false, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
+    false => match p.ready_tick <= game.world.tick:
+      true => Game(world: game.world, sel: game.sel, notice: "That project is already complete.", last_ok: false, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
+      false =>
+        let pct = refund_pct(p, game.world.tick)
+        let world2 = match p.kind == "route":
+          true => refund_route_project(game.world, p, pct)
+          false => refund_upgrade_project(game.world, p, pct)
+        let projects = drop_projects(game.projects, id, 0, [])
+        Game(world: world2, sel: game.sel, notice: "Cancelled " + p.a_name + " to " + p.b_name + ". Refunded " + int_text(pct) + "% of costs.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: projects, inspect: inspect_view(world2, game.sel.selected))
 
 export fn game_fee(game: Game, id: Text, delta: Int) -> Game:
   Game(world: adjust_fee(game.world, id, delta), sel: game.sel, notice: "Toll adjusted on the selected route.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)

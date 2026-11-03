@@ -726,6 +726,12 @@ export fn dismantle(route: Text) -> Result<Game, DataError>:
   let game = game_demolish(current, route)
   save_game(game, 0, state.epoch)
 
+export fn cancel_project(id: Text) -> Result<Game, DataError>:
+  let state = load_state()?
+  let current = state_game(state, "")
+  let game = game_cancel_project(current, id)
+  save_game(game, 0, state.epoch)
+
 export fn set_fee(route: Text, delta: Int) -> Result<Game, DataError>:
   let state = load_state()?
   let current = state_game(state, "")

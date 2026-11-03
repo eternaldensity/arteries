@@ -10,6 +10,11 @@ styles = ["app.css"]
 [modules.shared]
 path = "shared.dia"
 target = "shared"
+imports = ["rt_tables"]
+
+[modules.rt_tables]
+path = "rt_tables.dia"
+target = "shared"
 
 [modules.server]
 path = "server.dia"
@@ -29,6 +34,7 @@ advance_finish = "server.advance_finish"
 start_route = "server.start_route"
 order_upgrade = "server.order_upgrade"
 dismantle = "server.dismantle"
+cancel_project = "server.cancel_project"
 set_fee = "server.set_fee"
 pay_upkeep = "server.pay_upkeep"
 toggle_auto = "server.toggle_auto"

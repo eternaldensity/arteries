@@ -200,6 +200,13 @@ Regenerate terrain assets after changing the terrain generator:
 ./tools/gen-maps.sh
 ```
 
+Verify the rhombic triacontahedron grid tables (regenerate, diff, and validate
+inside Diamond):
+
+```sh
+./tools/check-rt-tables.sh
+```
+
 Static checks and build:
 
 ```sh

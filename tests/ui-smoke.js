@@ -238,8 +238,10 @@ function assert(condition, message) {
     assert(s.inspector === 'Greenvale', 'inspector did not switch to Greenvale');
     assert((await page.locator('.good-chip').count()) === 8, 'expected eight goods');
 
-    // Dismantling frees a route slot.
+    // Dismantling frees a route slot (now requires confirmation).
     await page.locator('.route-card button.danger').first().click();
+    await page.waitForTimeout(300);
+    await page.getByRole('button', { name: 'Confirm dismantle' }).click();
     await page.waitForTimeout(650);
     s = await state();
     assert(s.routes === 2, `expected 2 routes after dismantle, got ${s.routes}`);
