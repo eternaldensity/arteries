@@ -440,9 +440,10 @@ cannot call a host op. Instead:
 - The compute kernel is a thin adapter: decode Diamond's wire JSON → call
   `arteries-core` → encode the reply in §7's layout. Registered with
   `register_compute` from the embedder (§5); the algorithms stay Diamond-free.
-- A small CLI binary (e.g. `arteries-gen`) in the same crate emits terrain,
-  hydrology, and globe face data for the asset pipeline. `tools/gen-maps.sh`
-  calls `arteries-gen` instead of `diamond run`.
+- A small CLI binary (`arteries-gen`, in `core/`) emits terrain for the asset
+  pipeline. It exists today: `tools/gen-maps.sh` uses it by default, and
+  `tools/check-core.sh` diffs it against the Diamond generator. The renderer
+  consumes the crate's output; the Diamond path remains only as the oracle.
 - Add an agreement test that runs both the CLI and the registered kernel on
   fixed seeds and compares outputs. This is now a same-implementation check,
   not a Rust-vs-Python differential.
@@ -651,7 +652,7 @@ transport only when H3's chunked staged RPCs actually hit their limit.
 
 | Phase | Content | Go/no-go signal |
 | --- | --- | --- |
-| **H0 — `arteries-core` + exporter** | Extract terrain/noise into a standalone Rust crate and CLI; keep the current Diamond implementation as a differential oracle | Outputs match on fixed seeds; renderer consumes the crate |
+| **H0 — `arteries-core` + exporter** ✅ terrain slice | `core/` crate (`arteries-core`) plus the `arteries-gen` CLI; `tools/gen-maps.sh` consumes it, `tools/check-core.sh` diffs it against the Diamond generator, and `core/tests/terrain-expected.txt` freezes seeds 0–15. Noise and hydrology join the crate with M2 | Outputs match on fixed seeds; renderer consumes the crate — **landed for terrain** |
 | **H1 — First compute export** | Declare `[compute.arteries]` with `terrain_region` in `app/diamond.toml`, add `Compute<arteries.terrain_region>` to both `provides`, register the kernel in the embedder (§5), call it from `app/server.dia`. No Diamond patch | `validate_compute` passes at startup; generation fits comfortably inside the request deadline; no regression; smoke test green |
 | **H2 — Pathfinding** | Declare `pathfind` + `route_cost` exports and register the kernels; use them for the survey | A* on a 64×64 grid well under the request deadline |
 | **H3 — Stateful tick** | **Not a compute export.** Move the tick out of Diamond via the §8 options: staged Diamond RPCs (current), an HTTP service, or a fork with transactional host ops | 100-settlement tick runs in bounded chunks within the request deadline; replay/rollback verified |

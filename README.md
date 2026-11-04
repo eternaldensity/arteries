@@ -31,9 +31,10 @@ Every seed produces a different 10 × 6 frontier:
 - terrain is generated from the seed (plains, forest, hills, mountains, water,
   coast, marsh);
 - terrain rendering is offloaded from the reactive component tree:
-  `tools/gen-maps.sh` runs the same Diamond terrain function and emits 16 static
-  SVG map assets, so the browser renders one image instead of hundreds of
-  terrain nodes; New World cycles through seeds 0–15;
+  `tools/gen-maps.sh` runs the terrain function from the Rust `core/` crate
+  (`arteries-core`) and emits 16 static SVG map assets, so the browser renders
+  one image instead of hundreds of terrain nodes; New World cycles through
+  seeds 0–15;
 - a meandering river, a coastline, hills, and forest cover are laid over it;
 - three settlements start in different corners of the map with complementary
   endowments;
@@ -173,10 +174,15 @@ app/
   app.css          map, dashboard, cards, responsive layout
   server.dia       minimal server entry
   assets/map-*.svg generated terrain assets
+core/
+  Cargo.toml       arteries-core crate plus the arteries-gen CLI
+  src/lib.rs       deterministic terrain, frozen against the Diamond oracle
+  src/main.rs      terrain exporter
 tools/
-  gen_terrain_main.dia  terrain data exporter
+  gen_terrain_main.dia  Diamond terrain exporter (differential oracle)
   render_maps.py        SVG map renderer
   gen-maps.sh           regenerate the map assets
+  check-core.sh         diff the Rust core against the Diamond generator
 tests/
   ui-smoke.js      real-browser acceptance and exploration driver
 ```
@@ -194,11 +200,17 @@ arbitrary restrictions.
 
 ## Testing
 
-Regenerate terrain assets after changing the terrain generator:
+Test the terrain core and regenerate its assets:
 
 ```sh
-./tools/gen-maps.sh
+cargo test --manifest-path core/Cargo.toml
+./tools/check-core.sh        # diff the Rust core against the Diamond generator
+./tools/gen-maps.sh          # regenerate the SVG assets from the core crate
 ```
+
+`TERRAIN_SOURCE=diamond ./tools/gen-maps.sh` regenerates from the checked
+Diamond code instead; that is how the frozen oracle snapshot in
+`core/tests/terrain-expected.txt` was produced.
 
 Verify the rhombic triacontahedron grid tables (regenerate, diff, and validate
 inside Diamond):

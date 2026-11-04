@@ -1,0 +1,14 @@
+[package]
+name = "arteries-core"
+version = "0.1.0"
+edition = "2021"
+description = "Deterministic, integer-only world generation for Arteries"
+publish = false
+
+[lib]
+name = "arteries_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "arteries-gen"
+path = "src/main.rs"

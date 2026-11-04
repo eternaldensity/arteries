@@ -4,3 +4,6 @@
 
 # Local helper with machine-specific PostgreSQL paths and dev credentials.
 /runserv.sh
+
+# Rust core crate build output.
+/core/target/

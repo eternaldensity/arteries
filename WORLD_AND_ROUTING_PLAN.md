@@ -410,8 +410,10 @@ Arteries onto Diamond's **compute extensions** — manifest-declared exports,
 capabilities — as the scale path (phases H0–H4). The pure-compute half is
 upstreamed in Diamond PR #1 (RFC) and PR #2 (host tier), so terrain,
 hydrology, and pathfinding need no fork; the stateful tick still does, and
-remains staged RPCs until H3. Adopt H0/H1 only when M2's terrain work actually
-presses against the budgets.
+remains staged RPCs until H3. H0's terrain slice has landed — `core/` owns the
+map generator, `tools/gen-maps.sh` consumes it, and `tools/check-core.sh` keeps
+it identical to the Diamond implementation. Adopt H1 only when M2's terrain
+work actually presses against the budgets.
 
 ---
 
