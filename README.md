@@ -249,6 +249,13 @@ analysis of the limits and the recommended workarounds is in
 state and tick processing to PostgreSQL-backed server RPCs/jobs, split a cycle
 into staged requests, and keep the browser as a compact, region-level renderer.
 
+Beyond those workarounds, [`RUST_HOST_EXTENSIONS.md`](RUST_HOST_EXTENSIONS.md)
+maps Arteries onto Diamond's **compute extensions**: pure terrain, hydrology,
+noise, and pathfinding run as registered Rust kernels behind
+`host.compute<Reply>(module, export, ...)`, while the authoritative tick stays on
+staged RPCs. The pure-compute half is upstreamed in Diamond PR #1 (RFC) and
+PR #2 (host tier), so it needs no Diamond fork.
+
 ## Known limits / next steps
 
 This is a prototype, not the full design in
@@ -263,4 +270,4 @@ This is a prototype, not the full design in
 - the three-route/four-settlement caps are runtime-budget constraints.
 
 The natural next steps are a save format, a larger level-of-detail map, cargo
-allow/deny rules, project cancellation, and multiple regions.
+allow/deny rules, and multiple regions.

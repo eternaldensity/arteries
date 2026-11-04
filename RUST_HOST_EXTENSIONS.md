@@ -1,17 +1,50 @@
 # Rust Host Extensions for Diamond: Design for Arteries
 
-Working title: *Native Compute for Arteries* · Draft v0.2 · November 2026
+Working title: *Native Compute for Arteries* · Draft v0.3 · November 2026
 
 This document proposes a Rust host-extension layer for Diamond, tailored to
 Arteries, as the scale path beyond the budgets described in
-`BUDGET_RESEARCH.md`. It is a design, not an implementation. It assumes
-`transport-economy-game-design.md` (the game vision) and
-`WORLD_AND_ROUTING_PLAN.md` (the improvement plan).
+`BUDGET_RESEARCH.md`. It assumes `transport-economy-game-design.md` (the game
+vision) and `WORLD_AND_ROUTING_PLAN.md` (the improvement plan).
 
-Draft v0.2 corrects several assumptions in v0.1 about how Diamond host
-operations actually work. The corrections are grounded in the current Diamond
-source; references are given so the design can be re-verified as the runtime
-evolves.
+The Diamond half is no longer speculative. The generic extension point that
+§14 used to ask for has been written up and implemented upstream:
+
+| Piece | Where |
+| --- | --- |
+| RFC: call surface, manifest, guarantee classes, invariants | `docs/compute-extensions.md`, Diamond PR **#1** (branch `feat/compute-extensions`) |
+| Implementation: registry, manifest, checker, dispatch, capability, artifact, tests | Diamond PR **#2** (branch `feat/compute-host-tier`, tip `ede9184`) |
+
+Draft v0.3 rewrites this document against that implemented surface: the
+application-specific `ArteriesCompute` capability and `host.arteries_*` family
+from v0.2 are gone, replaced by manifest-declared exports and
+`Compute<module.export>` capabilities. References point at Diamond source;
+those marked *(PR #2)* exist on `feat/compute-host-tier` only. Both branches
+report the same `0.20.0` version string, so pin the commit, not the version
+(§14).
+
+**What changed from v0.2**
+
+- Replaced: the `ArteriesCompute` capability and the `host.arteries_*` checker
+  and `eval.rs` branches (§5, §10) with the upstream surface — `[compute.<module>]`
+  declarations, the static `host.compute<Reply>(module, export, ...)` call, and
+  one `Compute<module.export>` capability per export. No Diamond source patch
+  is needed for pure compute anymore.
+- Resolved: §14's open question "can the generic extension point be
+  upstreamed?" — yes. RFC at PR #1, host tier implemented at PR #2. The
+  recommended path is now *use upstream*, not *vendor a fork*.
+- Corrected: pure compute **cannot** host the stateful tick. Kernels receive
+  only wire-encoded values and a `ComputeContext` — no principal, no Postgres
+  handle, no secret. §6.2/§8 remain a separate design problem.
+- Corrected: limits are per-export manifest declarations, not per-op
+  conventions — `max_input_bytes` (rejected *before* execution),
+  `max_output_bytes`, `max_duration_ms` (checked after the call), each a hard
+  `Error::Limit` rather than a catchable `DataError` (§11).
+- Corrected: the compute type subset is `Int`, `Bool`, `Text`, `Decimal`,
+  `List<T>`, `Option<T>` — no records, identifiers, or floats. Grids therefore
+  travel as packed `Text`, which §7 already recommended.
+- Corrected: kernel failures are classified `ComputeError` values that map onto
+  `DataError` classes; panics become a `Message` failure with no panic text.
 
 **What changed from v0.1**
 
@@ -63,59 +96,87 @@ serious design.
 
 ## 2. What Diamond actually provides (verified)
 
-Host operations are **statically registered** in the `diamond` binary. There is
-no plugin loading and no arbitrary `eval`. The relevant surface:
+Host operations are **statically registered** in the `diamond` binary or, for
+compute, in the embedding host at startup. There is no plugin loading and no
+arbitrary `eval` — a compute kernel is an ordinary function in the same binary,
+registered by name on explicit grants. The relevant surface:
 
 | Concern | Location |
 | --- | --- |
 | Operation registry and dispatch | `src/host.rs` — `operation()` (`:19`), `contracts()` (`:46`), `HostRuntime::call()` (`:220`) |
 | Interpreter host dispatch | `src/eval.rs` — `host.<method>` dispatch (`:1185`), fallback to `host::operation` (`:1229`) |
 | Host runtime injection | `src/eval.rs` — `with_host` (`:159`); only used for server `main()` in `src/project/mod.rs` (`:262`) |
-| RPC invocation | `src/project/connected/profiles.rs` (`:566`) — sets `.with_postgres(store).with_integrations(runtime)`; **no `with_host`** |
+| RPC invocation | `src/project/connected/profiles.rs` (`:568`) — sets `.with_postgres(store).with_integrations(runtime)`; **no `with_host`** |
 | Checker `host.*` families | `src/checker.rs` — `host_call` (`:1468`) |
 | Capability validation | `src/project/mod.rs` — `capability_effect` (`:1305`); module `provides` subset check (`:829`) |
 | Request deadlines | `src/project/admission.rs` — defaults (`:127`), class timeouts (`:162`); `src/budget.rs` (`:20`) |
 | Contract publication | `src/project/artifact.rs` (`:121`) |
 | Runtime grants | `src/integrations.rs` — `RuntimeGrants` (`:126`) |
 | Postgres-only host runtime | `src/host.rs` — `connect` (`:82`) requires one local Unix-socket Postgres |
+| Compute manifest declarations *(PR #2)* | `src/project/compute.rs` — `validate()` (`:69`), `bindings()` (`:146`) |
+| Compute call surface *(PR #2)* | `src/parser.rs` (`:888`) · `src/checker.rs` `compute_call` (`:1597`) · `src/eval.rs` `compute_call` (`:636`) |
+| Kernel registry and ABI *(PR #2)* | `src/compute.rs` — `Compute`, `ComputeContext`, `ComputeError`, bounded type parser · `src/integrations.rs` `register_compute` (`:257`), `call_compute` (`:310`) |
+| Deployment validation *(PR #2)* | `CheckedProject::validate_compute` (`src/project/mod.rs:315`), called from serving (`connected.rs:141`), deployment (`deployment.rs:143`), job workers (`jobs/worker.rs:171`) |
+| Compute contracts *(PR #2)* | `src/project/artifact.rs:34` — `contract.json` `compute` key, omitted when no exports are declared |
+| Export capability *(PR #2)* | `src/project/mod.rs:1357` `capability_effect` accepts well-formed `Compute<module.export>` names |
 
-Five constraints follow directly from this and materially change the design:
+Six constraints follow directly from this and materially change the design:
 
 1. **Host access is server-module-only.** Manifest validation rejects host
    capabilities on browser/shared modules (`src/project/mod.rs:829`). Shared
-   code such as `app/shared.dia` cannot call `host.arteries_*`; calls must live
-   in `app/server.dia` (or another `target = "server"` module), and results are
-   passed to shared functions as values.
+   code such as `app/shared.dia` cannot call `host.compute(...)`; calls must
+   live in `app/server.dia` (or another `target = "server"` module), and
+   results are passed to shared functions as values.
 2. **The `host.rs` registry is not enough for RPC use.** `with_host` is applied
    only when evaluating the server `main()` function. RPC handlers build an
    interpreter without a `HostRuntime`, so operations registered only in
-   `host::operation()` are callable from `main()`, not from RPCs. A new
-   `arteries_*` family must be dispatched in `eval.rs`/`checker.rs` like the
-   integration/durable families (which use `RuntimeGrants`), or the RPC path
-   must be changed to inject a compute context.
+   `host::operation()` are callable from `main()`, not from RPCs. This is
+   exactly why the compute tier dispatches through `RuntimeGrants` — the same
+   route the integration/durable families use — with `eval.rs`/`checker.rs`
+   doing the work instead of `host::operation()`. *(PR #2; it also opens the
+   RPC allowlist to `Compute<…>` effects.)*
 3. **`HostRuntime` is coupled to Postgres.** `HostRuntime::connect` parses a
-   Postgres configuration. Pure compute ops should not require a database; add
-   a separate compute context rather than forcing every op through `HostRuntime`.
+   Postgres configuration, so a pure compute op must not travel that road. The
+   implemented kernel ABI never touches `HostRuntime`: `register_compute`
+   stores plain functions on `RuntimeGrants` and dispatch needs no database
+   and no host runtime. *(PR #2 — this constraint was the design driver.)*
 4. **Host operations run under the request wall-clock deadline, not fuel.**
    Fuel is a separate interpreter counter; a host op bypasses it but still
    shares the request deadline. The admission class sets the window
    (`src/project/admission.rs:162`): interactive/control default to
    `request_timeout_ms` (10 s), background to 3 s, transfer to the 60 s stream
-   timeout. "Removes the fuel limit" is true; "unlimited time" is not. Check
-   the class in use and impose a per-op cap well below its deadline.
+   timeout. "Removes the fuel limit" is true; "unlimited time" is not. Each
+   export additionally declares `max_duration_ms` (≤ 10 s), enforced after the
+   call; check the class in use and keep the per-export cap well below it.
 5. **Host outputs are size-limited but should also be value-budgeted.** The
    `host.rs` path checks text length against `MAX_SOURCE_BYTES`; other paths do
    not automatically charge the managed-value budget. A compute op that returns
-   a large list must explicitly size-check or be charged.
+   a large list must explicitly size-check or be charged. *(The compute tier
+   does both: `max_output_bytes` before decode, then the ordinary expression
+   value-budget charge on the returned value.)*
+6. **Pure compute gets values, and nothing else** *(PR #2)*. A kernel receives
+   wire-encoded arguments and a `ComputeContext` (module, export, remaining
+   request deadline). It receives no principal, scope, secret, or Postgres
+   handle, so any operation that must touch persisted state — the tick in §6.2 —
+   is not expressible as a compute export. The two contracts stay separate, as
+   design principle 2 requires.
 
 Host capabilities are declared through the manifest's `provides` set and
 validated by `capability_effect`; adding a new capability means extending that
 allowlist, not just adding a `[capabilities]` table. Module `provides` must be a
-subset of the application's.
+subset of the application's. The compute tier adds no new application-specific
+capability: each export declares its own `Compute<module.export>`, which
+`capability_effect` already accepts as a well-formed host capability *(PR #2)*.
 
 Also note: the build-time pipeline (`tools/gen-maps.sh`) runs `diamond run` on
-a standalone file. That path has no host runtime and no Postgres, so it cannot
-call host operations. The build-time strategy in §9 accounts for this.
+a standalone file. That path has no host runtime, no Postgres, and no
+registered kernels, so it cannot call host operations. The build-time strategy
+in §9 accounts for this. *(PR #2 adds one escape hatch: an embedder can run a
+checked server entry in-process with kernels attached —
+`CheckedProject::evaluate_with(&RuntimeGrants)` — with no listener and no
+database. The `diamond` CLI does not use it, so the §9 strategy is unchanged;
+it does mean "build-time code can never see a kernel" is no longer strictly
+true for embedders.)*
 
 ---
 
@@ -134,7 +195,7 @@ call host operations. The build-time strategy in §9 accounts for this.
    modules receive decoded results. This follows from constraint 1 and keeps
    the browser bundle free of host effects.
 4. **Single source of truth for generation.** Put the algorithms in a shared
-   Rust crate (`arteries-core`) consumed by both the Diamond host op and a
+   Rust crate (`arteries-core`) consumed by both the compute kernel and a
    standalone CLI exporter. Do not maintain Rust and Python implementations of
    the same world generator.
 5. **Capability gating plus resource caps.** A capability alone is not enough:
@@ -157,17 +218,31 @@ on that blocking worker already; **do not call `admission::blocking` again**
 (nesting blocking work can deadlock or exhaust the pool).
 
 - Run the compute op inline in the interpreter; it is already off the async
-  worker.
-- Wrap the Rust call in `std::panic::catch_unwind`; map panics to
-  `Error::Internal` (or `Error::Limit` for overruns) and never abort the
-  server.
-- Check `crate::budget::remaining(...)` at entry and at coarse checkpoints
-  inside long loops (e.g. every N cells/iterations) so a slow op can abort
-  before the deadline.
-- Account inputs and outputs: cap input text/list sizes and charge output size
-  against `MAX_SOURCE_BYTES` (Text) or the value budget (lists).
+  worker. **This is how the host tier dispatches** *(PR #2)*: `call_compute`
+  (`src/integrations.rs:310`) is an ordinary interpreter call, so no nested
+  blocking hop is introduced.
+- The runtime wraps the kernel in `std::panic::catch_unwind` and maps the panic
+  to a `Message` `DataError` carrying no panic text *(PR #2)*. Note the process
+  panic hook still logs the kernel's payload to stderr — kernels must not panic
+  with payload data. Limit breaches (`max_input_bytes`, `max_output_bytes`,
+  `max_duration_ms`) are hard `Error::Limit` failures, deliberately
+  uncatchable, so a mis-sized call is loud rather than silently degraded.
+- `budget::check()` runs before and after every kernel call. Inside long loops,
+  a kernel cooperatively checks `ComputeContext::checkpoint()`, which reports
+  `ComputeError::Aborted` once the request deadline passes. `max_duration_ms`
+  is enforced *after* the call returns: the runtime cannot interrupt a kernel.
+  A blocking loop therefore still needs chunking (§4's chunking advice stands).
+- Inputs are validated against the declared types and counted against
+  `max_input_bytes` **before** execution; replies are measured against
+  `max_output_bytes` and then charged to the managed value budget by ordinary
+  expression evaluation. Arteries kernels should also validate arguments
+  defensively (`ComputeError::InvalidInput`) rather than trusting the wire.
 - Emit structured timing/metrics per op (duration, input bytes, output bytes,
-  failure class) so capacity can be monitored.
+  failure class) so capacity can be monitored. **Not built yet:** the host tier
+  exposes no metrics hook; this needs either an upstream observability slice
+  (§10 of the RFC marks it deferred to the sandboxed tier) or an embedder-side
+  wrapper around `register_compute`. Record it as an accepted gap, not a
+  design assumption.
 
 If an op is invoked from a path that is *not* already blocking (e.g. server
 `main()`), run it on a bounded blocking task at that call site; do not add a
@@ -184,61 +259,108 @@ not merely moved to "background". Check the deployment's admission config.
 
 ## 5. Integration points in Diamond
 
-Adding an `arteries_*` family is a multi-file change. The minimum patch surface:
+**No Diamond source patch is required for pure compute** — that was the point
+of upstreaming. The v0.2 table (a `checker.rs` branch, an `eval.rs` branch, a
+`capability_effect` allowlist entry, artifact wiring) is obsolete: PR #2
+provides all of it generically. The Arteries-side surface is manifest plus
+embedder:
 
-| File | Change |
+| Where | Change |
 | --- | --- |
-| `src/checker.rs` `host_call` | Add an `arteries_*` branch that delegates to a new `arteries_call` checker |
-| `src/checker/integrations.rs` (or a new `checker/arteries.rs`) | Declare arity, argument types, result type, and the `Effect::Host("ArteriesCompute")` grant |
-| `src/eval.rs` `host.<method>` dispatch | Add an `arteries_*` branch calling a new `src/arteries.rs` module |
-| `src/arteries.rs` (new) | Static `call(method, &[Value]) -> Result<Value>` dispatch; per-op input validation and limits |
-| `src/project/mod.rs` `capability_effect` | Allow `"ArteriesCompute"` in the capability allowlist |
-| `src/project/artifact.rs` (or `src/arteries.rs::contracts`) | Publish op contracts in the project artifact |
-| `Cargo.toml` / workspace | Add the `arteries-core` crate dependency |
-| `examples` or tests | Contract tests: checker signature ↔ runtime dispatch agree |
+| `app/diamond.toml` | `[compute.arteries] kind = "host"` plus one `[compute.arteries.exports.<name>]` block per kernel; add `Compute<arteries.<name>>` to application `provides` and to `[modules.server]` `provides` |
+| `app/server.dia` | Call `host.compute<Reply>("arteries", "<name>", ...)` instead of the planned `host.arteries_*`. Every call site must live in a `target = "server"` module (constraint 1) — shared code takes decoded values |
+| Arteries runner (the embedder) | `RuntimeGrants::register_compute(module, export, arguments, result, kernel)` once per kernel at startup, before serving |
+| Startup / build checks | `CheckedProject::validate_compute(&grants)` — serving and job workers already call it, so a missing or mismatched kernel is a deployment error, not a first-use failure |
+| `arteries-core` | The kernels themselves: decode wire JSON → call the crate → encode the reply. The algorithms keep no Diamond dependency (§9) |
+| Tests | Diamond already proves manifest ↔ registered signature ↔ call site agree; Arteries adds determinism and property tests around the kernels (§12) |
 
-A pure compute op needs no `HostRuntime` and no Postgres, so it can be dispatched
-directly from `eval.rs` after the capability check:
+Dispatch looks like this from the embedder's side *(PR #2)*:
 
-```
-if method.starts_with("arteries_") {
-    self.scope.require(&Effect::Host("ArteriesCompute".into()))?;
-    let values = arguments.iter().map(|(_, v)| self.expr(v, locals)).collect::<Result<Vec<_>>>()?;
-    return crate::arteries::call(method, &values);
-}
+```rust
+let project = diamond::compile_project(Path::new("app/diamond.toml"))?;
+let mut grants = diamond::RuntimeGrants::default();
+grants.register_compute("arteries", "pathfind", &["Text", "Text", "Text", "Text"], "Text", Pathfind)?;
+grants.register_compute("arteries", "noise", &["Int", "Int", "Int", "Int"], "Int", Noise)?;
+project.validate_compute(&grants)?;
+project.serve_with_runtime(address, origin, configuration, mailbox, grants)?;
 ```
 
-If an op needs database access (the stateful tick), do not route it through this
-pure path; give it its own, explicitly stateful contract (§8) and dispatch it
-with the interpreter's already-attached `PostgresStore` (`self.postgres`),
-never by opening a second connection or starting a nested runtime.
+and from Diamond's side, in a server module:
+
+```diamond
+export fn survey(grid: Text, from: Text, to: Text) -> Result<Text, DataError>:
+  host.compute<Text>("arteries", "pathfind", grid, from, to, "road")
+```
+
+Reachability, as implemented:
+
+- **Server functions and `main()`:** yes.
+- **RPC operations:** yes — `Compute<…>` is in the RPC host-effect allowlist
+  (`src/project/rpc.rs:125`, *(PR #2)*), which matters because Arteries drives
+  the game through `[rpc]` handlers (survey, founding, tick stages).
+- **Job handlers:** yes, through their explicit grants.
+- **Workflow and action handlers:** no — they keep their existing
+  "no uncertain external effects" rule. Do not plan a terrain or pathfinding
+  call from inside an action.
+
+If an op needs database access (the stateful tick), it does not go through this
+path at all: compute receives no `PostgresStore` and no handle of any kind. Give
+it its own, explicitly stateful contract (§8) and dispatch it with the
+interpreter's already-attached `PostgresStore` (`self.postgres`), never by
+opening a second connection or starting a nested runtime — noting that this
+path still requires either staged Diamond RPCs (today) or an upstream proposal
+for transactional host operations (§14).
 
 ---
 
 ## 6. Candidate operations
 
-### 6.1 Pure compute (values in, values out)
+### 6.1 Pure compute (values in, values out) — compute exports
 
-| Operation | Signature | Notes |
+Each row becomes one `[compute.arteries.exports.<name>]` block plus
+`Compute<arteries.<name>>` in `provides`. Signatures use the manifest's type
+names; the call site is `host.compute<Reply>("arteries", "<name>", args...)`.
+
+| Export | Signature | Notes |
 | --- | --- | --- |
-| `host.arteries_noise` | `(seed, x, y, octaves) -> Int` | Fixed-point fBm/ridged noise; one source of truth |
-| `host.arteries_terrain_region` | `(seed, version, face, u0, v0, w, h) -> Text` | Batched terrain codes; cap `w*h` (e.g. 1000–4096) |
-| `host.arteries_hydrology` | `(seed, version, face, w, h) -> Text` | Flow accumulation, river carving |
-| `host.arteries_climate` | `(seed, version, face, w, h) -> Text` | Temperature/moisture from latitude and elevation |
-| `host.arteries_validate_world` | `(seed, version) -> Bool` | Playability checks |
-| `host.arteries_pathfind` | `(grid, from, to, mode) -> Text` | A* on a packed grid; cap grid size |
-| `host.arteries_route_cost` | `(grid, polyline) -> Int` | Rasterized cost (drawn == charged) |
-| `host.arteries_plan_many` | `(grid, from, to, count) -> Text` | Alternates in one call |
-| `host.arteries_digest` | `(blob) -> Text` | Stable hash for determinism checks and save integrity |
-| `host.arteries_generate_planet` | `(seed, version) -> Text` | Coarse planet topology; likely chunked or background |
+| `noise` | `(Int, Int, Int, Int) -> Int` | `(seed, x, y, octaves)`; fixed-point fBm/ridged noise; one source of truth |
+| `terrain_region` | `(Int, Int, Int, Int, Int, Int, Int) -> Text` | `(seed, version, face, u0, v0, w, h)`; batched terrain codes; kernel bounds `w*h` (e.g. 1000–4096) |
+| `hydrology` | `(Int, Int, Int, Int, Int) -> Text` | `(seed, version, face, w, h)`; flow accumulation, river carving |
+| `climate` | `(Int, Int, Int, Int, Int) -> Text` | `(seed, version, face, w, h)`; temperature/moisture from latitude and elevation |
+| `validate_world` | `(Int, Int) -> Bool` | `(seed, version)`; playability checks |
+| `pathfind` | `(Text, Text, Text, Text) -> Text` | packed grid, from, to, mode; A*; kernel bounds grid size |
+| `route_cost` | `(Text, Text) -> Int` | rasterized cost (drawn == charged) |
+| `plan_many` | `(Text, Text, Text, Int) -> Text` | alternates in one call |
+| `digest` | `(Text) -> Text` | stable hash for determinism checks and save integrity |
+| `generate_planet` | `(Int, Int) -> Text` | coarse planet topology; likely chunked or background |
 
-### 6.2 Stateful (explicit, transactional)
+How the mapping works:
 
-| Operation | Signature | Notes |
+- **Types come from the compute subset:** `Int`, `Bool`, `Text`, `Decimal`,
+  `List<T>`, `Option<T>` nested at most four levels. No records and no
+  identifiers, so grids and polylines travel as packed `Text` exactly as §7
+  already prescribes. `Int` on the wire is a canonical decimal string (`"42"`)
+  that kernels parse and re-encode.
+- **Limits are declared, not argued:** every export sets `max_input_bytes`,
+  `max_output_bytes`, `max_duration_ms`, and `deterministic = true`. Legal
+  ranges are `1..=1048576` bytes and `1..=10000` ms; the defaults are 65536 /
+  262144 / 2000.
+- **Determinism is mandatory but only declared:** `deterministic = false` is
+  rejected by the manifest, which matches design principle 1 — but the manifest
+  cannot prove it. §12's determinism tests remain the enforcement.
+
+### 6.2 Stateful (explicit, transactional) — **not** compute exports
+
+The kernel ABI carries values and a deadline, never a database handle (§2
+constraint 6), so these cannot be `[compute.arteries]` declarations. The names
+below are descriptive, not call sites; the options in §8 stand, with the
+"host op" variant now framed as a possible *second* upstream proposal (§14).
+
+| Operation (conceptual) | Signature | Notes |
 | --- | --- | --- |
-| `host.arteries_tick` | `(world_id, days, scale) -> Text` | Runs the tick against persisted state inside a transaction; returns a summary/deltas |
-| `host.arteries_flow` | `(world_id) -> Text` | Multi-hop goods routing against persisted state |
-| `host.arteries_forecast` | `(world_id, changes, days) -> Text` | Clones state, simulates, returns deltas; must not commit |
+| `tick` | `(world_id, days, scale) -> Text` | Runs the tick against persisted state inside a transaction; returns a summary/deltas |
+| `flow` | `(world_id) -> Text` | Multi-hop goods routing against persisted state |
+| `forecast` | `(world_id, changes, days) -> Text` | Clones state, simulates, returns deltas; must not commit |
 
 **Design decision to make explicitly:** full-state serialization vs. a
 persisted handle. A 300-settlement × 50-good state is ~15,000 stock ints before
@@ -276,6 +398,11 @@ limit and is wasteful even when it fits. Recommendation:
   (1e6) and rounding rule.
 - **Sorted iteration.** Rust `HashMap` iteration order is nondeterministic.
   Use `BTreeMap`/sorted vectors for anything that affects output order.
+- **Blob-in-Text is now structurally required** *(PR #2)*: the compute type
+  subset has no records or identifiers, so a packed grid can only travel as
+  `Text`, bounded by the export's `max_output_bytes` and `MAX_SOURCE_BYTES`
+  (1 MiB). Keep the `v1|` version prefix and the checksum — the manifest
+  validates types and byte counts, never the layout inside a blob.
 
 ---
 
@@ -310,14 +437,15 @@ cannot call a host op. Instead:
 
 - Put the algorithms in a plain Rust crate, `arteries-core`, with no Diamond
   dependency.
-- The Diamond host op is a thin adapter: decode Diamond values → call
-  `arteries-core` → encode results.
+- The compute kernel is a thin adapter: decode Diamond's wire JSON → call
+  `arteries-core` → encode the reply in §7's layout. Registered with
+  `register_compute` from the embedder (§5); the algorithms stay Diamond-free.
 - A small CLI binary (e.g. `arteries-gen`) in the same crate emits terrain,
   hydrology, and globe face data for the asset pipeline. `tools/gen-maps.sh`
   calls `arteries-gen` instead of `diamond run`.
-- Add an agreement test that runs both the CLI and the Diamond op on fixed
-  seeds and compares outputs. This is now a same-implementation check, not a
-  Rust-vs-Python differential.
+- Add an agreement test that runs both the CLI and the registered kernel on
+  fixed seeds and compares outputs. This is now a same-implementation check,
+  not a Rust-vs-Python differential.
 
 The Python renderer remains a consumer of generated data; it does not
 reimplement generation.
@@ -326,69 +454,127 @@ reimplement generation.
 
 ## 10. Capability and manifest wiring
 
-- Add `"ArteriesCompute"` to `capability_effect` in `src/project/mod.rs`
-  (`:1305`). The checker inserts `Effect::Host("ArteriesCompute")` when it sees
-  an `arteries_*` call, and the evaluation scope then permits it. No
-  `RuntimeGrants` entry is needed for pure ops.
-- Declare it in `provides` for the whole application and for the server module
-  that calls it. Module `provides` must be a subset of the application's
-  (`src/project/mod.rs:829`), and host capabilities are rejected on
-  browser/shared modules.
-- Extend `checker/integrations.rs` (or a new `checker/arteries.rs`) with the
-  per-op signatures and the effect insertion, mirroring the HTTP/job families.
-  The existing `host_call` gate (`src/checker.rs:1468`) already requires
-  `program.host_operations`, i.e. a server module.
-- Publish the op contracts in the project artifact (`src/project/artifact.rs`),
-  so deployment validation and clients can see the extension surface.
-- Add a deployment switch (env or manifest) to disable the extension on hosts
-  that should not run it.
+All of this is declarative now *(PR #2)* — no allowlist patch, no checker
+extension, no artifact hook. The pieces:
 
-Example (application-level `provides`; list the real capabilities alongside
-the new one):
+- **One capability per export:** `Compute<arteries.pathfind>`,
+  `Compute<arteries.noise>`, … The checker inserts
+  `Effect::Host("Compute<arteries.pathfind>")` at each call site, the runtime
+  scope re-checks it, and `capability_effect` accepts the well-formed name
+  (`src/project/mod.rs:1357`). `Compute<arteries.noise>` never grants
+  `Compute<arteries.pathfind>`.
+- **Declare it twice:** application `provides` and the calling server module's
+  `provides`. Module `provides` must be a subset of the application's
+  (`src/project/mod.rs:829`), and host capabilities are rejected on
+  browser/shared modules. This is the same mechanism every other capability
+  uses.
+- **The server-module gate is inherited:** `host_call` requires
+  `program.host_operations` (`src/checker.rs:1494`), i.e. a server module. The
+  per-module effects budget additionally rejects a shared module that tries to
+  spend a server capability — tested upstream, not assumed.
+- **Contracts publish themselves:** declarations appear in `contract.json`
+  under `compute` (module, export, signature, determinism, limits) and the key
+  is omitted entirely when nothing is declared, so artifacts for projects
+  without declarations are unchanged. No registration ever reaches an artifact:
+  `RuntimeGrants` is never serialized, and the JSON runtime configuration
+  rejects a `compute` section outright — an operator cannot grant compute
+  through config.
+- **Startup validation is automatic:** serving, deployment validation, and job
+  workers all call `validate_compute`, so a declared-but-unregistered export or
+  a signature mismatch fails at deployment.
+
+Example (manifest fragment; list the real capabilities alongside the new
+ones):
 
 ```toml
 provides = [
   "DbRead<Worlds>", "DbWrite<Worlds>",
   # ... existing capabilities ...
-  "ArteriesCompute",
+  "Compute<arteries.pathfind>",
+  "Compute<arteries.noise>",
 ]
-```
 
-and on the server module:
-
-```toml
 [modules.server]
-provides = ["ArteriesCompute"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "...", "Compute<arteries.pathfind>", "Compute<arteries.noise>"]
+
+[compute.arteries]
+kind = "host"
+
+[compute.arteries.exports.pathfind]
+arguments = ["Text", "Text", "Text", "Text"]
+result = "Text"
+deterministic = true
+max_input_bytes = 262144
+max_output_bytes = 65536
+max_duration_ms = 1500
+
+[compute.arteries.exports.noise]
+arguments = ["Int", "Int", "Int", "Int"]
+result = "Int"
+deterministic = true
 ```
+
+- **Kill switch:** there is no deployment switch yet — the RFC defers it to the
+  sandboxed tier. The practical switch is the manifest: a declared export with
+  no registered kernel fails deployment, so disabling means removing the
+  declaration *and* its call sites, not merely skipping registration. Keep
+  Arteries-side feature gating for the phases that introduce each export.
 
 ---
 
 ## 11. Security and resource limits
 
-A capability-gated native op is still a resource risk. Enforce per call:
+A capability-gated native op is still a resource risk. The host tier already
+enforces some of this per call *(PR #2)*; the rest is on Arteries:
 
-- **Input caps:** grid `w*h`, polyline length, day count, settlement/route
-  counts, blob bytes.
-- **Output caps:** Text ≤ `MAX_SOURCE_BYTES`; lists ≤ 1,000; charge the value
-  budget.
-- **CPU:** deadline checks at loop checkpoints; the interpreter already runs on
-  the bounded blocking pool; do not add a nested blocking hop.
-- **Memory:** reject inputs that imply oversized allocations; use bounded
-  buffers; consider an allocator cap per worker.
-- **Panics:** `catch_unwind`, map to an error, keep the server alive.
-- **No filesystem/network access** from pure compute ops. Stateful ops may use
-  the transaction they were given, nothing else.
+**Enforced by Diamond:**
+
+- **Input bytes:** `max_input_bytes`, counted on the wire-encoded arguments and
+  rejected *before* the kernel runs (a test upstream proves the kernel is never
+  called). Argument count and types are checked against the declaration.
+- **Output bytes:** `max_output_bytes` on the reply, then the managed
+  value-budget charge on the decoded value; the effective ceiling is the
+  smaller of the two. Text additionally cannot exceed `MAX_SOURCE_BYTES`.
+- **Duration:** `max_duration_ms` measured and enforced after the call; the
+  request deadline is observable by the kernel through `ComputeContext`.
+- **Panics:** caught with `catch_unwind`, surfaced as a `Message` failure with
+  no panic text (the process panic hook still logs the payload — see §4).
+- **Registration integrity:** only functions registered on explicit
+  `RuntimeGrants` are reachable; duplicates are rejected without replacing the
+  first kernel; config JSON cannot grant compute.
+
+**On Arteries (per kernel):**
+
+- **Input shape caps:** grid `w*h`, polyline length, day count,
+  settlement/route counts — validate inside the kernel and return
+  `ComputeError::InvalidInput`; byte limits alone do not bound a grid's
+  geometry.
+- **Failure classes:** use `Denied` / `InvalidInput` / `Aborted` / `Conflict` /
+  `Message` deliberately; `Message` text reaches application code verbatim, so
+  it must never carry seeds, payloads, or configuration.
+- **Cooperative deadlines:** call `context.checkpoint()` in every long loop;
+  treat a breach as mandatory, since nothing else stops the kernel.
+- **Memory:** reject inputs that imply oversized allocations before allocating;
+  use bounded buffers; consider an allocator cap per worker.
+- **No filesystem/network access.** The ABI cannot prevent it (the kernel is
+  ordinary Rust in-process), so it is a code-review rule, not a runtime rule.
 - **Auditability:** log op name, version, input sizes, duration, output size,
-  and failure class (not payloads).
+  and failure class (not payloads). **No metrics hook exists yet** (§4) — the
+  embedder must wrap kernels to capture this.
 
 ---
 
 ## 12. Testing and validation
 
 - **Contract tests:** checker signature and runtime dispatch agree for every
-  op (arity, types, capability).
+  op (arity, types, capability). **Provided upstream** *(PR #2: 26 compute
+  tests covering manifest validation, checker resolution, dispatch, limits,
+  failure classes, and artifacts)* — Arteries adds `validate_compute` at
+  startup and one end-to-end call per export.
 - **Determinism tests:** same inputs → same bytes across runs, platforms, and
-  build profiles; assert the digest.
+  build profiles; assert the digest. Upstream only proves identical inputs give
+  identical *wire bytes* for one run; cross-platform and cross-run claims are
+  Arteries' to test (`digest` export exists for exactly this).
 - **Property tests:** terrain validity (no out-of-range codes), path
   connectivity, cost non-negativity, river termination at sea.
 - **Differential tests:** during migration, compare the Rust op against the
@@ -405,38 +591,59 @@ A capability-gated native op is still a resource risk. Enforce per call:
 
 ## 13. Versioning and compatibility
 
-- Version each op contract (`name@1`) and each payload format (`v1|...`).
+- Version each payload format (`v1|...`) and each kernel's behaviour. The
+  compute surface has no per-op version field: a contract is identified by its
+  module, export, signature, determinism flag, and limits as published in
+  `contract.json`, so changing any of those is a visible contract change —
+  bump the payload version alongside it.
 - Store `generation_version` and `host_extension_version` with the world.
 - A saved world records the versions it was produced with; opening it on a
   newer build must migrate explicitly or refuse, never silently change results.
 - Keep the old implementation available for at least one release during
   migration (feature flag), then remove it.
-- Pin the `arteries-core` crate version in the Diamond fork.
+- Pin the `arteries-core` crate version in the embedding binary (and in the
+  CLI exporter), so a kernel upgrade and a generated-asset upgrade are
+  distinguishable events.
 
 ---
 
 ## 14. Fork vs. upstream
 
-A fork is the fast path but a product risk: every Diamond upgrade must re-apply
-the patch, and users must install a custom binary.
+**Answered since v0.2:** the generic extension point was proposed and
+implemented upstream. This is no longer a three-way open question for pure
+compute.
 
-Options:
+| Path | Status |
+| --- | --- |
+| **Upstream a generic extension point** | **Done, in review.** RFC at Diamond PR **#1** (`docs/compute-extensions.md`), host tier at PR **#2** (branch `feat/compute-host-tier`). Manifest declarations, static call surface, per-export capabilities, kernel registry, artifact publication, tests. Pure compute needs **no fork**. |
+| **Vendor a fork with a tracked patch set** | Not needed for compute. It remains the *only* route to a stateful in-process tick (§8 option 1), because the upstream surface deliberately carries no database handle. |
+| **Separate Rust HTTP service** | Still valid as the fallback if #1/#2 are declined, and as the transport for stateful work. `host.http_post` under an `Http<name>` capability. Adds deployment, auth, and network latency. |
 
-- **Upstream a generic extension point.** Propose an `host.compute.<name>`
-  registry with a `Compute` trait, capability, and contract publication. This
-  is the cleanest long-term path but needs Diamond maintainer buy-in and design
-  work.
-- **Vendor a fork with a tracked patch set.** Keep the delta small and
-  isolated (`src/arteries.rs` + a few dispatch/checker hooks), maintain a patch
-  queue, and test against upstream releases.
-- **Separate Rust HTTP service.** No fork; call it with `host.http_post` under
-  an `Http<name>` capability. Adds deployment, auth, and network latency, but
-  is the least invasive. The `arteries-core` crate can back both this service
-  and the in-process op, so the same code serves both paths.
+Practical consequences:
 
-Recommendation: build `arteries-core` first, expose it through the separate
-service if a fork is unacceptable, and upstream the generic extension point if
-Diamond is willing.
+- **Until #1/#2 merge**, "a Diamond with compute" means a build from
+  `feat/compute-host-tier`; upstream `main` (`929dd98`) has no compute surface.
+  On this machine `diamond` is a symlink to
+  `/home/yria/dev/Diamond/target/debug/diamond` — this working tree — which is
+  why `diamond check` on Diamond's `examples/compute-lab/diamond.toml` already
+  accepts `[compute.sim]` today. Treat that as a local development build: pin
+  the commit, because `0.20.0` is the version string on both branches and the
+  binary will silently change meaning when `main` is checked out.
+- **The RFC is a draft until merged.** §13's guarantee classes (trusted and
+  advisory host tier; export-specific capabilities; manifest-declared identity)
+  are what Arteries is designing against — if review changes the call surface
+  or limits, this document's §5/§6/§10 mapping tables are the parts to re-verify.
+- **`arteries-core` is transport-independent** (§9). It backs the in-process
+  kernel *and* the CLI exporter *and*, if it comes to that, an HTTP service.
+  Extracting it first (H0) remains the right move regardless of what Diamond
+  decides.
+- **The stateful tick is the remaining fork/service question** (§8, §16). Do
+  not let H3 wait on an upstream proposal for transactional host operations —
+  staged Diamond RPCs already work at prototype scale.
+
+Recommendation: build `arteries-core` first (H0), consume the upstream host
+tier for pure compute once #1/#2 land (H1/H2), and revisit the stateful
+transport only when H3's chunked staged RPCs actually hit their limit.
 
 ---
 
@@ -445,10 +652,14 @@ Diamond is willing.
 | Phase | Content | Go/no-go signal |
 | --- | --- | --- |
 | **H0 — `arteries-core` + exporter** | Extract terrain/noise into a standalone Rust crate and CLI; keep the current Diamond implementation as a differential oracle | Outputs match on fixed seeds; renderer consumes the crate |
-| **H1 — First in-process op** | Add `arteries_terrain_region` (pure) with checker/eval/capability/artifact wiring; use it from `app/server.dia` | Fits comfortably inside the request deadline; no regression; smoke test green |
-| **H2 — Pathfinding** | Add `arteries_pathfind` + `arteries_route_cost`; use for the survey | A* on a 64×64 grid well under the request deadline |
-| **H3 — Stateful tick** | Add `arteries_tick` (handle + transaction) and `arteries_flow`; move the tick out of Diamond | 100-settlement tick runs in bounded chunks within the request deadline; replay/rollback verified |
-| **H4 — Planet generation** | Add `arteries_generate_planet`; chunk or run as a durable job | A planet generates in bounded chunks within the request deadline; generation validation passes |
+| **H1 — First compute export** | Declare `[compute.arteries]` with `terrain_region` in `app/diamond.toml`, add `Compute<arteries.terrain_region>` to both `provides`, register the kernel in the embedder (§5), call it from `app/server.dia`. No Diamond patch | `validate_compute` passes at startup; generation fits comfortably inside the request deadline; no regression; smoke test green |
+| **H2 — Pathfinding** | Declare `pathfind` + `route_cost` exports and register the kernels; use them for the survey | A* on a 64×64 grid well under the request deadline |
+| **H3 — Stateful tick** | **Not a compute export.** Move the tick out of Diamond via the §8 options: staged Diamond RPCs (current), an HTTP service, or a fork with transactional host ops | 100-settlement tick runs in bounded chunks within the request deadline; replay/rollback verified |
+| **H4 — Planet generation** | Declare `generate_planet` and register the kernel; chunk the call or run it as a durable job | A planet generates in bounded chunks within the request deadline; generation validation passes |
+
+**Precondition for H1+:** a Diamond build containing PR #2 (§14). Until then,
+H0 — `arteries-core` plus the CLI exporter — is the only phase that can start,
+and it has no Diamond dependency anyway.
 
 Trigger H0/H1 early only if M2 (terrain depth) cannot fit Diamond's budgets
 with the target region size. Otherwise complete the gameplay phases first, as
@@ -460,22 +671,28 @@ with the target region size. Otherwise complete the gameplay phases first, as
 
 | Risk | Mitigation |
 | --- | --- |
-| Fork maintenance | Small isolated patch; tracked upstream; prefer upstreamed extension point or HTTP service |
-| Deadline overruns | `budget::remaining` checkpoints + chunking; do not add nested blocking; check the admission class |
-| Nondeterminism | Integer/fixed-point, sorted iteration, no f64, digest assertions |
+| PR #1/#2 declined or reshaped by review | The RFC is explicitly a draft; §5/§6/§10 are the mapping tables to re-verify. Fallbacks are the HTTP service and a tracked fork (§14) |
+| Running an unmerged Diamond build | Pin the exact revision next to the binary; re-run `verification/examples.py` and the Arteries smoke test on upgrade |
+| Deadline overruns | `ComputeContext::checkpoint` inside kernel loops + chunking; `max_duration_ms` is a post-call check; do not add nested blocking; check the admission class |
+| Nondeterminism | Integer/fixed-point, sorted iteration, no f64, digest assertions; `deterministic = true` is declared but not proven |
 | Payload limits | Binary encoding, chunking, handle-based state for the tick |
 | Schema coupling (stateful op) | One versioned data-access module; contract tests |
-| Security/resource abuse | Input/output caps, bounded pool, `catch_unwind`, disable switch |
-| Losing fuel-level diagnostics | Structured metrics; keep Diamond fallbacks for small cases |
+| Security/resource abuse | Declared input/output/duration caps, `catch_unwind`, bounded pool; **no upstream kill switch yet** — disable by removing the manifest declaration (§10) |
+| Losing fuel-level diagnostics | **No metrics hook upstream yet** (§4/§11) — wrap kernels in the embedder; keep Diamond fallbacks for small cases |
+| Panic payload leakage to logs | The process panic hook still prints a kernel's panic payload; kernels must not panic with secrets or payloads (§4) |
 
 Open questions:
 
-- Is a Diamond fork acceptable for deployment, or is the separate service the
-  default? (Decide before H1.)
-- Can the generic extension point be upstreamed? (Ask Diamond maintainers.)
+- Which Diamond revision does Arteries pin while #1/#2 are unmerged, and when
+  is it re-verified? (Decide before H1; record it in `runserv.sh` docs.)
 - Does the authoritative tick own its transaction, or participate in the
   caller's? (Recommendation: participate; never commit independently.)
+- If H3's staged RPCs hit their limit, is a transactional host operation worth
+  proposing upstream, or is the separate service the answer? (Decide at H3,
+  not before.)
 - How large can a "region" be before chunking is mandatory? (Benchmark.)
+- Do the per-export byte/duration defaults fit terrain and pathfinding, or do
+  the Arteries declarations need their own tuning? (Measure at H1/H2.)
 
 ---
 
@@ -489,8 +706,8 @@ document's target scale. The recommended order is:
 1. Build A–G within Diamond budgets, proving gameplay on the small prototype.
 2. Extract `arteries-core` (H0) so generation and pathfinding have a single,
    testable implementation.
-3. Add the first in-process op (H1) and pathfinding (H2) when budget pressure
-   appears.
+3. Add the first compute export (H1) and pathfinding (H2) when budget pressure
+   appears — once a Diamond build containing PR #2 is pinned (§14).
 4. Move the tick (H3) and planet generation (H4) once the gameplay loop is
    validated.
 

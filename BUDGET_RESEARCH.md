@@ -178,14 +178,22 @@ Patch `runtime.js` (`__fuel`, `__weight`) and `value.rs`
 
 ### 7. Native host extension / Rust simulation
 
-Expose a Rust host operation that runs the economy over typed state, with
-Diamond only orchestrating UI and persistence.
+Move pure work (terrain, noise, pathfinding, cost) into Rust kernels, with
+Diamond only orchestrating UI and persistence. The stateful economy tick is a
+separate problem (see below).
 
 **Pros:** Best performance and scale; can support the full 100–300 settlement
   target.
-**Cons:** Requires modifying/embedding Diamond and maintaining a new host API;
-  not an application-only change.
-**Effort:** high.
+**Cons:** Kernels are compiled-in Rust in the embedding binary, so they are
+  Arteries code to build and deploy — but, for pure compute, **not** a Diamond
+  fork. The stateful tick still needs a transaction the compute ABI does not
+  provide.
+**Status:** the generic extension point is upstreamed in Diamond PR #1 (RFC,
+  `docs/compute-extensions.md`) and PR #2 (host tier): `[compute.<module>]`
+  declarations, `host.compute<Reply>(module, export, ...)`, per-export
+  `Compute<module.export>` capabilities, and `RuntimeGrants::register_compute`.
+  `RUST_HOST_EXTENSIONS.md` (v0.3) is the Arteries-side mapping and phasing.
+**Effort:** high for `arteries-core` itself, low for the Diamond wiring.
 
 ## Recommended migration plan
 
@@ -199,8 +207,12 @@ Diamond only orchestrating UI and persistence.
    pages for the current region.
 5. Render one region at a time; use aggregate nodes for other regions.
 6. Only after that, raise the caps toward the design targets.
-7. If the target scale still does not fit, implement the native host extension
-   or a Diamond budget configuration fork.
+7. If the target scale still does not fit, adopt Diamond's compute extensions
+   for the pure work (RFC/host tier in Diamond PR #1/#2; see
+   `RUST_HOST_EXTENSIONS.md` phases H0–H2). The stateful economy tick is not a
+   compute export — keep the staged RPCs, or choose an HTTP service/fork when
+   H3 demands it. A budget-configuration fork is still an option but no longer
+   the only escape hatch.
 
 ## Evidence from this prototype
 

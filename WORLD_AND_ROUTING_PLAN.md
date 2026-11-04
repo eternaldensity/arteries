@@ -397,14 +397,21 @@ First steps (as agreed): write this document, then **M0** — the RT table
 generator and invariant tests — before touching the route planner. **M0 is now
 implemented** (`tools/gen_rt_grid.py`, `app/rt_tables.dia`,
 `tools/check-rt-tables.sh`, and the `rt_tables` module wired into
-`app/diamond.toml`). Run `./tools/check-rt-tables.sh` to verify. The next step
-is **M1 — Phase A**, the truthful and informed survey.
+`app/diamond.toml`). Run `./tools/check-rt-tables.sh` to verify. **M1 is in
+progress**: survey helpers, `cancel_project`, and the dismantle confirmation
+landed in `8f1756d`; the preview/acceptance items in the M1 row are what
+remain.
 
 **Scale path.** Phases A–G are designed to run inside Diamond's budgets. At
 the design document's target scale (100–300 settlements, large maps), the
-budgets become the binding constraint; `RUST_HOST_EXTENSIONS.md` proposes a
-Rust host-extension layer (phases H0–H3) as the scale path, adopted after the
-gameplay phases prove out.
+budgets become the binding constraint; `RUST_HOST_EXTENSIONS.md` (v0.3) maps
+Arteries onto Diamond's **compute extensions** — manifest-declared exports,
+`host.compute<Reply>(module, export, ...)`, and per-export `Compute<…>`
+capabilities — as the scale path (phases H0–H4). The pure-compute half is
+upstreamed in Diamond PR #1 (RFC) and PR #2 (host tier), so terrain,
+hydrology, and pathfinding need no fork; the stateful tick still does, and
+remains staged RPCs until H3. Adopt H0/H1 only when M2's terrain work actually
+presses against the budgets.
 
 ---
 
@@ -437,7 +444,7 @@ gameplay phases prove out.
 | Scope: E+F are a large tail | M1 and M2 deliver value independently; F starts only after the local loop is solid |
 | Saved-game compatibility | `generation_version`; waypoint field falls back to `bend` for old routes |
 | Richer planning overwhelms the player | Defaults, named alternatives, and legibility-first UI as in design doc §8 |
-| Diamond budget ceiling at target scale | Rust host extensions (`RUST_HOST_EXTENSIONS.md`, phases H0–H3) adopted after gameplay phases prove out |
+| Diamond budget ceiling at target scale | Rust host extensions (`RUST_HOST_EXTENSIONS.md`, phases H0–H4); the pure-compute half is upstreamed in Diamond PR #1 (RFC) and PR #2 (host tier), so no fork is needed for terrain/pathfinding |
 
 Open: the exact play area per region (one face vs cluster); whether survey
 reveals terrain progressively; how many waypoints before UI friction outweighs
