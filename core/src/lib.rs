@@ -28,7 +28,7 @@ pub use tick::{
 pub use worldgen::{
     climate_code, generate as generate_world, map_line as worldgen_map_line,
     table_for as worldgen_table_for, Biome, Cell as WorldCell, Feature, World as GeneratedWorld,
-    WorldTables, MAX_ATTEMPTS, MAX_WORLD_SIDE, WG_SCALE, WORLDGEN_VERSION,
+    WorldTables, MAX_ATTEMPTS, MAX_WORLD_SIDE, SMALL_MAP_ATTEMPTS, WG_SCALE, WORLDGEN_VERSION,
 };
 
 /// Map width in cells.

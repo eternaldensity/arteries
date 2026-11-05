@@ -55,6 +55,8 @@ Every seed produces a different 10 × 6 frontier:
   one image instead of hundreds of terrain nodes; New World cycles through
   seeds 0–15;
 - a meandering river, a coastline, hills, and forest cover are laid over it;
+- a clustered deposit field drives site richness, and the static map assets
+  mark rich deposits with small amber specks;
 - three settlements start in different corners of the map with complementary
   endowments taken from their biome;
 - town climate is baked from the temperature/moisture tables: cold settlements demand
@@ -65,11 +67,15 @@ Every seed produces a different 10 × 6 frontier:
   site can be clicked for a full inspector panel;
 - settlements and sites are placed on passable land, never on a river tile;
 - water crossings on a route are explicit bridges with extra cost, reduced
-  capacity, and longer construction time.
+  capacity, and longer construction time;
+- settlement endowments deplete on an annual boundary, so a rich outpost can
+  slowly lose its specialty and decline unless the network replaces it.
 
 The map is implicit: terrain is a pure function of `(seed, x, y)`, so the same
 seed always reproduces the same world. Settlement layouts are mirrored by the
-seed as well. No map tiles are stored or loaded from disk.
+seed as well. No map tiles are stored or loaded from disk. Worlds are tagged
+with `generation_version`; a world saved by an older generator is regenerated
+from its seed on load rather than being silently reinterpreted.
 
 ### Real routes in 2D space
 
@@ -356,8 +362,9 @@ This is a prototype, not the full design in
 - no save/load, auto-run, speed control, or scenario selection;
 - no sea/rail variants beyond the four modes, no hubs, no cargo restrictions;
 - economy and research are deliberately simplified;
-- events are deterministic and limited to harvest/storm/caravan;
+- events are deterministic and limited to harvest/storm/caravan plus annual
+  deposit depletion;
 - the three-route/four-settlement caps are runtime-budget constraints.
 
-The natural next steps are a save format, a larger level-of-detail map, cargo
-allow/deny rules, and multiple regions.
+The natural next steps are M3 waypoints and site-directed founding, M4
+multi-hop network flow and link rules, a save format, and multiple regions.

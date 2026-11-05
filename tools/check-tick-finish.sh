@@ -20,7 +20,7 @@ cat "$ROOT/tools/tick_finish_main.dia" >> "$GEN"
 
 "$DIAMOND" check "$GEN" >/dev/null
 RESULT=$("$DIAMOND" run "$GEN")
-EXPECTED='160|0,0,0|4,6,0,19,4,4,4,2,0,0,4|4,4,0,11,8,3,0,0,0,0,0|1,10'
+EXPECTED='160|0,0,0|4,6,0,4,0,0,0,1,0,0,0,19,4,4,4,2,0,0,4|4,4,0,0,3,1,0,0,0,0,0,11,8,3,0,0,0,0,0|1,10||160|0,0,0|4,6,0,3,0,0,0,1,0,0,0,19,4,4,4,2,0,0,4|4,6,0,0,2,1,0,0,0,0,0,11,6,2,0,0,0,0,0|1,12'
 if [ "$RESULT" = "$EXPECTED" ]; then
   echo "Diamond finish fixture matches the frozen Rust expectation"
 else

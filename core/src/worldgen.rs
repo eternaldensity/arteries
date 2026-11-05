@@ -16,7 +16,7 @@ use crate::Terrain;
 use std::collections::VecDeque;
 
 /// Version of the generation algorithm and cell layout.
-pub const WORLDGEN_VERSION: i64 = 1;
+pub const WORLDGEN_VERSION: i64 = 2;
 
 /// Fixed-point scale for worldgen fields.
 pub const WG_SCALE: i64 = 1_000_000;
@@ -24,8 +24,12 @@ pub const WG_SCALE: i64 = 1_000_000;
 /// Maximum grid width or height accepted by one call.
 pub const MAX_WORLD_SIDE: usize = 64;
 
-/// Maximum deterministic generation attempts.
+/// Maximum deterministic generation attempts for a full-size world.
+/// Small gameplay maps use twice as many attempts.
 pub const MAX_ATTEMPTS: u32 = 4;
+
+/// Deterministic attempts for maps smaller than 100 cells.
+pub const SMALL_MAP_ATTEMPTS: u32 = MAX_ATTEMPTS * 2;
 
 /// Biome code stored in the worldgen cell layout.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -135,6 +139,8 @@ pub struct Cell {
     pub river: i64,
     pub lake: bool,
     pub feature: Feature,
+    /// Clustered resource-deposit intensity, `0..=9`.
+    pub deposit: i64,
 }
 
 /// One generated world.
@@ -231,8 +237,13 @@ pub fn generate(seed: i64, width: usize, height: usize) -> Result<World, String>
             "world dimensions must be within 3..={MAX_WORLD_SIDE}"
         ));
     }
+    let attempts = if width * height < 100 {
+        SMALL_MAP_ATTEMPTS
+    } else {
+        MAX_ATTEMPTS
+    };
     let mut last = None;
-    for attempt in 0..MAX_ATTEMPTS {
+    for attempt in 0..attempts {
         let attempt_seed = if attempt == 0 {
             seed
         } else {
@@ -284,6 +295,7 @@ fn generate_once(seed: i64, width: usize, height: usize) -> World {
                 river: 0,
                 lake: false,
                 feature: Feature::None,
+                deposit: 0,
             });
         }
     }
@@ -291,6 +303,7 @@ fn generate_once(seed: i64, width: usize, height: usize) -> World {
     apply_coasts(&mut cells, width, height);
     apply_moisture(&mut cells, width, height, seed);
     apply_biomes(&mut cells, width, height, sea);
+    apply_deposits(&mut cells, width, height, seed);
     apply_hydrology(&mut cells, width, height, sea);
     apply_features(&mut cells, width, height, seed, sea);
     let valid = validate(&cells, width, height);
@@ -563,6 +576,127 @@ fn apply_features(cells: &mut [Cell], width: usize, height: usize, seed: i64, se
     }
 }
 
+fn apply_deposits(cells: &mut [Cell], width: usize, height: usize, seed: i64) {
+    let w = width as i64;
+    let h = height as i64;
+    for y in 0..height {
+        for x in 0..width {
+            let fx = (x as i64) * NOISE_SCALE / (w - 1).max(1);
+            let fy = (y as i64) * NOISE_SCALE / (h - 1).max(1);
+            let raw = fbm(seed ^ 0x7A11, fx * 4 + 71, fy * 4 + 29, 3);
+            let base = (raw.saturating_mul(10) / NOISE_SCALE).clamp(0, 9);
+            let idx = index(width, x, y);
+            let deposit = match cells[idx].biome {
+                Biome::Water | Biome::Coast => 0,
+                Biome::Ice | Biome::Tundra => base / 3,
+                Biome::Forest | Biome::Taiga | Biome::Jungle => (base + 2).min(9),
+                Biome::Hills | Biome::Mountain => (base + 3).min(9),
+                Biome::Marsh | Biome::Savanna => (base + 1).min(9),
+                Biome::Plains | Biome::Desert => base,
+            };
+            cells[idx].deposit = deposit;
+        }
+    }
+}
+
+fn resource_class(biome: Biome) -> i64 {
+    match biome {
+        Biome::Forest | Biome::Taiga | Biome::Jungle => 1,
+        Biome::Hills | Biome::Mountain | Biome::Desert => 2,
+        Biome::Plains | Biome::Savanna | Biome::Marsh => 0,
+        Biome::Coast | Biome::Water | Biome::Ice | Biome::Tundra => 3,
+    }
+}
+
+fn nearby_resource_variety(cells: &[Cell], width: usize, height: usize, radius: usize) -> bool {
+    let radius = i64::try_from(radius).unwrap_or(0);
+    for y in 0..height {
+        for x in 0..width {
+            let cell = &cells[index(width, x, y)];
+            let class = resource_class(cell.biome);
+            if cell.biome.is_water() || class == 3 {
+                continue;
+            }
+            for dy in -radius..=radius {
+                for dx in -radius..=radius {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    let nx = x as i64 + dx;
+                    let ny = y as i64 + dy;
+                    if nx < 0 || ny < 0 || nx as usize >= width || ny as usize >= height {
+                        continue;
+                    }
+                    let other = &cells[index(width, nx as usize, ny as usize)];
+                    let other_class = resource_class(other.biome);
+                    if !other.biome.is_water() && other_class != 3 && other_class != class {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+fn rivers_reach_water(cells: &[Cell], width: usize, height: usize) -> bool {
+    let total = cells.iter().filter(|cell| cell.river > 0).count();
+    if total == 0 {
+        return false;
+    }
+    let mut seen = vec![false; cells.len()];
+    let mut queue = VecDeque::new();
+    for (idx, cell) in cells.iter().enumerate() {
+        if cell.river == 0 {
+            continue;
+        }
+        let x = idx % width;
+        let y = idx / width;
+        if cell.lake
+            || neighbours(width, height, x, y).into_iter().any(|(nx, ny)| {
+                let next = &cells[index(width, nx, ny)];
+                next.biome.is_water() || next.lake
+            })
+        {
+            seen[idx] = true;
+            queue.push_back(idx);
+        }
+    }
+    while let Some(idx) = queue.pop_front() {
+        let x = idx % width;
+        let y = idx / width;
+        for (nx, ny) in neighbours(width, height, x, y) {
+            let next = index(width, nx, ny);
+            if !seen[next] && cells[next].river > 0 {
+                seen[next] = true;
+                queue.push_back(next);
+            }
+        }
+    }
+    let reached = cells
+        .iter()
+        .enumerate()
+        .filter(|(idx, cell)| cell.river > 0 && seen[*idx])
+        .count();
+    reached * 100 / total >= 90
+}
+
+fn first_tier_resources(cells: &[Cell]) -> i64 {
+    let grain = cells.iter().any(|cell| {
+        matches!(
+            cell.biome,
+            Biome::Plains | Biome::Savanna | Biome::Marsh | Biome::Jungle
+        )
+    });
+    let timber = cells
+        .iter()
+        .any(|cell| matches!(cell.biome, Biome::Forest | Biome::Taiga | Biome::Jungle));
+    let mineral = cells
+        .iter()
+        .any(|cell| matches!(cell.biome, Biome::Hills | Biome::Mountain | Biome::Desert));
+    i64::from(grain) + i64::from(timber) + i64::from(mineral)
+}
+
 fn validate(cells: &[Cell], width: usize, height: usize) -> bool {
     let total = cells.len();
     if total == 0 {
@@ -592,7 +726,12 @@ fn validate(cells: &[Cell], width: usize, height: usize) -> bool {
         .iter()
         .filter(|biome| cells.iter().any(|cell| cell.biome == **biome))
         .count();
-        return small_features >= 1 && small_kinds >= 2 && connectivity(cells, width, height, land);
+        let radius = (width.min(height) / 3).clamp(3, 8);
+        return small_features >= 1
+            && small_kinds >= 2
+            && first_tier_resources(cells) >= 2
+            && nearby_resource_variety(cells, width, height, radius)
+            && connectivity(cells, width, height, land);
     }
     if !(25..=85).contains(&fraction) {
         return false;
@@ -644,6 +783,16 @@ fn validate(cells: &[Cell], width: usize, height: usize) -> bool {
     .filter(|biome| cells.iter().any(|cell| cell.biome == **biome))
     .count();
     if resource_kinds < 3 {
+        return false;
+    }
+    if first_tier_resources(cells) < 2 {
+        return false;
+    }
+    if !rivers_reach_water(cells, width, height) {
+        return false;
+    }
+    let radius = (width.min(height) / 3).clamp(3, 8);
+    if !nearby_resource_variety(cells, width, height, radius) {
         return false;
     }
     connectivity(cells, width, height, land)
@@ -701,6 +850,8 @@ pub struct WorldTables {
     pub moisture: Vec<i64>,
     /// Climate code: `0` temperate, `1` cold, `2` dry/hot.
     pub climate: Vec<i64>,
+    /// Clustered deposit intensity, `0..=9`.
+    pub deposit: Vec<i64>,
 }
 
 /// One economy class for a biome.
@@ -736,7 +887,8 @@ pub const fn climate_code(temperature: i64, moisture: i64) -> i64 {
     }
 }
 
-/// Flat terrain, feature, biome, temperature, and moisture tables for one seed.
+/// Flat terrain, feature, biome, temperature, moisture, climate, and deposit
+/// tables for one seed.
 ///
 /// # Errors
 /// Rejects dimensions outside the generator bounds.
@@ -768,6 +920,7 @@ pub fn table_for(seed: i64, width: usize, height: usize) -> Result<WorldTables, 
         .zip(&moisture)
         .map(|(temp, moist)| climate_code(*temp, *moist))
         .collect();
+    let deposit = world.cells.iter().map(|cell| cell.deposit).collect();
     Ok(WorldTables {
         terrain,
         features,
@@ -775,6 +928,7 @@ pub fn table_for(seed: i64, width: usize, height: usize) -> Result<WorldTables, 
         temperature,
         moisture,
         climate,
+        deposit,
     })
 }
 
@@ -812,7 +966,26 @@ pub fn map_line(seed: i64, width: usize, height: usize) -> Result<String, String
                 .join(",")
         })
         .collect::<Vec<_>>();
-    Ok(format!("{seed}|{}|{}", rows.join(";"), features.join(";")))
+    let deposits = (0..height)
+        .map(|y| {
+            (0..width)
+                .map(|x| {
+                    world
+                        .cell(x, y)
+                        .map(|cell| cell.deposit)
+                        .unwrap_or(0)
+                        .to_string()
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .collect::<Vec<_>>();
+    Ok(format!(
+        "{seed}|{}|{}|{}",
+        rows.join(";"),
+        features.join(";"),
+        deposits.join(";")
+    ))
 }
 
 #[cfg(test)]
@@ -918,6 +1091,37 @@ mod tests {
         assert_eq!(climate_code(7, 2), 2);
         assert_eq!(climate_code(7, 3), 0);
         assert_eq!(climate_code(9, 0), 2);
+    }
+
+    #[test]
+    fn deposits_are_bounded_and_clustered() {
+        let world = generate(7, 16, 12).expect("world");
+        assert!(world
+            .cells
+            .iter()
+            .all(|cell| (0..=9).contains(&cell.deposit)));
+        assert!(world
+            .cells
+            .iter()
+            .filter(|cell| cell.biome.is_water())
+            .all(|cell| cell.deposit == 0));
+        let rich: Vec<bool> = world.cells.iter().map(|cell| cell.deposit >= 6).collect();
+        let rich_count = rich.iter().filter(|value| **value).count();
+        assert!(rich_count > 0, "no rich deposits in seed 7");
+        let clustered = rich
+            .iter()
+            .enumerate()
+            .filter(|(idx, value)| {
+                **value && {
+                    let x = idx % 16;
+                    let y = idx / 16;
+                    neighbours(16, 12, x, y)
+                        .into_iter()
+                        .any(|(nx, ny)| rich[ny * 16 + nx])
+                }
+            })
+            .count();
+        assert!(clustered * 2 >= rich_count, "deposits are not clustered");
     }
 
     #[test]

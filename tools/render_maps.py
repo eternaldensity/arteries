@@ -23,19 +23,32 @@ def main():
         if not line.strip():
             continue
         parts = line.split("|")
-        if len(parts) not in (2, 3):
+        if len(parts) not in (2, 3, 4):
             raise SystemExit(f"bad map data line: {line[:40]}")
         seed = int(parts[0])
         rows = parts[1].split(";")
         if len(rows) != H or any(len(row.split(",")) != W for row in rows):
             raise SystemExit(f"bad map data for seed {seed}")
-        feature_rows = parts[2].split(";") if len(parts) == 3 else []
+        feature_rows = parts[2].split(";") if len(parts) >= 3 else []
+        deposit_rows = parts[3].split(";") if len(parts) == 4 else []
         rects = []
         for y, row in enumerate(rows):
             for x, code in enumerate(row.split(",")):
                 fill, pattern = COLORS[code]
                 rects.append(
                     f'<rect x="{x}" y="{y}" width="1.01" height="1.01" fill="{pattern}"/>'
+                )
+        deposits = []
+        for y, row in enumerate(deposit_rows):
+            for x, code in enumerate(row.split(",")):
+                value = int(code)
+                if value < 6:
+                    continue
+                cx, cy = x + 0.5, y + 0.5
+                radius = 0.025 + value * 0.007
+                deposits.append(
+                    f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{radius:.3f}" '
+                    f'fill="#e8b86d" opacity="{0.22 + value * 0.035:.2f}"/>'
                 )
         icons = []
         for y, row in enumerate(feature_rows):
@@ -101,6 +114,7 @@ def main():
 </defs>
 <rect width="{W}" height="{H}" fill="#263b30"/>
 {''.join(rects)}
+{''.join(deposits)}
 {''.join(icons)}
 <path d="M0 0H{W}V{H}H0Z" fill="none" stroke="#0b1220" stroke-width=".04"/>
 </svg>

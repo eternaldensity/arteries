@@ -143,14 +143,14 @@
     <line class="divider" x1="450" y1="626" x2="450" y2="770"/>
 
     <text x="74" y="640" class="label">RULES · SERVER + UI</text>
-    <text x="74" y="666" class="mono">need_of · climate needs</text>
+    <text x="74" y="666" class="mono">need_of · climate needs · depletion</text>
     <text x="74" y="690" class="mono">trade moves · route plans</text>
     <text x="74" y="714" class="mono">upkeep · events · history</text>
     <text x="74" y="744" class="muted">Compiled into both targets; same deterministic rules.</text>
 
     <text x="474" y="640" class="label">BAKED WORLDGEN · 16 SEEDS · 10×6</text>
     <text x="474" y="666" class="mono">terrain · features · economy class</text>
-    <text x="474" y="690" class="mono">temperature · moisture · climate</text>
+    <text x="474" y="690" class="mono">temperature · moisture · climate · deposits</text>
     <text x="474" y="714" class="mono">climate = f(temperature, moisture)</text>
     <text x="474" y="744" class="muted">Drift-checked against the Rust generator.</text>
 

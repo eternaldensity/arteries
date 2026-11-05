@@ -1,28 +1,31 @@
 # Appended by tools/check-tick-finish.sh after stripping `export` from
 # app/shared.dia. Prints the finish state for one fixed two-town frontier.
 
-fn finish_town(base: Town, stock: List<Int>, pop: Int, prosperity: Int) -> Town:
-  Town(id: base.id, name: base.name, x: base.x, y: base.y, terrain: base.terrain, endow: base.endow, state: TownState(pop: pop, prosperity: prosperity, research: 0, stock: stock))
+fn finish_town(base: Town, endow: List<Int>, stock: List<Int>, pop: Int, prosperity: Int) -> Town:
+  Town(id: base.id, name: base.name, x: base.x, y: base.y, terrain: base.terrain, endow: endow, state: TownState(pop: pop, prosperity: prosperity, research: 0, stock: stock))
 
-fn stock_line(t: Town) -> Text:
-  let values = for value in t.state.stock:
+fn int_line(values: List<Int>) -> Text:
+  let parts = for value in values:
     int_text(value)
-  join_text(values, ",")
+  join_text(parts, ",")
 
 fn town_line(t: Town) -> Text:
-  int_text(t.state.pop) + "," + int_text(t.state.prosperity) + "," + int_text(t.state.research) + "," + stock_line(t)
+  int_text(t.state.pop) + "," + int_text(t.state.prosperity) + "," + int_text(t.state.research) + "," + int_line(t.endow) + "," + int_line(t.state.stock)
 
 fn flag_text(value: Bool) -> Text:
   match value:
     true => "1"
     false => "0"
 
-fn main() -> Text:
-  let base = new_world(7)
-  let a = finish_town(nth_town(base.towns, 0), [16, 4, 4, 4, 2, 0, 0, 4], 4, 6)
-  let b = finish_town(nth_town(base.towns, 1), [8, 6, 2, 0, 0, 0, 0, 0], 4, 6)
-  let world = World(seed: 7, tick: 0, money: 160, towns: [a, b], sites: [], routes: [], log: [], history: [], tech_road: false, tech_river: false, tech_rail: false)
-  let result = finish_period(world, 28, 0)
+fn case_line(world: World, days: Int, from: Int) -> Text:
+  let result = finish_period(world, days, from)
   let t0 = nth_town(result.towns, 0)
   let t1 = nth_town(result.towns, 1)
   int_text(result.money) + "|" + flag_text(result.tech_road) + "," + flag_text(result.tech_river) + "," + flag_text(result.tech_rail) + "|" + town_line(t0) + "|" + town_line(t1) + "|" + int_text(len(result.history)) + "," + int_text(total(result.history))
+
+fn main() -> Text:
+  let base = new_world(7)
+  let a = finish_town(nth_town(base.towns, 0), [4, 0, 0, 0, 1, 0, 0, 0], [16, 4, 4, 4, 2, 0, 0, 4], 4, 6)
+  let b = finish_town(nth_town(base.towns, 1), [0, 3, 1, 0, 0, 0, 0, 0], [8, 6, 2, 0, 0, 0, 0, 0], 4, 6)
+  let world = World(seed: 7, tick: 0, money: 160, towns: [a, b], sites: [], routes: [], log: [], history: [], tech_road: false, tech_river: false, tech_rail: false)
+  case_line(world, 28, 0) + "||" + case_line(world, 1, 336 * hours_per_day())

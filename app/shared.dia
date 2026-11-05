@@ -573,6 +573,27 @@ fn set_prosperity(t: Town, p: Int) -> Town:
 fn add_research(t: Town, r: Int) -> Town:
   with_state(t, TownState(pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research + r, stock: t.state.stock))
 
+fn with_endow(t: Town, xs: List<Int>) -> Town:
+  Town(id: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, endow: xs, state: t.state)
+
+fn largest_endow_index(xs: List<Int>, i: Int, best: Int, best_value: Int) -> Int:
+  match list_get(xs, i):
+    None => best
+    Some(value) => match value > best_value:
+      true => largest_endow_index(xs, i + 1, i, value)
+      false => largest_endow_index(xs, i + 1, best, best_value)
+
+fn deplete_town(t: Town) -> Town:
+  let idx = largest_endow_index(t.endow, 0, 0, -1)
+  let current = nth_int(t.endow, idx)
+  match current > 0:
+    true => with_endow(t, replace_int(t.endow, idx, current - 1))
+    false => t
+
+fn deplete_towns(towns: List<Town>) -> List<Town>:
+  for t in towns:
+    deplete_town(t)
+
 export fn need_of_at(t: Town, climate: Int, g: Good) -> Int:
   let cold = climate == 1
   let dry = climate == 2
@@ -754,9 +775,19 @@ fn worldgen_climate_at(seed: Int, x: Int, y: Int) -> Int:
     true => digit_value(text_slice(rows, index, 1))
     false => 0
 
+fn worldgen_deposit_at(seed: Int, x: Int, y: Int) -> Int:
+  let rows = worldgen_deposit_rows(mod_int(seed, map_count()))
+  let index = y * map_w() + x
+  match index < len(rows):
+    true => digit_value(text_slice(rows, index, 1))
+    false => 0
+
 # 0 temperate, 1 cold, 2 dry/hot.
 export fn town_climate(seed: Int, x: Int, y: Int) -> Int:
   worldgen_climate_at(seed, x, y)
+
+export fn generation_version() -> Int:
+  worldgen_table_version()
 
 export fn climate_name(code: Int) -> Text:
   match code == 1:
@@ -1110,9 +1141,11 @@ fn make_site(seed: Int, i: Int, p: Point) -> Site:
   let biome = worldgen_economy_at(seed, p.x, p.y)
   let feature = worldgen_feature_code(seed, p.x, p.y)
   let moist = worldgen_moisture_at(seed, p.x, p.y)
+  let deposit = worldgen_deposit_at(seed, p.x, p.y)
   let r = site_resource_for(i, biome, feature)
   let terrain = terrain_at(seed, p.x, p.y)
-  Site(id: "s" + int_text(i), name: site_name(i), x: p.x, y: p.y, terrain: terrain, resource: r, richness: 2 + mod_int(hash100(seed, i, 53, 67) + moist, 3), founded: false)
+  let richness = clamp(2 + deposit / 3 + mod_int(hash100(seed, i, 53, 67) + moist, 2), 2, 5)
+  Site(id: "s" + int_text(i), name: site_name(i), x: p.x, y: p.y, terrain: terrain, resource: r, richness: richness, founded: false)
 
 # ---------------------------------------------------------------- world creation
 
@@ -3621,9 +3654,12 @@ export fn finish_period(world: World, days: Int, from: Int) -> World:
       let ev3 = match boundary_in_period(start_day, days, 11):
         true => caravan(ev2.towns, start_day, world.seed)
         false => EventOutcome(towns: ev2.towns, messages: [])
-      let log1 = append_messages(append_messages(append_messages(world.log, ev1.messages, 0), ev2.messages, 0), ev3.messages, 0)
+      let ev4 = match boundary_in_period(max_int(start_day, 1), days, 336):
+        true => EventOutcome(towns: deplete_towns(ev3.towns), messages: ["Deposits thin across the frontier."])
+        false => EventOutcome(towns: ev3.towns, messages: [])
+      let log1 = append_messages(append_messages(append_messages(append_messages(world.log, ev1.messages, 0), ev2.messages, 0), ev3.messages, 0), ev4.messages, 0)
       let log2 = append_messages(log1, msgs_tech, 0)
-      World(seed: world.seed, tick: world.tick, money: world.money, towns: ev3.towns, sites: world.sites, routes: world.routes, log: log2, history: append_history_values(world.history, ev3.towns), tech_road: road, tech_river: river, tech_rail: rail)
+      World(seed: world.seed, tick: world.tick, money: world.money, towns: ev4.towns, sites: world.sites, routes: world.routes, log: log2, history: append_history_values(world.history, ev4.towns), tech_road: road, tech_river: river, tech_rail: rail)
 
 export fn game_finish_period(game: Game, days: Int, from: Int) -> Game:
   let world_events = finish_period(game.world, days, from)
@@ -3668,9 +3704,13 @@ export fn finish_stage(world: World) -> World:
   let ev3 = match mod_int(world.tick, 11) == 0:
     true => caravan(ev2.towns, world.tick, world.seed)
     false => EventOutcome(towns: ev2.towns, messages: [])
-  let log1 = append_messages(append_messages(append_messages(world.log, ev1.messages, 0), ev2.messages, 0), ev3.messages, 0)
+  let stage_day = world.tick / hours_per_day()
+  let ev4 = match stage_day > 0 and mod_int(stage_day, 336) == 0:
+    true => EventOutcome(towns: deplete_towns(ev3.towns), messages: ["Deposits thin across the frontier."])
+    false => EventOutcome(towns: ev3.towns, messages: [])
+  let log1 = append_messages(append_messages(append_messages(append_messages(world.log, ev1.messages, 0), ev2.messages, 0), ev3.messages, 0), ev4.messages, 0)
   let log2 = append_messages(log1, msgs_tech, 0)
-  World(seed: world.seed, tick: world.tick + 1, money: world.money, towns: ev3.towns, sites: world.sites, routes: world.routes, log: log2, history: append_history_values(world.history, ev3.towns), tech_road: road, tech_river: river, tech_rail: rail)
+  World(seed: world.seed, tick: world.tick + 1, money: world.money, towns: ev4.towns, sites: world.sites, routes: world.routes, log: log2, history: append_history_values(world.history, ev4.towns), tech_road: road, tech_river: river, tech_rail: rail)
 
 export fn game_market(game: Game) -> Game:
   let unpaid = neglect_ticks(game)

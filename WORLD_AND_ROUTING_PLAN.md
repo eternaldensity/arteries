@@ -229,16 +229,15 @@ Everything is integer/fixed-point and computed at build time or server-side.
   SVGs with flow-width rivers. Store `generation_version` on the world so
   algorithm changes never silently mutate saved games.
 
-**Economy coupling.** Biome and climate must feed needs and production:
-fuel demand in cold climates, water scarcity in deserts, crop yields by
-latitude, fishing by shelf, timber by forest — otherwise generation detail is
-invisible in play. The current slice maps town climate to existing goods:
-cold towns need extra cloth and grain, dry towns extra tools and grain.
-Climates come from a baked per-cell table derived from temperature and
-moisture, so they are reproduced from `(seed, x, y)` like terrain instead of
-being stored per settlement. Dedicated fuel/water goods can replace those
-proxies later without changing the climate code (`0` temperate, `1` cold,
-`2` dry).
+**Economy coupling.** Biome and climate feed needs and production: cold towns
+need extra cloth and grain, dry towns extra tools and grain. Climates come from
+a baked per-cell table derived from temperature and moisture, so they are
+reproduced from `(seed, x, y)` like terrain instead of being stored per
+settlement. Clustered deposits set site richness; each annual finish boundary
+removes one unit from a settlement's largest endowment, so a rich outpost can
+decline unless the network replaces its lost production. Dedicated fuel/water
+goods can replace the climate proxies later without changing the climate code
+(`0` temperate, `1` cold, `2` dry).
 
 ---
 
@@ -392,7 +391,7 @@ milestone order below maximizes player-visible payoff and defers schema risk.
 | --- | --- | --- |
 | **M0 — RT geometry foundation** ✅ | `tools/gen_rt_grid.py` generates the baked tables; invariant tests; drift check; optional face/anchor debug overlay | `diamond check` passes; invariants green; regenerating tables is a no-op — **landed**: generator, `app/rt_tables.dia`, `tools/check-rt-tables.sh`, module wired into `app/diamond.toml` |
 | **M1 — Planner truth & preview** ✅ | Phase A: rasterized costs, capacity/upkeep/income preview, founding preview, mode comparison, upgrade/demolition clarity, cancellation, alternates. Rasterized `crossed_stats`, the `survey_options`/`survey_corridor_plan`/`survey_preview` RPCs, and a compact `SurveyPreviewPanel` inside the route desk are in place; the panel fetches on mount so the full-map render stays inside the browser budget | Full-map smoke test covers preview numbers, founding/material preview, corridor selection, drawn == charged costs, cancellation, and the 3-route acceptance flow |
-| **M2 — Terrain depth & routing** 🟡 map + economy slice landed | Phase E core: fixed-point noise/warp, elevation, climate, biomes, flow-accumulation rivers, passes/fords/harbors, validation/re-roll, and feature-aware A*. Worldgen drives `app/worldgen_tables.dia`, the SVG map assets, `terrain_at`, feature icons, and the survey. Town endowments and site resources derive from biome/temperature/moisture/feature, and climate now changes market needs (cold: cloth + grain; dry: tools + grain), so geology is visible in trade; climate is derived from the baked table rather than persisted per town. Validation checks river mouths/lakes, resource variety, features, and connectivity. `generation_version` is stored on `Worlds` (storage v4). Dedicated fuel/water goods and the wider validation matrix remain | Worldgen tables/assets are checked; property tests over 16×12 and 10×6 seeds pass; site geology, endowments, and the climate inspector are exercised in the browser smoke test; a pass/ford changes the A* and surcharge through the kernel ABI |
+| **M2 — Terrain depth & routing** ✅ landed | Phase E core: fixed-point noise/warp, elevation, climate, biomes, flow-accumulation rivers, passes/fords/harbors, clustered deposits, validation/re-roll, and feature-aware A*. Worldgen drives `app/worldgen_tables.dia`, the SVG map assets, `terrain_at`, feature icons, and the survey. Town endowments and site resources derive from biome/temperature/moisture/feature/deposit; climate changes market needs (cold: cloth + grain; dry: tools + grain); annual finish depletion removes one unit from each town's largest endowment. Validation checks land fraction, river mouths/lakes, river-to-water connectivity, first-tier resources, nearby resource variety, features, passes/fords, and connectivity; small maps get an eight-attempt re-roll. `generation_version` is 2 and mismatched worlds regenerate from their seed on load (storage v4). Dedicated fuel/water goods are deferred to later economy work | Worldgen tables/assets are checked; 32 seeds at 16×12 and all 16 at 10×6 pass determinism/variety; site geology, deposits, endowments, depletion, and the climate inspector are exercised in core/Diamond fixtures and the browser smoke test; a pass/ford changes the A* and surcharge through the kernel ABI |
 | **M3 — Waypoints & founding** | Phase B2/B4 + waypoint persistence and RPC update | Saved routes reload identically from waypoints; site-directed founding works in the smoke test |
 | **M4 — Network flow** | Phase C1–C4 + link rules UI | A three-route spanning tree carries multi-hop flow; rules and per-good tolls demonstrably change destinations |
 | **M5 — Globe assembly** | Phase F: regions, seam-aware generation, globe rendering, inter-region transport | A continent spans several faces; a port-to-port sea lane and a nested region map both work |

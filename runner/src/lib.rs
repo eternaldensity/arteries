@@ -267,7 +267,7 @@ impl Compute for Market {
 /// frontier size, so storm and caravan targets are chosen from the whole list.
 ///
 /// Reply: `[max_research, total_prosperity]`, then one
-/// `[pop, prosperity, research, 8 stocks]` row per town.
+/// `[pop, prosperity, research, 8 endowments, 8 stocks]` row per town.
 pub struct Finish;
 
 impl Finish {
@@ -313,8 +313,9 @@ impl Finish {
         let mut result = Vec::with_capacity(1 + towns.len());
         result.push(vec![summary.max_research, summary.total_prosperity]);
         for town in &towns {
-            let mut row = Vec::with_capacity(3 + GOOD_COUNT);
+            let mut row = Vec::with_capacity(3 + GOOD_COUNT * 2);
             row.extend([town.pop, town.prosperity, town.research]);
+            row.extend(town.endow);
             row.extend(town.stock);
             result.push(row);
         }

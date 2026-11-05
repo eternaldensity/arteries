@@ -309,6 +309,7 @@ pub fn finish_towns(
     let harvest = boundary_in_period(start_day, days, 6);
     let storm = boundary_in_period(start_day, days, 9);
     let caravan = boundary_in_period(start_day, days, 11);
+    let depletion = boundary_in_period(start_day.max(1), days, 336);
     let storm_index =
         (start_day + seed).rem_euclid(i64::try_from(town_count).unwrap_or(1)) as usize;
     let caravan_index =
@@ -330,10 +331,27 @@ pub fn finish_towns(
             town.stock[TIMBER] += 2;
             town.stock[STONE] += 1;
         }
+        if depletion {
+            deplete_endow(town);
+        }
         summary.max_research = summary.max_research.max(town.research);
         summary.total_prosperity = summary.total_prosperity.saturating_add(town.prosperity);
     }
     Ok(summary)
+}
+
+/// Remove one unit from the town's largest endowment. Ties break toward the
+/// earlier good index so the result is deterministic.
+fn deplete_endow(town: &mut TickTown) {
+    let mut best = 0;
+    for index in 1..GOOD_COUNT {
+        if town.endow[index] > town.endow[best] {
+            best = index;
+        }
+    }
+    if town.endow[best] > 0 {
+        town.endow[best] -= 1;
+    }
 }
 
 fn boundary_in_period(start: i64, days: i64, cadence: i64) -> bool {
@@ -426,6 +444,43 @@ mod tests {
         assert_eq!(need_of(&dry, GRAIN), 10);
         assert_eq!(need_of(&dry, TOOLS), 10);
         assert_eq!(need_of(&temperate, TOOLS), 5);
+    }
+
+    #[test]
+    fn annual_finish_depletes_the_largest_endowment() {
+        let mut towns = vec![town(4, [16, 4, 4, 4, 2, 0, 0, 4])];
+        towns[0].endow = [4, 0, 0, 0, 1, 0, 0, 0];
+        let summary = finish_towns(&mut towns, 7, 336 * 24, 1, 1, 0).expect("finish");
+        assert_eq!(towns[0].endow, [3, 0, 0, 0, 1, 0, 0, 0]);
+        assert_eq!(summary.total_prosperity, 6);
+    }
+
+    #[test]
+    fn annual_finish_matches_the_diamond_depletion_case() {
+        let mut towns = vec![
+            TickTown {
+                pop: 4,
+                prosperity: 6,
+                research: 0,
+                endow: [4, 0, 0, 0, 1, 0, 0, 0],
+                stock: [16, 4, 4, 4, 2, 0, 0, 4],
+                climate: 0,
+            },
+            TickTown {
+                pop: 4,
+                prosperity: 6,
+                research: 0,
+                endow: [0, 3, 1, 0, 0, 0, 0, 0],
+                stock: [8, 6, 2, 0, 0, 0, 0, 0],
+                climate: 0,
+            },
+        ];
+        let summary = finish_towns(&mut towns, 7, 336 * 24, 1, 2, 0).expect("finish");
+        assert_eq!(towns[0].endow, [3, 0, 0, 0, 1, 0, 0, 0]);
+        assert_eq!(towns[0].stock, [19, 4, 4, 4, 2, 0, 0, 4]);
+        assert_eq!(towns[1].endow, [0, 2, 1, 0, 0, 0, 0, 0]);
+        assert_eq!(towns[1].stock, [11, 6, 2, 0, 0, 0, 0, 0]);
+        assert_eq!(summary.total_prosperity, 12);
     }
 
     #[test]

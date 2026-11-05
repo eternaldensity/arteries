@@ -1,4 +1,4 @@
-use arteries_core::{MAP_H, MAP_W, MAX_SEED};
+use arteries_core::{MAP_H, MAP_W, MAX_SEED, WORLDGEN_VERSION};
 use arteries_runner::{
     Finish, Market, Noise, Pathfind, PathfindFeatures, Planet, PlanetSummaryKernel, RouteCost,
     TerrainRegion, Worldgen, WorldgenSummary,
@@ -228,8 +228,14 @@ fn finish_kernel_matches_the_diamond_finish_period() {
         reply,
         json!([
             ["0", "10"],
-            ["4", "6", "0", "19", "4", "4", "4", "2", "0", "0", "4"],
-            ["4", "4", "0", "11", "8", "3", "0", "0", "0", "0", "0"]
+            [
+                "4", "6", "0", "4", "0", "0", "0", "1", "0", "0", "0", "19", "4", "4", "4", "2",
+                "0", "0", "4"
+            ],
+            [
+                "4", "4", "0", "0", "3", "1", "0", "0", "0", "0", "0", "11", "8", "3", "0", "0",
+                "0", "0", "0"
+            ]
         ])
     );
 }
@@ -258,7 +264,10 @@ fn finish_kernel_pages_a_hundred_towns() {
     assert_eq!(rows[0], json!(["0", "598"]));
     assert_eq!(
         rows[8],
-        json!(["2", "4", "0", "4", "3", "2", "1", "1", "1", "1", "1"])
+        json!([
+            "2", "4", "0", "4", "0", "0", "0", "1", "0", "0", "0", "4", "3", "2", "1", "1", "1",
+            "1", "1"
+        ])
     );
 }
 
@@ -509,7 +518,7 @@ fn worldgen_kernel_summarizes_and_pages() {
         .expect("worldgen summary");
     let values = summary.as_array().expect("summary rows");
     assert_eq!(values.len(), 15);
-    assert_eq!(values[0], json!("1"));
+    assert_eq!(values[0], json!(WORLDGEN_VERSION.to_string()));
     assert_eq!(values[1], json!("16"));
     assert_eq!(values[2], json!("12"));
 
