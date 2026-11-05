@@ -77,6 +77,69 @@ export component SurveyPreviewPanel(from: Text, to: Text, plan: RoutePlan, road:
       </div>
     </div>
 
+export component WaypointDesk(from: Text, to: Text, markers: List<MarkerInfo>):
+  state step: Int = -1
+  state staged: Bool = false
+
+  on add_mode:
+    step = 0
+
+  on next_marker:
+    step = match step < len(markers):
+      true => match step + 1 >= len(markers):
+        true => 0
+        false => step + 1
+      false => match step + 1 >= len(markers) * 2:
+        true => len(markers)
+        false => step + 1
+
+  on place:
+    staged = match step >= 0 and len(markers) > 0:
+      true => rpc.survey_waypoint_stage(from, to, waypoint_stage_mode(step, len(markers)), waypoint_marker_x(markers, step), waypoint_marker_y(markers, step)).count > 0
+      false => staged
+    step = -1
+
+  on cancel_mode:
+    step = -1
+
+  on move_last:
+    step = match staged:
+      true => len(markers)
+      false => step
+
+  on remove_last:
+    staged = rpc.survey_waypoint_remove_last(from, to).count > 0
+    step = -1
+
+  on clear:
+    staged = rpc.survey_waypoint_clear().count > 0
+    step = -1
+
+  html:
+    <when test={staged}>
+      <div class="shape-row waypoint-line">
+        <span>Waypoint staged</span>
+        <button class="ghost tiny" type="button" on-click={add_mode}>Add</button>
+        <button class="ghost tiny" type="button" on-click={move_last}>Move last</button>
+        <button class="ghost tiny" type="button" on-click={remove_last}>Remove last</button>
+        <button class="ghost tiny" type="button" on-click={clear}>Clear</button>
+      </div>
+      <p class="helper">Staged on the server; the exact corridor is surveyed when construction starts.</p>
+    </when>
+    <when test={not staged and step < 0}>
+      <div class="shape-row">
+        <button class="ghost tiny" type="button" on-click={add_mode}>Add waypoint</button>
+      </div>
+    </when>
+    <when test={step >= 0}>
+      <div class="shape-row">
+        <span>Waypoint marker <strong>{waypoint_marker_name(markers, step)}</strong></span>
+        <button class="ghost tiny" type="button" on-click={next_marker}>Next</button>
+        <button class="ghost tiny" type="button" on-click={place}>Place</button>
+        <button class="ghost tiny" type="button" on-click={cancel_mode}>Cancel</button>
+      </div>
+    </when>
+
 export component Root:
   state game: Game = empty_game()
   state signed_in: Text = ""
@@ -196,7 +259,7 @@ export component Root:
   on pick(id: Text):
     game = game_pick(game, id)
     show_preview = false
-    game = match game.sel.to != "" and not game.inspect.is_site:
+    game = match game.sel.from != "" and game.sel.to != "":
       true => game_with_plan(game, game.sel.from, game.sel.to, rpc.survey_path_plan(game.sel.from, game.sel.to))
       false => game
     draft_plan = game.sel.draft
@@ -224,11 +287,10 @@ export component Root:
     show_preview = false
 
   on shape_auto:
-    game = match sel.ready and not game.inspect.is_site:
-      true => game_with_plan(game, sel.from, sel.to, rpc.survey_path_plan(sel.from, sel.to))
-      false => game
-    draft_plan = game.sel.draft
     show_preview = false
+    draft_plan = match sel.ready:
+      true => rpc.survey_path_plan(sel.from, sel.to)
+      false => draft_plan
 
   on cancel_route:
     game = game_cancel(game)
@@ -540,6 +602,9 @@ export component Root:
                     <when test={sel.to != ""}>{destination_name}</when>
                   </span>
                 </div>
+                <when test={iv.is_site and sel.to != ""}>
+                  <p class="helper">This route ends at {iv.name} and founds it when construction completes.</p>
+                </when>
                 <when test={sel.ready}>
                   <div class="plan-grid">
                     <div><span>Length</span><strong>{draft_plan.length}</strong></div>
@@ -551,13 +616,16 @@ export component Root:
                     <div><span>Build time</span><strong>{build_time}</strong></div>
                   </div>
                   <div class="shape-row">
-                    <span>Waypoint bend <strong>{draft_plan.bend}</strong></span>
+                    <span>Shape <strong>{draft_plan.bend}</strong></span>
                     <button class="tiny" type="button" on-click={bend_left} aria-label="Bend route left">←</button>
                     <button class="tiny" type="button" on-click={bend_right} aria-label="Bend route right">→</button>
                     <button class="ghost tiny" type="button" on-click={shape_auto}>Auto shape</button>
                     <button class="ghost tiny" type="button" on-click={preview_details}>Preview details</button>
                   </div>
-                  <p class="helper">Water crossings become bridges; they add cost, lower capacity, and lengthen construction.</p>
+                  <each items={[sel.from + "-" + sel.to]} as="survey_key" key={survey_key}>
+                    <use component="WaypointDesk" from={sel.from} to={sel.to} markers={map_markers}></use>
+                  </each>
+                                    <p class="helper">Water crossings become bridges; they add cost, lower capacity, and lengthen construction.</p>
                   <when test={show_preview}>
                     <use component="SurveyPreviewPanel" from={sel.from} to={sel.to} plan={draft_plan} road={world.tech_road} river={world.tech_river} rail={world.tech_rail} on-choose={use_corridor}></use>
                   </when>
@@ -637,7 +705,7 @@ export component Root:
                 <div><span>Terrain</span><strong>{iv.terrain}</strong></div>
                 <div><span>Status</span><strong>{iv.status}</strong></div>
               </div>
-              <p class="helper">A route passing within one tile founds a settlement here. Founding is automatic when construction completes.</p>
+              <p class="helper">Choose this site as a route destination, or route through it, and a settlement is founded when construction completes.</p>
             </when>
             <when test={not iv.is_site}>
               <div class="goods">

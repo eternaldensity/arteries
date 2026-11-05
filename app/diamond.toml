@@ -45,6 +45,7 @@ planet_summary = "server.planet_summary"
 worldgen_summary = "server.worldgen_summary"
 advance_finish = "server.advance_finish"
 start_route = "server.start_route"
+start_route_via = "server.start_route_via"
 order_upgrade = "server.order_upgrade"
 dismantle = "server.dismantle"
 cancel_project = "server.cancel_project"
@@ -53,6 +54,10 @@ survey_path_plan = "server.survey_path_plan"
 survey_options = "server.survey_options"
 survey_corridor_plan = "server.survey_corridor_plan"
 survey_preview = "server.survey_preview"
+survey_waypoint_plan = "server.survey_waypoint_plan"
+survey_waypoint_stage = "server.survey_waypoint_stage"
+survey_waypoint_remove_last = "server.survey_waypoint_remove_last"
+survey_waypoint_clear = "server.survey_waypoint_clear"
 set_fee = "server.set_fee"
 pay_upkeep = "server.pay_upkeep"
 toggle_auto = "server.toggle_auto"
@@ -60,7 +65,7 @@ new_seed = "server.new_seed"
 
 [storage]
 profile = "relational-v1"
-version = 4
+version = 5
 
 [storage.resources.Worlds]
 scope = "id"

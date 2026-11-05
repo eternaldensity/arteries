@@ -289,6 +289,47 @@ export type Selection:
   routing: Bool
   notice: Text
 
+export fn waypoint_stage_mode(step: Int, count: Int) -> Int:
+  match step < count:
+    true => -2
+    false => -4
+
+export fn waypoint_marker_name(markers: List<MarkerInfo>, step: Int) -> Text:
+  let count = len(markers)
+  match count <= 0:
+    true => ""
+    false => nth_marker(markers, mod_int(step, count)).name
+
+export fn waypoint_marker_x(markers: List<MarkerInfo>, step: Int) -> Int:
+  let count = len(markers)
+  match count <= 0:
+    true => -1
+    false => nth_marker(markers, mod_int(step, count)).x
+
+export fn waypoint_marker_y(markers: List<MarkerInfo>, step: Int) -> Int:
+  let count = len(markers)
+  match count <= 0:
+    true => -1
+    false => nth_marker(markers, mod_int(step, count)).y
+
+export type WaypointState:
+  count: Int
+  ok: Bool
+
+export fn empty_waypoint_state() -> WaypointState:
+  WaypointState(count: 0, ok: false)
+
+export fn encode_waypoints(via: List<Int>) -> Text:
+  let parts = for i in indices(len(via) / 2):
+    pad4(nth_int(via, i * 2)) + pad4(nth_int(via, i * 2 + 1))
+  join_text(parts, "")
+
+export fn decode_waypoints(text: Text) -> List<Int>:
+  let count = len(text) / 8
+  let groups = for i in indices(count):
+    [int_of(text_slice(text, i * 8, 4)), int_of(text_slice(text, i * 8 + 4, 4))]
+  flatten_ints(groups, 0, [])
+
 export type InspectView:
   ready: Bool
   is_site: Bool
@@ -1429,21 +1470,21 @@ fn max_point_y(points: List<Point>, i: Int, best: Int) -> Int:
     Some(p) => max_point_y(points, i + 1, max_int(best, p.y))
 
 export fn plan_route(world: World, a: Text, b: Text) -> RoutePlan:
-  let ta = find_town(world.towns, a)
-  let tb = find_town(world.towns, b)
-  match ta.id == "" or tb.id == "" or ta.id == tb.id:
+  let pa = marker_point(world, a)
+  let pb = marker_point(world, b)
+  match pa.x < 0 or pb.x < 0 or a == b:
     true => empty_plan()
-    false => plan_with_offset(world, ta, tb, bend_offset(world.seed, ta.x, ta.y, tb.x, tb.y))
+    false => plan_with_points(world, pa.x, pa.y, pb.x, pb.y, bend_offset(world.seed, pa.x, pa.y, pb.x, pb.y))
 
 export fn plan_route_bend(world: World, a: Text, b: Text, bend: Int) -> RoutePlan:
-  let ta = find_town(world.towns, a)
-  let tb = find_town(world.towns, b)
-  match ta.id == "" or tb.id == "" or ta.id == tb.id:
+  let pa = marker_point(world, a)
+  let pb = marker_point(world, b)
+  match pa.x < 0 or pb.x < 0 or a == b:
     true => empty_plan()
-    false => plan_with_offset(world, ta, tb, clamp(bend, -5, 5))
+    false => plan_with_points(world, pa.x, pa.y, pb.x, pb.y, clamp(bend, -5, 5))
 
-fn plan_with_offset(world: World, ta: Town, tb: Town, off: Int) -> RoutePlan:
-  let points = plan_points_offset(world.seed, ta.x, ta.y, tb.x, tb.y, off)
+fn plan_with_points(world: World, ax: Int, ay: Int, bx: Int, by: Int, off: Int) -> RoutePlan:
+  let points = plan_points_offset(world.seed, ax, ay, bx, by, off)
   let length = path_length(points)
   let stats = crossed_stats(points, world.seed)
   let water = nth_int(stats, 0)
@@ -1470,6 +1511,101 @@ export fn plan_from_path(flat: List<Int>, stats: List<Int>) -> RoutePlan:
   let mountain = nth_int(stats, 3)
   let forest = nth_int(stats, 4)
   RoutePlan(path: points, bend: auto_bend(), length: length, water: water, mountain: mountain, forest: forest, money: 8 + surcharge, timber: 1 + length / 14 + water, stone: 1 + length / 18 + mountain * 2, min_y: min_point_y(points, 0, map_h()), max_y: max_point_y(points, 0, 0))
+
+export fn via_max() -> Int:
+  6
+
+export fn via_flat(via: List<Point>) -> List<Int>:
+  let groups = for p in via:
+    [p.x, p.y]
+  flatten_ints(groups, 0, [])
+
+fn flatten_ints(xs: List<List<Int>>, i: Int, acc: List<Int>) -> List<Int>:
+  match list_get(xs, i):
+    None => acc
+    Some(row) => flatten_ints(xs, i + 1, concat_int_lists(acc, row))
+
+fn concat_int_lists(xs: List<Int>, ys: List<Int>) -> List<Int>:
+  match len(xs) == 0:
+    true => ys
+    false => concat_int_lists(list_slice(xs, 1, len(xs) - 1), list_append(ys, nth_int(xs, 0)))
+
+export fn via_from_flat(flat: List<Int>) -> List<Point>:
+  for i in indices(len(flat) / 2):
+    Point(x: clamp(nth_int(flat, i * 2), 0, map_w() - 1), y: clamp(nth_int(flat, i * 2 + 1), 0, map_h() - 1))
+
+export fn via_append_flat(via: List<Point>, x: Int, y: Int) -> List<Int>:
+  via_flat(list_append(via, Point(x: clamp(x, 0, map_w() - 1), y: clamp(y, 0, map_h() - 1))))
+
+fn replace_point(xs: List<Point>, i: Int, v: Point) -> List<Point>:
+  for x in indices(len(xs)):
+    match x == i:
+      true => v
+      false => nth_point(xs, x)
+
+export fn via_replace_flat(via: List<Point>, index: Int, x: Int, y: Int) -> List<Int>:
+  via_flat(replace_point(via, index, Point(x: clamp(x, 0, map_w() - 1), y: clamp(y, 0, map_h() - 1))))
+
+export fn via_remove_flat(via: List<Point>, index: Int) -> List<Int>:
+  via_flat(via_remove_points(via, index))
+
+export fn via_remove_points(via: List<Point>, index: Int) -> List<Point>:
+  let kept = for i in indices(len(via)):
+    match i == index:
+      true => []
+      false => [nth_point(via, i)]
+  flatten_points(kept, 0, [])
+
+export fn replace_point_ui(via: List<Point>, index: Int, x: Int, y: Int) -> List<Point>:
+  replace_point(via, index, Point(x: clamp(x, 0, map_w() - 1), y: clamp(y, 0, map_h() - 1)))
+
+fn path_point_near(path: List<Point>, x: Int, y: Int, i: Int) -> Point:
+  match list_get(path, i):
+    None => Point(x: -1, y: -1)
+    Some(p) => match abs_int(p.x - x) <= 1 and abs_int(p.y - y) <= 1:
+      true => p
+      false => path_point_near(path, x, y, i + 1)
+
+fn route_point_near(routes: List<Route>, x: Int, y: Int, i: Int) -> Point:
+  match list_get(routes, i):
+    None => Point(x: -1, y: -1)
+    Some(r) =>
+      let p = path_point_near(r.plan.path, x, y, 0)
+      match p.x >= 0:
+        true => p
+        false => route_point_near(routes, x, y, i + 1)
+
+export fn near_route_point(world: World, x: Int, y: Int) -> Point:
+  route_point_near(world.routes, x, y, 0)
+
+export fn waypoint_place(world: World, via: List<Point>, mode: Int, x: Int, y: Int) -> List<Point>:
+  let marker = near_marker_point(world, x, y)
+  let route = near_route_point(world, x, y)
+  let snapped = match marker.x != x or marker.y != y:
+    true => marker
+    false => match route.x >= 0:
+      true => route
+      false => marker
+  match mode >= 0:
+    true => match mode < len(via):
+      true => replace_point(via, mode, snapped)
+      false => via
+    false => match len(via) < via_max():
+      true => list_append(via, snapped)
+      false => via
+
+fn flatten_points(xs: List<List<Point>>, i: Int, acc: List<Point>) -> List<Point>:
+  match list_get(xs, i):
+    None => acc
+    Some(row) => flatten_points(xs, i + 1, concat_point_lists(acc, row))
+
+fn concat_point_lists(xs: List<Point>, ys: List<Point>) -> List<Point>:
+  match len(xs) == 0:
+    true => ys
+    false => concat_point_lists(list_slice(xs, 1, len(xs) - 1), list_append(ys, nth_point(xs, 0)))
+
+export fn concat_points(xs: List<Point>, ys: List<Point>) -> List<Point>:
+  concat_point_lists(xs, ys)
 
 # Persisted route plans use a fixed-width text format so a saved corridor is
 # never re-derived from the current pathfinding algorithm:
@@ -1613,6 +1749,54 @@ export fn marker_name(world: World, id: Text) -> Text:
   match t.id != "":
     true => t.name
     false => site_name_by_id(world.sites, id, 0)
+
+export fn marker_point(world: World, id: Text) -> Point:
+  let t = find_town(world.towns, id)
+  match t.id != "":
+    true => Point(x: t.x, y: t.y)
+    false =>
+      let s = find_site(world.sites, id)
+      match s.id != "":
+        true => Point(x: s.x, y: s.y)
+        false => Point(x: -1, y: -1)
+
+export fn endpoint_exists(world: World, id: Text) -> Bool:
+  marker_point(world, id).x >= 0
+
+# Snap a map cell to a town or site marker in the same or an adjacent cell.
+export fn near_marker_point(world: World, x: Int, y: Int) -> Point:
+  let exact = marker_search(world.towns, world.sites, x, y, 0)
+  match exact.id != "":
+    true => Point(x: exact.x, y: exact.y)
+    false =>
+      let right = marker_search(world.towns, world.sites, x + 1, y, 0)
+      match right.id != "":
+        true => Point(x: right.x, y: right.y)
+        false =>
+          let left = marker_search(world.towns, world.sites, x - 1, y, 0)
+          match left.id != "":
+            true => Point(x: left.x, y: left.y)
+            false =>
+              let down = marker_search(world.towns, world.sites, x, y + 1, 0)
+              match down.id != "":
+                true => Point(x: down.x, y: down.y)
+                false =>
+                  let up = marker_search(world.towns, world.sites, x, y - 1, 0)
+                  match up.id != "":
+                    true => Point(x: up.x, y: up.y)
+                    false => Point(x: x, y: y)
+
+export fn cell_id(x: Int, y: Int) -> Text:
+  "c" + int_text(x) + int_text(y)
+
+export fn cell_id_x(id: Text) -> Int:
+  digit_value(text_slice(id, 1, 1))
+
+export fn cell_id_y(id: Text) -> Int:
+  digit_value(text_slice(id, 2, 1))
+
+export fn is_cell_id(id: Text) -> Bool:
+  text_slice(id, 0, 1) == "c"
 
 fn site_name_by_id(sites: List<Site>, id: Text, i: Int) -> Text:
   match list_get(sites, i):
@@ -2213,6 +2397,19 @@ fn mark_site_founded(sites: List<Site>, id: Text) -> List<Site>:
       true => Site(id: s.id, name: s.name, x: s.x, y: s.y, terrain: s.terrain, resource: s.resource, richness: s.richness, founded: true)
       false => s
 
+fn found_target(target: Text, towns: List<Town>, sites: List<Site>, log: List<Text>, plan: RoutePlan, budget: Int) -> FoundLists:
+  let s = find_site(sites, target)
+  match s.id == "" or s.founded or budget <= 0 or len(towns) >= max_settlements():
+    true => found_lists(towns, sites, log, plan, 0, budget)
+    false => match site_near_plan(plan, s):
+      true =>
+        let town = town_from_site(s)
+        let towns2 = list_append(towns, town)
+        let sites2 = mark_site_founded(sites, s.id)
+        let log2 = append_message(log, s.name + " is founded where the new route passes.")
+        found_lists(towns2, sites2, log2, plan, 0, budget - 1)
+      false => found_lists(towns, sites, log, plan, 0, budget)
+
 fn found_lists(towns: List<Town>, sites: List<Site>, log: List<Text>, plan: RoutePlan, i: Int, budget: Int) -> FoundLists:
   match list_get(sites, i):
     None => FoundLists(towns: towns, sites: sites, log: log)
@@ -2242,7 +2439,7 @@ export fn build_route(world: World, a: Text, b: Text, plan: RoutePlan) -> BuildR
               let paid = pay_plan_list(world.towns, a, b, plan)
               let route = make_route(paid, a, b, plan)
               let log1 = append_message(world.log, "Built a pack route from " + route.a_name + " to " + route.b_name + " (" + int_text(plan.length) + " leagues).")
-              let found = found_lists(paid, world.sites, log1, plan, 0, 1)
+              let found = found_target(b, paid, world.sites, log1, plan, 1)
               let w = World(seed: world.seed, tick: world.tick, money: world.money - plan.money, towns: found.towns, sites: found.sites, routes: list_append(world.routes, route), log: found.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
               BuildResult(world: w, ok: true, message: "Route built. " + route.a_name + " and " + route.b_name + " are connected.", from: "", to: "")
 
@@ -2418,25 +2615,27 @@ export fn survey_trade_volume(world: World, from: Text, to: Text, plan: RoutePla
 export fn material_split_text(world: World, from: Text, to: Text, plan: RoutePlan) -> Text:
   let a = find_town(world.towns, from)
   let b = find_town(world.towns, to)
-  match a.id == "" or b.id == "":
+  match a.id == "" or not endpoint_exists(world, to):
     true => ""
     false =>
+      let a_name = a.name
+      let b_name = marker_name(world, to)
       let timber_a = min_int(stock(a, Timber), plan.timber)
       let stone_a = min_int(stock(a, Stone), plan.stone)
       let timber_b = plan.timber - timber_a
       let stone_b = plan.stone - stone_a
       let parts = []
       let t = match timber_a > 0:
-        true => [a.name + " " + int_text(timber_a) + " timber"]
+        true => [a_name + " " + int_text(timber_a) + " timber"]
         false => []
       let t2 = match timber_b > 0:
-        true => list_append(t, b.name + " " + int_text(timber_b) + " timber")
+        true => list_append(t, b_name + " " + int_text(timber_b) + " timber")
         false => t
       let s = match stone_a > 0:
-        true => list_append(t2, a.name + " " + int_text(stone_a) + " stone")
+        true => list_append(t2, a_name + " " + int_text(stone_a) + " stone")
         false => t2
       let s2 = match stone_b > 0:
-        true => list_append(s, b.name + " " + int_text(stone_b) + " stone")
+        true => list_append(s, b_name + " " + int_text(stone_b) + " stone")
         false => s
       join_nonempty(s2, 0, "")
 
@@ -2444,7 +2643,7 @@ export fn material_split_text(world: World, from: Text, to: Text, plan: RoutePla
 export fn material_warning(world: World, from: Text, to: Text, plan: RoutePlan) -> Text:
   let a = find_town(world.towns, from)
   let b = find_town(world.towns, to)
-  match a.id == "" or b.id == "":
+  match a.id == "" or not endpoint_exists(world, to):
     true => ""
     false =>
       let timber_a = min_int(stock(a, Timber), plan.timber)
@@ -2454,7 +2653,7 @@ export fn material_warning(world: World, from: Text, to: Text, plan: RoutePlan) 
       let warn_a = match stock(a, Timber) - timber_a < need_of(a, Timber) or stock(a, Stone) - stone_a < need_of(a, Stone):
         true => a.name + " is left short of timber or stone."
         false => ""
-      let warn_b = match stock(b, Timber) - timber_b < need_of(b, Timber) or stock(b, Stone) - stone_b < need_of(b, Stone):
+      let warn_b = match b.id != "" and (stock(b, Timber) - timber_b < need_of(b, Timber) or stock(b, Stone) - stone_b < need_of(b, Stone)):
         true => b.name + " is left short of timber or stone."
         false => ""
       join_nonempty([warn_a, warn_b], 0, "")
@@ -2573,10 +2772,10 @@ fn begin_route(world: World, a: Text, b: Text, plan: RoutePlan) -> ProjectStart:
             let w1 = with_towns(world, paid)
             let w2 = with_resources(w1, world.money - plan.money, w1.log)
             let time = construction_time(world, a, b, plan, Path)
-            let ta = find_town(world.towns, a)
-            let tb = find_town(world.towns, b)
-            let project = Project(id: a + "-" + b, kind: "route", a: a, b: b, a_name: ta.name, b_name: tb.name, mode: Path, route_id: "", plan: plan, start_tick: world.tick, ready_tick: world.tick + time)
-            let message = "Construction started: " + ta.name + " to " + tb.name + ", ready in " + duration_text(time) + "."
+            let a_name = marker_name(world, a)
+            let b_name = marker_name(world, b)
+            let project = Project(id: a + "-" + b, kind: "route", a: a, b: b, a_name: a_name, b_name: b_name, mode: Path, route_id: "", plan: plan, start_tick: world.tick, ready_tick: world.tick + time)
+            let message = "Construction started: " + a_name + " to " + b_name + ", ready in " + duration_text(time) + "."
             let w3 = record(w2, message)
             ProjectStart(world: w3, project: project, ok: true, message: message, from: "", to: "")
 
@@ -2623,7 +2822,7 @@ fn complete_project(world: World, project: Project) -> World:
     true =>
       let route = Route(id: project.a + "-" + project.b, a: project.a, b: project.b, a_name: project.a_name, b_name: project.b_name, mode: project.mode, plan: project.plan, fee: 1, traffic: 0, capacity: route_capacity(project.mode, project.plan), upkeep: route_upkeep(project.mode, project.plan))
       let log1 = append_message(world.log, "Construction finished: " + project.a_name + " to " + project.b_name + " is open.")
-      let found = found_lists(world.towns, world.sites, log1, project.plan, 0, 1)
+      let found = found_target(project.b, world.towns, world.sites, log1, project.plan, 1)
       World(seed: world.seed, tick: world.tick, money: world.money, towns: found.towns, sites: found.sites, routes: list_append(world.routes, route), log: found.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
     false =>
       let r = route_by_id(world.routes, project.route_id, 0)
@@ -3074,6 +3273,31 @@ export fn draft_nodes(plan: RoutePlan, ready: Bool) -> List<RouteNode>:
     true => path_nodes(plan.path, 0, "draft", "rn-draft")
     false => []
 
+fn waypoint_sketch(world: World, from: Text, to: Text, via: List<Point>) -> List<Point>:
+  let start = marker_point(world, from)
+  let goal = marker_point(world, to)
+  match start.x < 0 or goal.x < 0:
+    true => []
+    false => concat_points(concat_points([start], via), [goal])
+
+export fn draft_sketch_nodes(world: World, from: Text, to: Text, via: List<Point>, ready: Bool) -> List<RouteNode>:
+  match ready:
+    true => path_nodes(waypoint_sketch(world, from, to, via), 0, "sketch", "rn-draft")
+    false => []
+
+export fn draft_via_nodes(via: List<Point>, ready: Bool) -> List<RouteNode>:
+  match ready:
+    true => for i in indices(len(via)):
+      let p = nth_point(via, i)
+      RouteNode(key: "via-" + int_text(i), position: position_class(p.x, p.y), css: "via-node")
+    false => []
+
+export fn via_x(via: List<Point>, i: Int) -> Int:
+  nth_point(via, i).x
+
+export fn via_y(via: List<Point>, i: Int) -> Int:
+  nth_point(via, i).y
+
 # ---------------------------------------------------------------- selection and game
 
 export fn empty_selection() -> Selection:
@@ -3088,10 +3312,11 @@ export fn selection_pick(world: World, sel: Selection, id: Text) -> Selection:
   match t.id == "":
     true =>
       let s = find_site(world.sites, id)
-      let notice = match s.id == "":
-        true => "Nothing is here."
-        false => s.name + " · " + good_name(s.resource) + " site · richness " + int_text(s.richness) + ". Route a line within one tile to found it."
-      selection_with(sel, id, sel.from, sel.to, sel.draft, sel.ready, sel.routing, notice)
+      match s.id == "":
+        true => selection_with(sel, id, sel.from, sel.to, sel.draft, sel.ready, sel.routing, "Nothing is here.")
+        false => match sel.routing and sel.from != "":
+          true => selection_pick_site(world, sel, s)
+          false => selection_with(sel, id, sel.from, sel.to, sel.draft, sel.ready, sel.routing, s.name + " · " + good_name(s.resource) + " site · richness " + int_text(s.richness) + ". Choose it as a route destination to found it.")
     false => match sel.routing:
       false => selection_with(sel, id, "", "", empty_plan(), false, false, name + " selected. Use Survey route in the inspector to begin.")
       true => selection_pick_town(world, sel, id, name)
@@ -3105,7 +3330,16 @@ fn selection_pick_town(world: World, sel: Selection, id: Text, name: Text) -> Se
         true => match len(world.routes) >= max_routes():
           true => selection_with(sel, id, "", "", empty_plan(), false, false, "Three trunk routes already exist. Dismantle one before surveying another.")
           false => selection_with(sel, id, sel.from, id, empty_plan(), false, true, "Surveying route...")
-        false => selection_with(sel, id, id, "", empty_plan(), false, true, "Origin moved to " + name + ". Click a destination.")
+        false => selection_with(sel, id, sel.from, id, empty_plan(), false, true, "Destination moved to " + name + ".")
+
+fn selection_pick_site(world: World, sel: Selection, s: Site) -> Selection:
+  match s.founded:
+    true => selection_with(sel, s.id, sel.from, sel.to, sel.draft, sel.ready, sel.routing, s.name + " is already founded.")
+    false => match sel.from == s.id:
+      true => selection_with(sel, s.id, "", "", empty_plan(), false, false, "Route selection cleared.")
+      false => match sel.to == s.id:
+        true => selection_with(sel, s.id, sel.from, "", empty_plan(), false, true, "Destination cleared. Choose another site or settlement.")
+        false => selection_with(sel, s.id, sel.from, s.id, empty_plan(), false, true, "Surveying route to " + s.name + " site...")
 
 export fn selection_start(world: World, sel: Selection) -> Selection:
   let t = find_town(world.towns, sel.selected)
@@ -3146,14 +3380,14 @@ fn has_project_for(projects: List<Project>, id: Text) -> Bool:
 
 export fn can_build_plan(world: World, projects: List<Project>, from: Text, to: Text, plan: RoutePlan, ready: Bool) -> Bool:
   let slots = len(world.routes) + route_project_count(projects)
-  ready and slots < max_routes() and len(projects) < max_projects() and not has_project_for(projects, from + "-" + to) and world.money >= plan.money and combined_stock(world, from, to, Timber) >= plan.timber and combined_stock(world, from, to, Stone) >= plan.stone and not route_exists(world.routes, from, to, 0)
+  ready and plan.length > 0 and slots < max_routes() and len(projects) < max_projects() and not has_project_for(projects, from + "-" + to) and world.money >= plan.money and combined_stock(world, from, to, Timber) >= plan.timber and combined_stock(world, from, to, Stone) >= plan.stone and not route_exists(world.routes, from, to, 0)
 
 export fn can_build_route(game: Game) -> Bool:
   can_build_plan(game.world, game.projects, game.sel.from, game.sel.to, game.sel.draft, game.sel.ready)
 
 export fn build_blocker_plan(world: World, projects: List<Project>, from: Text, to: Text, plan: RoutePlan, ready: Bool) -> Text:
   let slots = len(world.routes) + route_project_count(projects)
-  match ready:
+  match ready and plan.length > 0:
     false => "Survey a route first."
     true => match len(projects) >= max_projects():
       true => "Two construction projects are already active. Wait for one to finish."
@@ -3175,7 +3409,7 @@ export fn build_blocker(game: Game) -> Text:
   build_blocker_plan(game.world, game.projects, game.sel.from, game.sel.to, game.sel.draft, game.sel.ready)
 
 export fn construction_preview_plan(world: World, from: Text, to: Text, plan: RoutePlan, ready: Bool) -> Text:
-  match ready:
+  match ready and plan.length > 0:
     true => duration_text(construction_time(world, from, to, plan, Path))
     false => "-"
 

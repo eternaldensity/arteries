@@ -90,6 +90,14 @@ Routes are not fixed links. Click two settlements to survey one:
   mountain, and forest cells without double-counting;
 - the Route desk can bend the interior waypoints left or right, which switches
   to the hand-shaped five-point polyline, or return to the automatic corridor;
+- a site can be chosen as the route destination; when construction completes,
+  that exact site is founded as a settlement (rather than whichever site the
+  corridor happens to pass first);
+- the Route desk can stage up to six waypoints on towns and sites. The draft is
+  kept on the server, added/moved/removed from the desk, and surveyed into the
+  exact corridor when construction starts;
+- the built route and project rows persist the surveyed polyline, so a reloaded
+  route keeps the same geometry even if generation or pathfinding changes;
 - **Preview details** fetches capacity, upkeep, expected trade, founding
   targets, material split, and three alternative corridors from compact server
   RPCs; choosing a corridor replaces the draft without reloading the world;
@@ -242,6 +250,7 @@ tools/
   tick_finish_main.dia  fixed two-town finish fixture for that diff
 tests/
   ui-smoke.js      real-browser acceptance and exploration driver
+  ui-m3.js         site-directed founding and waypoint acceptance
 ```
 
 `shared.dia` is the whole simulation. Terrain is a deterministic function;
@@ -322,13 +331,16 @@ PLAYWRIGHT_CORE=/path/to/node_modules/playwright-core \
 CHROMIUM_PATH=/path/to/chrome \
 UI_URL=http://127.0.0.1:3032/ \
 node tests/ui-smoke.js
+node tests/ui-m3.js
 ```
 
-The script exercises: initial render, settlement and site inspection, waypoint
-shaping, three route builds with construction projects, route cap, manual
-upkeep debt and degradation, paying upkeep, automatic upkeep, dismantling, and
-new-world generation. It fails on page
-errors, console errors, missing UI state, or unexpected cycle failures.
+`ui-smoke.js` exercises initial render, settlement and site inspection, three
+route builds with construction projects, route cap, manual upkeep debt and
+degradation, paying upkeep, automatic upkeep, dismantling, and new-world
+generation. `ui-m3.js` covers site-directed founding, adding/moving/removing a
+staged waypoint, a built corridor whose length reflects that waypoint, and an
+identical reload. Both fail on page errors, console errors, missing UI state, or
+unexpected cycle failures.
 
 ## Scale and the Diamond evaluation budget
 
@@ -364,7 +376,9 @@ This is a prototype, not the full design in
 - economy and research are deliberately simplified;
 - events are deterministic and limited to harvest/storm/caravan plus annual
   deposit depletion;
+- waypoints currently snap to town/site markers; free-cell waypoints and
+  per-waypoint editing beyond the last staged point are deferred;
 - the three-route/four-settlement caps are runtime-budget constraints.
 
-The natural next steps are M3 waypoints and site-directed founding, M4
-multi-hop network flow and link rules, a save format, and multiple regions.
+The natural next steps are M4 multi-hop network flow and link rules, a save
+format, and multiple regions.

@@ -33,6 +33,9 @@ type WorldRow:
   epoch: Int
   settle_days: Int
   settle_from: Int
+  draft_from: Text = ""
+  draft_to: Text = ""
+  draft_via: Text = ""
 
 type NewWorldRow:
   seed: Int
@@ -49,6 +52,9 @@ type NewWorldRow:
   epoch: Int
   settle_days: Int
   settle_from: Int
+  draft_from: Text = ""
+  draft_to: Text = ""
+  draft_via: Text = ""
 
 type EditWorldRow:
   seed: Int
@@ -65,6 +71,9 @@ type EditWorldRow:
   epoch: Int
   settle_days: Int
   settle_from: Int
+  draft_from: Text = ""
+  draft_to: Text = ""
+  draft_via: Text = ""
 
 type TownRow:
   id: TownId
@@ -331,6 +340,9 @@ type Loaded:
   epoch: Int
   settle_days: Int
   settle_from: Int
+  draft_from: Text = ""
+  draft_to: Text = ""
+  draft_via: Text = ""
 
 type TradePage:
   towns: List<TownRow>
@@ -429,22 +441,73 @@ fn packed_terrain(world: World) -> Text:
 
 # A kernel-planned corridor is a pure function of the world and endpoints, so
 # persisted rows only need the sentinel bend; loading recomputes the same path.
+fn concat_ints(xs: List<Int>, ys: List<Int>) -> List<Int>:
+  match len(xs) == 0:
+    true => ys
+    false => concat_ints(list_slice(xs, 1, len(xs) - 1), list_append(ys, nth_int(xs, 0)))
+
+fn path_through(world: World, points: List<Point>, i: Int, acc: List<Int>) -> List<Int>:
+  match list_get(points, i):
+    None => acc
+    Some(a) => match list_get(points, i + 1):
+      None => acc
+      Some(b) =>
+        let grid = packed_terrain(world)
+        let features = feature_grid(world.seed)
+        let start = int_text(a.x) + "," + int_text(a.y)
+        let goal = int_text(b.x) + "," + int_text(b.y)
+        match host.compute<List<Int>>("arteries", "pathfind_features", grid, features, start, goal, "road"):
+          Err(_) => []
+          Ok(flat) =>
+            let next = match i == 0:
+              true => flat
+              false => concat_ints(acc, list_slice(flat, 2, len(flat) - 2))
+            path_through(world, points, i + 1, next)
+
 fn auto_plan(world: World, from: Text, to: Text) -> RoutePlan:
-  let ta = find_town(world.towns, from)
-  let tb = find_town(world.towns, to)
-  match ta.id == "" or tb.id == "" or ta.id == tb.id:
+  let start = marker_point(world, from)
+  let goal = marker_point(world, to)
+  match start.x < 0 or goal.x < 0 or from == to:
     true => empty_plan()
     false =>
       let grid = packed_terrain(world)
       let features = feature_grid(world.seed)
-      let start = int_text(ta.x) + "," + int_text(ta.y)
-      let goal = int_text(tb.x) + "," + int_text(tb.y)
-      match host.compute<List<Int>>("arteries", "pathfind_features", grid, features, start, goal, "road"):
-        Err(_) => plan_route_bend(world, from, to, 0)
+      let start_text = int_text(start.x) + "," + int_text(start.y)
+      let goal_text = int_text(goal.x) + "," + int_text(goal.y)
+      match host.compute<List<Int>>("arteries", "pathfind_features", grid, features, start_text, goal_text, "road"):
+        Err(_) => empty_plan()
         Ok(flat) =>
           match host.compute<List<Int>>("arteries", "route_cost_features", grid, features, flat, "road"):
-            Err(_) => plan_route_bend(world, from, to, 0)
+            Err(_) => empty_plan()
             Ok(stats) => plan_from_path(flat, stats)
+
+fn plan_via(world: World, from: Text, to: Text, via: List<Int>) -> RoutePlan:
+  match len(via) == 0:
+    true => auto_plan(world, from, to)
+    false =>
+      let start = marker_point(world, from)
+      let goal = marker_point(world, to)
+      match start.x < 0 or goal.x < 0 or from == to:
+        true => empty_plan()
+        false =>
+          let vias = via_from_flat(via)
+          match len(vias) > via_max():
+            true => empty_plan()
+            false =>
+              let points = concat_points(concat_points([start], vias), [goal])
+              let flat = via_flat(points)
+              let grid = packed_terrain(world)
+              let features = feature_grid(world.seed)
+              match host.compute<List<Int>>("arteries", "route_cost_features", grid, features, flat, "road"):
+                Err(_) => empty_plan()
+                Ok(stats) => plan_from_path(flat, stats)
+
+fn snap_via(world: World, via: List<Int>) -> List<Int>:
+  let points = via_from_flat(via)
+  let snapped = for p in points:
+    let s = near_marker_point(world, p.x, p.y)
+    Point(x: s.x, y: s.y)
+  via_flat(snapped)
 
 fn route_plan(world: World, from: Text, to: Text, bend: Int) -> RoutePlan:
   match bend == auto_bend():
@@ -850,11 +913,16 @@ fn attach_streams(world: WorldId, epoch: Int, game: Game) -> Result<Game, DataEr
 fn save_game(game: Game, phase: Int, epoch: Int) -> Result<Game, DataError>:
   save_game_window(game, phase, epoch, 0, 0)
 
+fn draft_or_empty(value: Text, keep: Bool) -> Text:
+  match keep:
+    true => value
+    false => ""
+
 fn save_game_window(game: Game, phase: Int, epoch: Int, settle_days: Int, settle_from: Int) -> Result<Game, DataError>:
   let rows = worlds.select(limit: 1)?
   match list_get(rows, 0):
     None =>
-      let created = worlds.create(NewWorldRow(seed: game.world.seed, generation_version: generation_version(), tick: game.world.tick, money: game.world.money, tech_road: game.world.tech_road, tech_river: game.world.tech_river, tech_rail: game.world.tech_rail, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: phase, epoch: epoch, settle_days: settle_days, settle_from: settle_from))?
+      let created = worlds.create(NewWorldRow(seed: game.world.seed, generation_version: generation_version(), tick: game.world.tick, money: game.world.money, tech_road: game.world.tech_road, tech_river: game.world.tech_river, tech_rail: game.world.tech_rail, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: phase, epoch: epoch, settle_days: settle_days, settle_from: settle_from, draft_from: "", draft_to: "", draft_via: ""))?
       save_children(created.id, game)?
       let log_base = logs.count(world: created.id, epoch: epoch)?
       save_logs(game.world.log, created.id, epoch, log_base, 0)?
@@ -862,7 +930,7 @@ fn save_game_window(game: Game, phase: Int, epoch: Int, settle_days: Int, settle
       save_history(game.world.history, created.id, epoch, history_base, 0)?
       attach_streams(created.id, epoch, game)
     Some(row) =>
-      let updated = worlds.update(row.id, EditWorldRow(seed: game.world.seed, generation_version: generation_version(), tick: game.world.tick, money: game.world.money, tech_road: game.world.tech_road, tech_river: game.world.tech_river, tech_rail: game.world.tech_rail, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: phase, epoch: epoch, settle_days: settle_days, settle_from: settle_from))?
+      let updated = worlds.update(row.id, EditWorldRow(seed: game.world.seed, generation_version: generation_version(), tick: game.world.tick, money: game.world.money, tech_road: game.world.tech_road, tech_river: game.world.tech_river, tech_rail: game.world.tech_rail, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: phase, epoch: epoch, settle_days: settle_days, settle_from: settle_from, draft_from: draft_or_empty(row.draft_from, epoch == row.epoch), draft_to: draft_or_empty(row.draft_to, epoch == row.epoch), draft_via: draft_or_empty(row.draft_via, epoch == row.epoch)))?
       save_children(row.id, game)?
       let log_base = logs.count(world: row.id, epoch: epoch)?
       save_logs(game.world.log, row.id, epoch, log_base, 0)?
@@ -925,7 +993,7 @@ fn compact_with_row(row: WorldRow, hours: Int, cadence: Text) -> Result<List<Int
       let updated_routes = list_slice(result, 1 + len(town_rows), len(route_rows))
       save_compact_towns(town_rows, updated_towns, 0, len(town_rows))?
       save_compact_routes(route_rows, updated_routes, 0, len(route_rows))?
-      let updated = worlds.update(row.id, EditWorldRow(seed: row.seed, tick: target, money: money, tech_road: row.tech_road, tech_river: row.tech_river, tech_rail: row.tech_rail, auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: 1, epoch: row.epoch, settle_days: days, settle_from: start))?
+      let updated = worlds.update(row.id, EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: target, money: money, tech_road: row.tech_road, tech_river: row.tech_river, tech_rail: row.tech_rail, auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: 1, epoch: row.epoch, settle_days: days, settle_from: start, draft_from: row.draft_from, draft_to: row.draft_to, draft_via: row.draft_via))?
       let pops = for values in updated_towns:
         nth_int(values, 0)
       let props = for values in updated_towns:
@@ -949,7 +1017,7 @@ export fn advance_compact(hours: Int, cadence: Text) -> Result<List<Int>, DataEr
         None => Ok([loaded.world.tick, loaded.world.money, total_pop(loaded.world), total_prosperity(loaded.world), 0])
 
 fn compact_edit_world(row: WorldRow, tick: Int, money: Int, phase: Int, settle_days: Int, settle_from: Int) -> EditWorldRow:
-  EditWorldRow(seed: row.seed, tick: tick, money: money, tech_road: row.tech_road, tech_river: row.tech_river, tech_rail: row.tech_rail, auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: phase, epoch: row.epoch, settle_days: settle_days, settle_from: settle_from)
+  EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: tick, money: money, tech_road: row.tech_road, tech_river: row.tech_river, tech_rail: row.tech_rail, auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: phase, epoch: row.epoch, settle_days: settle_days, settle_from: settle_from, draft_from: row.draft_from, draft_to: row.draft_to, draft_via: row.draft_via)
 
 fn compact_start(row: WorldRow, hours: Int, cadence: Text) -> Result<WorldRow, DataError>:
   let start = row.tick
@@ -1154,7 +1222,7 @@ fn finish_apply(row: WorldRow, max_research: Int, total_prosperity: Int) -> Resu
   let history_base = history.count(world: row.id, epoch: row.epoch)?
   save_history([total_prosperity], row.id, row.epoch, history_base, 0)?
   let upkeep = finish_upkeep(row)
-  let updated = worlds.update(row.id, EditWorldRow(seed: row.seed, tick: row.tick, money: nth_int(upkeep, 0), tech_road: finish_road(row, max_research), tech_river: finish_river(row, max_research), tech_rail: finish_rail(row, max_research), auto_upkeep: row.auto_upkeep, last_paid_tick: nth_int(upkeep, 1), upkeep_per_cycle: row.upkeep_per_cycle, phase: 0, epoch: row.epoch, settle_days: 0, settle_from: 0))?
+  let updated = worlds.update(row.id, EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: row.tick, money: nth_int(upkeep, 0), tech_road: finish_road(row, max_research), tech_river: finish_river(row, max_research), tech_rail: finish_rail(row, max_research), auto_upkeep: row.auto_upkeep, last_paid_tick: nth_int(upkeep, 1), upkeep_per_cycle: row.upkeep_per_cycle, phase: 0, epoch: row.epoch, settle_days: 0, settle_from: 0, draft_from: row.draft_from, draft_to: row.draft_to, draft_via: row.draft_via))?
   Ok([int_text(updated.tick), int_text(updated.money), int_text(max_research), int_text(total_prosperity)])
 
 export fn advance_finish_commit(max_research: Int, total_prosperity: Int) -> Result<List<Text>, DataError>:
@@ -1344,6 +1412,7 @@ export fn survey_options(from: Text, to: Text) -> Result<List<SurveyOption>, Dat
 
 export fn survey_corridor_plan(from: Text, to: Text, bend: Int) -> Result<RoutePlan, DataError>:
   let world = survey_context()?
+  let _ = clear_draft()?
   Ok(plan_route_bend(world, from, to, bend))
 
 export fn survey_preview(from: Text, to: Text, bend: Int) -> Result<SurveyPreview, DataError>:
@@ -1356,12 +1425,77 @@ export fn survey_preview(from: Text, to: Text, bend: Int) -> Result<SurveyPrevie
 # Fill the survey draft from the native pathfinding kernel.
 export fn survey_path_plan(from: Text, to: Text) -> Result<RoutePlan, DataError>:
   let world = survey_context()?
+  let _ = clear_draft()?
   Ok(auto_plan(world, from, to))
+
+# Re-plan the draft through player-authored waypoints. Cells snap to a nearby
+# town or site marker; the path is the concatenation of per-leg A* corridors.
+export fn survey_waypoint_plan(from: Text, to: Text, via: List<Int>) -> Result<RoutePlan, DataError>:
+  let world = survey_context()?
+  Ok(plan_via(world, from, to, snap_via(world, via)))
+
+fn edit_world_draft(row: WorldRow, from: Text, to: Text, via: Text) -> EditWorldRow:
+  EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: row.tick, money: row.money, tech_road: row.tech_road, tech_river: row.tech_river, tech_rail: row.tech_rail, auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: row.phase, epoch: row.epoch, settle_days: row.settle_days, settle_from: row.settle_from, draft_from: from, draft_to: to, draft_via: via)
+
+fn save_draft(row: WorldRow, from: Text, to: Text, via: List<Int>) -> Result<Bool, DataError>:
+  let updated = worlds.update(row.id, edit_world_draft(row, from, to, encode_waypoints(via)))?
+  Ok(true)
+
+fn clear_draft() -> Result<Bool, DataError>:
+  let rows = worlds.select(limit: 1)?
+  match list_get(rows, 0):
+    None => Ok(true)
+    Some(row) => save_draft(row, "", "", [])
+
+fn draft_via(row: WorldRow, from: Text, to: Text) -> List<Int>:
+  match row.draft_from == from and row.draft_to == to:
+    true => decode_waypoints(row.draft_via)
+    false => []
+
+export fn survey_waypoint_stage(from: Text, to: Text, mode: Int, x: Int, y: Int) -> Result<WaypointState, DataError>:
+  let world = survey_context()?
+  let rows = worlds.select(limit: 1)?
+  match list_get(rows, 0):
+    None => Err("No world.")
+    Some(row) =>
+      let current = draft_via(row, from, to)
+      let effective = match mode == -4:
+        true => match len(current) > 0:
+          true => len(current) / 2 - 1
+          false => -2
+        false => mode
+      let next = waypoint_place(world, via_from_flat(current), effective, x, y)
+      let saved = save_draft(row, from, to, via_flat(next))?
+      Ok(WaypointState(count: len(next), ok: saved))
+
+export fn survey_waypoint_remove_last(from: Text, to: Text) -> Result<WaypointState, DataError>:
+  let rows = worlds.select(limit: 1)?
+  match list_get(rows, 0):
+    None => Err("No world.")
+    Some(row) =>
+      let current = draft_via(row, from, to)
+      let next = match len(current) > 0:
+        true => via_remove_points(via_from_flat(current), len(current) / 2 - 1)
+        false => []
+      let saved = save_draft(row, from, to, via_flat(next))?
+      Ok(WaypointState(count: len(next), ok: saved))
+
+export fn survey_waypoint_clear() -> Result<WaypointState, DataError>:
+  let saved = clear_draft()?
+  Ok(WaypointState(count: 0, ok: saved))
 
 export fn start_route(from: Text, to: Text, bend: Int) -> Result<Game, DataError>:
   let state = load_state()?
   let current = state_game(state, "")
-  let plan = route_plan(current.world, from, to, bend)
+  let rows = worlds.select(limit: 1)?
+  let via = match bend == auto_bend():
+    true => match list_get(rows, 0):
+      None => []
+      Some(row) => draft_via(row, from, to)
+    false => []
+  let plan = match len(via) > 0:
+    true => plan_via(current.world, from, to, snap_via(current.world, via))
+    false => route_plan(current.world, from, to, bend)
   let sel = survey_selection_plan(from, to, plan)
   let prepared = raw_game(current.world, current.projects, current.auto_upkeep, current.last_paid_tick, current.upkeep_per_cycle, sel, "", true)
   match can_build_route(prepared):
@@ -1369,6 +1503,22 @@ export fn start_route(from: Text, to: Text, bend: Int) -> Result<Game, DataError
       let blocked = raw_game(current.world, current.projects, current.auto_upkeep, current.last_paid_tick, current.upkeep_per_cycle, current.sel, build_blocker(prepared), false)
       attach_streams(state.id, state.epoch, blocked)
     true =>
+      let _ = clear_draft()?
+      let game = game_build(prepared)
+      save_game(game, 0, state.epoch)
+
+export fn start_route_via(from: Text, to: Text, via: List<Int>) -> Result<Game, DataError>:
+  let state = load_state()?
+  let current = state_game(state, "")
+  let plan = plan_via(current.world, from, to, snap_via(current.world, via))
+  let sel = survey_selection_plan(from, to, plan)
+  let prepared = raw_game(current.world, current.projects, current.auto_upkeep, current.last_paid_tick, current.upkeep_per_cycle, sel, "", true)
+  match can_build_route(prepared):
+    false =>
+      let blocked = raw_game(current.world, current.projects, current.auto_upkeep, current.last_paid_tick, current.upkeep_per_cycle, current.sel, build_blocker(prepared), false)
+      attach_streams(state.id, state.epoch, blocked)
+    true =>
+      let _ = clear_draft()?
       let game = game_build(prepared)
       save_game(game, 0, state.epoch)
 
