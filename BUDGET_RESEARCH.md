@@ -100,10 +100,10 @@ logic, and a view-fetch API. Server rendering still has its own render budget.
 **Measured warning:** staging alone is not enough at 100 settlements.
 `tools/check-tick-scale.sh` runs a synthetic 28-day market+finish tick. It passes
 at 5 settlements and hits Diamond's managed-value work budget at 10; finish
-alone reaches about 10. The market slice now moves to `arteries.market` and
-`advance_compact_chunk`: a 100-town production tick completes in six 20-town
-requests at roughly 0.6 s each. Trade-route and finish chunking are the
-remaining pieces, not micro-optimisations of `shared.dia`.
+alone reaches about 10. The scale slice now moves to `arteries.market` and
+`arteries.finish`: a 100-town market phase completes in six 20-town requests at
+roughly 0.6 s each, and the finish phase in five more. Many-route trade
+chunking is the remaining piece, not a micro-optimisation of `shared.dia`.
 
 ### 2. Server-rendered forms/pages instead of a reactive SPA
 

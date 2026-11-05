@@ -915,12 +915,130 @@ export fn advance_compact_chunk(hours: Int, cadence: Text, after: Text, limit: I
           true => Ok(["", "3", int_text(start_row.tick), int_text(start_row.money), "0", "0"])
           false => compact_chunk_page(start_row, after, page_limit)
 
+fn boundary_in_period_server(start: Int, days: Int, cadence: Int) -> Bool:
+  let remainder = start - (start / cadence) * cadence
+  let offset = match remainder == 0:
+    true => 0
+    false => cadence - remainder
+  offset < days
+
+fn finish_chunk_page(row: WorldRow, after: Text, limit: Int) -> Result<List<Text>, DataError>:
+  let town_count = towns.count(world: row.id)?
+  let town_rows = towns.page(world: row.id, order: "ord", after: after, limit: limit)?
+  match len(town_rows) == 0:
+    true => Ok(["", "5", "0", "0"])
+    false =>
+      let start_index = match list_get(town_rows, 0):
+        Some(town) => town.ord
+        None => 0
+      let town_values = for t in town_rows:
+        town_state_row(t)
+      let result = host.compute<List<List<Int>>>("arteries", "finish", row.seed, row.settle_from, row.settle_days, town_count, start_index, town_values)?
+      let summary = match list_get(result, 0):
+        Some(values) => values
+        None => []
+      let updated_towns = list_slice(result, 1, len(town_rows))
+      save_compact_towns(town_rows, updated_towns, 0, len(town_rows))?
+      let cursor = town_cursor(town_rows)?
+      Ok([cursor, "4", int_text(nth_int(summary, 0)), int_text(nth_int(summary, 1))])
+
+# Apply one bounded finish page. The caller accumulates max research and total
+# prosperity, then calls advance_finish_commit.
+export fn advance_finish_chunk(after: Text, limit: Int) -> Result<List<Text>, DataError>:
+  let rows = worlds.select(limit: 1)?
+  match list_get(rows, 0):
+    None => Ok(["", "0", "0", "0"])
+    Some(row) =>
+      let page_limit = bounded_limit(limit)
+      match row.phase == 0:
+        true => Ok(["", "0", "0", "0"])
+        false => match row.phase == 1:
+          true =>
+            let started = worlds.update(row.id, compact_edit_world(row, row.tick, row.money, 4, row.settle_days, row.settle_from))?
+            finish_chunk_page(started, after, page_limit)
+          false => match row.phase == 4:
+            true => finish_chunk_page(row, after, page_limit)
+            false => Ok(["", int_text(row.phase), "0", "0"])
+
+fn finish_road(row: WorldRow, max_research: Int) -> Bool:
+  row.tech_road or max_research >= road_research()
+
+fn finish_river(row: WorldRow, max_research: Int) -> Bool:
+  row.tech_river or max_research >= river_research()
+
+fn finish_rail(row: WorldRow, max_research: Int) -> Bool:
+  row.tech_rail or max_research >= rail_research()
+
+fn finish_tech_message(row: WorldRow, max_research: Int) -> Text:
+  match finish_road(row, max_research) and not row.tech_road:
+    true => "Discovery: improved carts. Roads can now be built."
+    false => match finish_river(row, max_research) and not row.tech_river:
+      true => "Discovery: river navigation. Barges can now be built."
+      false => match finish_rail(row, max_research) and not row.tech_rail:
+        true => "Discovery: steam power. Rail can now be built."
+        false => ""
+
+fn finish_event_messages(row: WorldRow) -> List<Text>:
+  let start_day = row.settle_from / hours_per_day()
+  let harvest = boundary_in_period_server(start_day, row.settle_days, 6)
+  let storm = boundary_in_period_server(start_day, row.settle_days, 9)
+  let caravan = boundary_in_period_server(start_day, row.settle_days, 11)
+  let log1 = match harvest:
+    true => ["A generous harvest adds grain across the frontier."]
+    false => []
+  let log2 = match storm:
+    true => list_append(log1, "A storm damages stores on the frontier.")
+    false => log1
+  match caravan:
+    true => list_append(log2, "A caravan brings timber and stone to the frontier.")
+    false => log2
+
+fn finish_messages(row: WorldRow, max_research: Int) -> List<Text>:
+  let events = finish_event_messages(row)
+  let tech = finish_tech_message(row, max_research)
+  match tech == "":
+    true => events
+    false => list_append(events, tech)
+
+fn finish_upkeep(row: WorldRow) -> List<Int>:
+  let raw_weeks = row.tick / hours_per_week() - row.settle_from / hours_per_week()
+  let weeks = match raw_weeks > 0:
+    true => raw_weeks
+    false => 0
+  let money = match row.auto_upkeep:
+    true => row.money - row.upkeep_per_cycle * weeks
+    false => row.money
+  let paid = match row.auto_upkeep and weeks > 0:
+    true => (row.tick / hours_per_week()) * hours_per_week()
+    false => row.last_paid_tick
+  [money, paid]
+
+fn finish_apply(row: WorldRow, max_research: Int, total_prosperity: Int) -> Result<List<Text>, DataError>:
+  let log_base = logs.count(world: row.id, epoch: row.epoch)?
+  save_logs(finish_messages(row, max_research), row.id, row.epoch, log_base, 0)?
+  let history_base = history.count(world: row.id, epoch: row.epoch)?
+  save_history([total_prosperity], row.id, row.epoch, history_base, 0)?
+  let upkeep = finish_upkeep(row)
+  let updated = worlds.update(row.id, EditWorldRow(seed: row.seed, tick: row.tick, money: nth_int(upkeep, 0), tech_road: finish_road(row, max_research), tech_river: finish_river(row, max_research), tech_rail: finish_rail(row, max_research), auto_upkeep: row.auto_upkeep, last_paid_tick: nth_int(upkeep, 1), upkeep_per_cycle: row.upkeep_per_cycle, phase: 0, epoch: row.epoch, settle_days: 0, settle_from: 0))?
+  Ok([int_text(updated.tick), int_text(updated.money), int_text(max_research), int_text(total_prosperity)])
+
+export fn advance_finish_commit(max_research: Int, total_prosperity: Int) -> Result<List<Text>, DataError>:
+  let rows = worlds.select(limit: 1)?
+  match list_get(rows, 0):
+    None => Ok(["0", "0", "0", "0"])
+    Some(row) =>
+      match row.phase == 0:
+        true => Ok([int_text(row.tick), int_text(row.money), int_text(max_research), int_text(total_prosperity)])
+        false => match row.phase == 4 or row.phase == 5:
+          true => finish_apply(row, max_research, total_prosperity)
+          false => Ok([int_text(row.tick), int_text(row.money), int_text(max_research), int_text(total_prosperity)])
+
 export fn advance_market(hours: Int, cadence: Text) -> Result<Game, DataError>:
   let state = load_state()?
   let current = state_game(state, "")
-  match state.phase == 1:
-    true => attach_streams(state.id, state.epoch, current)
-    false =>
+  match state.phase == 0:
+    false => attach_streams(state.id, state.epoch, current)
+    true =>
       let start = current.world.tick
       let target = start + bounded_hours(hours)
       let days = settlement_days(start, target, cadence)
@@ -952,9 +1070,9 @@ export fn advance_market(hours: Int, cadence: Text) -> Result<Game, DataError>:
 export fn advance_finish() -> Result<Game, DataError>:
   let state = load_state()?
   let current = state_game(state, "")
-  match state.phase == 0:
-    true => attach_streams(state.id, state.epoch, state_game(state, "Advanced to " + calendar_text(current.world) + "."))
-    false =>
+  match state.phase == 1:
+    false => attach_streams(state.id, state.epoch, state_game(state, "Advanced to " + calendar_text(current.world) + "."))
+    true =>
       let game = game_finish_period(current, state.settle_days, state.settle_from)
       save_game_window(game, 0, state.epoch, 0, 0)
 

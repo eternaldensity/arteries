@@ -7,8 +7,8 @@
 //! this binary instead.
 
 use arteries_core::{
-    market, pathfind, region_text, route_cost, Grid, GridPoint, TickRoute, TickState, TickTown,
-    TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED,
+    finish_towns, market, pathfind, region_text, route_cost, Grid, GridPoint, TickRoute, TickState,
+    TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED,
 };
 use diamond::{Compute, ComputeContext, ComputeError, RuntimeGrants};
 use serde_json::Value as Json;
@@ -274,6 +274,79 @@ impl Compute for Market {
     }
 }
 
+/// Pure-compute export `arteries.finish`.
+///
+/// Arguments: `(seed, from, days, town_count, start, towns)`.
+///
+/// Each town row is `[pop, prosperity, research, 8 endowments, 8 stocks]`.
+/// `start` is the page's global town index and `town_count` is the full
+/// frontier size, so storm and caravan targets are chosen from the whole list.
+///
+/// Reply: `[max_research, total_prosperity]`, then one
+/// `[pop, prosperity, research, 8 stocks]` row per town.
+pub struct Finish;
+
+impl Finish {
+    /// Validate wire arguments and apply one finish page.
+    ///
+    /// # Errors
+    /// Returns [`ComputeError::InvalidInput`] for malformed rows, an empty
+    /// frontier, or a page past `town_count`.
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 6 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let seed = int_arg(arguments, 0)?;
+        let from = int_arg(arguments, 1)?;
+        let days = int_arg(arguments, 2)?;
+        let town_count =
+            usize::try_from(int_arg(arguments, 3)?).map_err(|_| ComputeError::InvalidInput)?;
+        let start =
+            usize::try_from(int_arg(arguments, 4)?).map_err(|_| ComputeError::InvalidInput)?;
+        let town_rows = nested_int_list_arg(arguments, 5)?;
+
+        let mut towns = Vec::with_capacity(town_rows.len());
+        for row in &town_rows {
+            if row.len() != 3 + GOOD_COUNT * 2 {
+                return Err(ComputeError::InvalidInput);
+            }
+            let mut endow = [0_i64; GOOD_COUNT];
+            let mut stock = [0_i64; GOOD_COUNT];
+            endow.copy_from_slice(&row[3..3 + GOOD_COUNT]);
+            stock.copy_from_slice(&row[3 + GOOD_COUNT..]);
+            towns.push(TickTown {
+                pop: row[0],
+                prosperity: row[1],
+                research: row[2],
+                endow,
+                stock,
+            });
+        }
+
+        let summary = finish_towns(&mut towns, seed, from, days, town_count, start)
+            .map_err(|_| ComputeError::InvalidInput)?;
+        let mut result = Vec::with_capacity(1 + towns.len());
+        result.push(vec![summary.max_research, summary.total_prosperity]);
+        for town in &towns {
+            let mut row = Vec::with_capacity(3 + GOOD_COUNT);
+            row.extend([town.pop, town.prosperity, town.research]);
+            row.extend(town.stock);
+            result.push(row);
+        }
+        Ok(nested_int_list_json(result))
+    }
+}
+
+impl Compute for Finish {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
 fn int_arg(arguments: &[Json], index: usize) -> Result<i64, ComputeError> {
     arguments
         .get(index)
@@ -374,6 +447,13 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
         &["Int", "List<List<Int>>", "List<List<Int>>", "Int", "Int"],
         "List<List<Int>>",
         Market,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "finish",
+        &["Int", "Int", "Int", "Int", "Int", "List<List<Int>>"],
+        "List<List<Int>>",
+        Finish,
     )?;
     Ok(())
 }

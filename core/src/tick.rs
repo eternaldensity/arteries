@@ -238,6 +238,71 @@ fn need_of(town: &TickTown, good: usize) -> i64 {
     }
 }
 
+/// Summary of one finish page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FinishPage {
+    pub max_research: i64,
+    pub total_prosperity: i64,
+}
+
+/// Apply finish events to one page of towns.
+///
+/// `start` is the page's global town index and `town_count` is the whole
+/// frontier size; storm and caravan targets are chosen from the full list, as
+/// in the Diamond implementation.
+///
+/// # Errors
+/// Rejects a page that runs past `town_count` or an empty frontier.
+pub fn finish_towns(
+    towns: &mut [TickTown],
+    seed: i64,
+    from: i64,
+    days: i64,
+    town_count: usize,
+    start: usize,
+) -> Result<FinishPage, String> {
+    if town_count == 0 {
+        return Err("frontier has no towns".to_string());
+    }
+    if start.saturating_add(towns.len()) > town_count {
+        return Err("finish page is out of bounds".to_string());
+    }
+    let start_day = from / 24;
+    let harvest = boundary_in_period(start_day, days, 6);
+    let storm = boundary_in_period(start_day, days, 9);
+    let caravan = boundary_in_period(start_day, days, 11);
+    let storm_index =
+        (start_day + seed).rem_euclid(i64::try_from(town_count).unwrap_or(1)) as usize;
+    let caravan_index =
+        (start_day * 3 + seed).rem_euclid(i64::try_from(town_count).unwrap_or(1)) as usize;
+
+    let mut summary = FinishPage {
+        max_research: 0,
+        total_prosperity: 0,
+    };
+    for (offset, town) in towns.iter_mut().enumerate() {
+        let global = start + offset;
+        if harvest {
+            town.stock[GRAIN] += 3;
+        }
+        if storm && global == storm_index {
+            town.prosperity = clamp(town.prosperity - 2, 0, 30);
+        }
+        if caravan && global == caravan_index {
+            town.stock[TIMBER] += 2;
+            town.stock[STONE] += 1;
+        }
+        summary.max_research = summary.max_research.max(town.research);
+        summary.total_prosperity = summary.total_prosperity.saturating_add(town.prosperity);
+    }
+    Ok(summary)
+}
+
+fn boundary_in_period(start: i64, days: i64, cadence: i64) -> bool {
+    let offset = (cadence - start.rem_euclid(cadence)) % cadence;
+    offset < days
+}
+
 fn clamp(value: i64, low: i64, high: i64) -> i64 {
     value.max(low).min(high)
 }
@@ -347,6 +412,60 @@ mod tests {
         );
         assert_eq!(state.towns[1].stock, [3, 27, 9, 0, 0, 0, 0, 0]);
         assert_eq!(state.routes[0].traffic, 3);
+    }
+
+    #[test]
+    fn finish_matches_the_diamond_finish_period() {
+        let mut towns = vec![
+            TickTown {
+                pop: 4,
+                prosperity: 6,
+                research: 0,
+                endow: [4, 0, 0, 0, 1, 0, 0, 0],
+                stock: [16, 4, 4, 4, 2, 0, 0, 4],
+            },
+            TickTown {
+                pop: 4,
+                prosperity: 6,
+                research: 0,
+                endow: [0, 3, 1, 0, 0, 0, 0, 0],
+                stock: [8, 6, 2, 0, 0, 0, 0, 0],
+            },
+        ];
+        let summary = finish_towns(&mut towns, 7, 0, 28, 2, 0).expect("finish");
+        assert_eq!(summary.max_research, 0);
+        assert_eq!(summary.total_prosperity, 10);
+        assert_eq!(towns[0].prosperity, 6);
+        assert_eq!(towns[0].stock, [19, 4, 4, 4, 2, 0, 0, 4]);
+        assert_eq!(towns[1].prosperity, 4);
+        assert_eq!(towns[1].stock, [11, 8, 3, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn finish_pages_apply_global_event_targets() {
+        let mut towns = vec![town(2, [1; GOOD_COUNT]); 100];
+        let summary = finish_towns(&mut towns, 7, 0, 28, 100, 0).expect("finish");
+        assert_eq!(summary.total_prosperity, 99 * 6 + 4);
+        assert_eq!(towns[7].prosperity, 4);
+        assert_eq!(towns[7].stock[GRAIN], 4);
+        assert_eq!(towns[7].stock[TIMBER], 3);
+        assert_eq!(towns[7].stock[STONE], 2);
+        assert_eq!(towns[0].prosperity, 6);
+        assert_eq!(towns[0].stock[GRAIN], 4);
+
+        // A later page still harvests but does not contain either target.
+        let mut page = vec![town(2, [1; GOOD_COUNT]); 20];
+        let summary = finish_towns(&mut page, 7, 0, 28, 100, 20).expect("finish page");
+        assert_eq!(summary.total_prosperity, 20 * 6);
+        assert!(page.iter().all(|t| t.prosperity == 6));
+        assert!(page.iter().all(|t| t.stock[GRAIN] == 4));
+    }
+
+    #[test]
+    fn finish_rejects_out_of_range_pages() {
+        let mut towns = vec![town(2, [1; GOOD_COUNT]); 2];
+        assert!(finish_towns(&mut towns, 7, 0, 28, 1, 0).is_err());
+        assert!(finish_towns(&mut towns, 7, 0, 28, 0, 0).is_err());
     }
 
     #[test]

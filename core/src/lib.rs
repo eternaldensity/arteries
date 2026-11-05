@@ -17,8 +17,8 @@ pub use path::{
     MAX_PATH_POINTS,
 };
 pub use tick::{
-    market, TickRoute, TickState, TickTown, CLOTH, FIBER, FISH, GOOD_COUNT, GRAIN, ORE, STONE,
-    TIMBER, TOOLS,
+    finish_towns, market, FinishPage, TickRoute, TickState, TickTown, CLOTH, FIBER, FISH,
+    GOOD_COUNT, GRAIN, ORE, STONE, TIMBER, TOOLS,
 };
 
 /// Map width in cells.

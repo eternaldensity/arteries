@@ -1,5 +1,5 @@
 use arteries_core::{MAP_H, MAP_W, MAX_SEED};
-use arteries_runner::{Market, Pathfind, RouteCost, TerrainRegion};
+use arteries_runner::{Finish, Market, Pathfind, RouteCost, TerrainRegion};
 use serde_json::{json, Value as Json};
 use std::path::Path;
 
@@ -198,6 +198,85 @@ fn market_kernel_matches_the_diamond_market_period() {
             ["3"]
         ])
     );
+}
+
+#[test]
+fn finish_kernel_matches_the_diamond_finish_period() {
+    let towns = json!([
+        [
+            "4", "6", "0", "4", "0", "0", "0", "1", "0", "0", "0", "16", "4", "4", "4", "2", "0",
+            "0", "4"
+        ],
+        [
+            "4", "6", "0", "0", "3", "1", "0", "0", "0", "0", "0", "8", "6", "2", "0", "0", "0",
+            "0", "0"
+        ]
+    ]);
+    let reply = Finish::evaluate(&[
+        json!("7"),
+        json!("0"),
+        json!("28"),
+        json!("2"),
+        json!("0"),
+        towns,
+    ])
+    .expect("finish");
+    assert_eq!(
+        reply,
+        json!([
+            ["0", "10"],
+            ["4", "6", "0", "19", "4", "4", "4", "2", "0", "0", "4"],
+            ["4", "4", "0", "11", "8", "3", "0", "0", "0", "0", "0"]
+        ])
+    );
+}
+
+#[test]
+fn finish_kernel_pages_a_hundred_towns() {
+    let mut towns = Vec::with_capacity(100);
+    for _ in 0..100 {
+        let mut row = vec!["2".to_string(), "6".to_string(), "0".to_string()];
+        row.extend(["4", "0", "0", "0", "1", "0", "0", "0"].map(String::from));
+        row.extend(["1", "1", "1", "1", "1", "1", "1", "1"].map(String::from));
+        towns.push(Json::Array(row.into_iter().map(Json::String).collect()));
+    }
+    let reply = Finish::evaluate(&[
+        json!("7"),
+        json!("0"),
+        json!("28"),
+        json!("100"),
+        json!("0"),
+        Json::Array(towns),
+    ])
+    .expect("finish");
+    let rows = reply.as_array().expect("nested list");
+    assert_eq!(rows.len(), 101);
+    assert_eq!(rows[0], json!(["0", "598"]));
+    assert_eq!(
+        rows[8],
+        json!(["2", "4", "0", "4", "3", "2", "1", "1", "1", "1", "1"])
+    );
+}
+
+#[test]
+fn finish_kernel_rejects_out_of_range_pages() {
+    let row = json!([
+        "2", "6", "0", "4", "0", "0", "0", "1", "0", "0", "0", "1", "1", "1", "1", "1", "1", "1",
+        "1"
+    ]);
+    for (count, start) in [("0", "0"), ("1", "0"), ("1", "1")] {
+        assert_eq!(
+            Finish::evaluate(&[
+                json!("7"),
+                json!("0"),
+                json!("28"),
+                json!(count),
+                json!(start),
+                json!([row.clone(), row.clone()]),
+            ]),
+            Err(diamond::ComputeError::InvalidInput)
+        );
+    }
 }
 
 #[test]
