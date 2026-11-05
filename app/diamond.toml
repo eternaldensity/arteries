@@ -4,7 +4,7 @@ name = "ArteriesWeb"
 server = "server"
 browser = "ui"
 component = "Root"
-provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>", "Compute<arteries.planet>", "Compute<arteries.planet_summary>"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>", "Compute<arteries.planet>", "Compute<arteries.planet_summary>", "Compute<arteries.worldgen>", "Compute<arteries.worldgen_summary>", "Compute<arteries.pathfind_features>", "Compute<arteries.noise>"]
 styles = ["app.css"]
 
 [modules.shared]
@@ -20,7 +20,7 @@ target = "shared"
 path = "server.dia"
 target = "server"
 imports = ["shared", "rt_tables"]
-provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>", "Compute<arteries.planet>", "Compute<arteries.planet_summary>"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>", "Compute<arteries.planet>", "Compute<arteries.planet_summary>", "Compute<arteries.worldgen>", "Compute<arteries.worldgen_summary>", "Compute<arteries.pathfind_features>", "Compute<arteries.noise>"]
 
 [modules.ui]
 path = "ui.dia"
@@ -38,6 +38,7 @@ load_compact = "server.load_compact"
 advance_scale = "server.advance_scale"
 planet_chunk = "server.planet_chunk"
 planet_summary = "server.planet_summary"
+worldgen_summary = "server.worldgen_summary"
 advance_finish = "server.advance_finish"
 start_route = "server.start_route"
 order_upgrade = "server.order_upgrade"
@@ -174,4 +175,36 @@ result = "List<Int>"
 deterministic = true
 max_input_bytes = 262144
 max_output_bytes = 4096
+max_duration_ms = 2000
+
+[compute.arteries.exports.worldgen]
+arguments = ["Int", "Int", "Int", "Int", "Int"]
+result = "List<List<Int>>"
+deterministic = true
+max_input_bytes = 4096
+max_output_bytes = 131072
+max_duration_ms = 2000
+
+[compute.arteries.exports.worldgen_summary]
+arguments = ["Int", "Int", "Int"]
+result = "List<Int>"
+deterministic = true
+max_input_bytes = 1024
+max_output_bytes = 4096
+max_duration_ms = 2000
+
+[compute.arteries.exports.pathfind_features]
+arguments = ["Text", "Text", "Text", "Text", "Text"]
+result = "List<Int>"
+deterministic = true
+max_input_bytes = 131072
+max_output_bytes = 65536
+max_duration_ms = 2000
+
+[compute.arteries.exports.noise]
+arguments = ["Int", "Int", "Int", "Int"]
+result = "Int"
+deterministic = true
+max_input_bytes = 1024
+max_output_bytes = 1024
 max_duration_ms = 2000

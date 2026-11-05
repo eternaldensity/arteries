@@ -11,6 +11,7 @@
 //! deterministic: the same grid, endpoints, and mode always return the same
 //! path.
 
+use crate::worldgen::Feature;
 use crate::Terrain;
 use std::cmp::Reverse;
 use std::collections::{BTreeSet, BinaryHeap};
@@ -107,6 +108,105 @@ pub struct Grid {
     width: usize,
     height: usize,
     cells: Vec<Option<Terrain>>,
+}
+
+/// A parsed feature grid using the same `width,height|rows` shape as [`Grid`].
+///
+/// Codes are `0` (none), `1` (pass), `2` (ford), or `3` (harbor).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FeatureGrid {
+    width: usize,
+    height: usize,
+    cells: Vec<Feature>,
+}
+
+impl FeatureGrid {
+    /// Parse `<width>,<height>|<codes>`.
+    ///
+    /// # Errors
+    /// Rejects malformed headers, out-of-range dimensions, wrong cell counts,
+    /// and unknown feature codes.
+    pub fn parse(text: &str) -> Result<Self, String> {
+        let text = text.trim();
+        let (header, rows) = text
+            .split_once('|')
+            .ok_or_else(|| "feature grid is missing its width,height header".to_string())?;
+        let (width_text, height_text) = header
+            .split_once(',')
+            .ok_or_else(|| "feature grid header must be width,height".to_string())?;
+        let width: usize = width_text
+            .parse()
+            .map_err(|_| "feature grid width is not an integer".to_string())?;
+        let height: usize = height_text
+            .parse()
+            .map_err(|_| "feature grid height is not an integer".to_string())?;
+        if !(1..=MAX_GRID_SIDE).contains(&width) || !(1..=MAX_GRID_SIDE).contains(&height) {
+            return Err(format!(
+                "feature grid dimensions must be within 1..={MAX_GRID_SIDE}"
+            ));
+        }
+        if width.saturating_mul(height) > MAX_GRID_CELLS {
+            return Err("feature grid is too large".to_string());
+        }
+        let rows: Vec<&str> = rows.split(';').collect();
+        if rows.len() != height {
+            return Err(format!(
+                "feature grid has {} rows, expected {height}",
+                rows.len()
+            ));
+        }
+        let mut cells = Vec::with_capacity(width * height);
+        for row in rows {
+            let values: Vec<&str> = row.split(',').collect();
+            if values.len() != width {
+                return Err(format!(
+                    "feature grid row has {} cells, expected {width}",
+                    values.len()
+                ));
+            }
+            for value in values {
+                let code: i64 = value
+                    .parse()
+                    .map_err(|_| "feature grid cell is not an integer".to_string())?;
+                let feature = Feature::from_code(code)
+                    .ok_or_else(|| format!("unknown feature code {code}"))?;
+                cells.push(feature);
+            }
+        }
+        Ok(Self {
+            width,
+            height,
+            cells,
+        })
+    }
+
+    #[must_use]
+    pub const fn width(&self) -> usize {
+        self.width
+    }
+
+    #[must_use]
+    pub const fn height(&self) -> usize {
+        self.height
+    }
+
+    #[must_use]
+    pub fn feature(&self, point: GridPoint) -> Option<Feature> {
+        self.index(point).map(|index| self.cells[index])
+    }
+
+    fn index(&self, point: GridPoint) -> Option<usize> {
+        if point.x < 0
+            || point.y < 0
+            || usize::try_from(point.x).ok()? >= self.width
+            || usize::try_from(point.y).ok()? >= self.height
+        {
+            return None;
+        }
+        let x = usize::try_from(point.x).ok()?;
+        let y = usize::try_from(point.y).ok()?;
+        Some(y * self.width + x)
+    }
 }
 
 impl Grid {
@@ -227,6 +327,37 @@ pub fn pathfind(
     to: GridPoint,
     mode: TravelMode,
 ) -> Result<Vec<GridPoint>, String> {
+    pathfind_inner(grid, None, from, to, mode)
+}
+
+/// Find the least-cost path using worldgen planning features.
+///
+/// A pass lowers the mountain cost for `Path`, `Road`, and `Rail`; a ford
+/// lowers the water cost for `Path` and `Road`; a harbor keeps river travel
+/// cheap through coastal water. The grids must have matching dimensions.
+///
+/// # Errors
+/// Rejects mismatched grids and the same malformed endpoints as [`pathfind`].
+pub fn pathfind_features(
+    grid: &Grid,
+    features: &FeatureGrid,
+    from: GridPoint,
+    to: GridPoint,
+    mode: TravelMode,
+) -> Result<Vec<GridPoint>, String> {
+    if grid.width != features.width() || grid.height != features.height() {
+        return Err("terrain and feature grids must have matching dimensions".to_string());
+    }
+    pathfind_inner(grid, Some(features), from, to, mode)
+}
+
+fn pathfind_inner(
+    grid: &Grid,
+    features: Option<&FeatureGrid>,
+    from: GridPoint,
+    to: GridPoint,
+    mode: TravelMode,
+) -> Result<Vec<GridPoint>, String> {
     check_endpoint(grid, from, mode)?;
     check_endpoint(grid, to, mode)?;
     if from == to {
@@ -264,7 +395,7 @@ pub fn pathfind(
             if closed[next] {
                 continue;
             }
-            let step = grid.cost(neighbour, mode);
+            let step = effective_cost(grid, features, neighbour, mode);
             if step <= 0 {
                 continue;
             }
@@ -295,7 +426,7 @@ pub fn pathfind(
         current = came[current].ok_or_else(|| "path reconstruction failed".to_string())?;
     }
     path.reverse();
-    let simplified = simplify(grid, &path, mode);
+    let simplified = simplify(grid, features, &path, mode);
     if simplified.len() > MAX_PATH_POINTS {
         return Err(format!(
             "path needs {} points, limit is {MAX_PATH_POINTS}",
@@ -303,6 +434,46 @@ pub fn pathfind(
         ));
     }
     Ok(simplified)
+}
+
+fn effective_cost(
+    grid: &Grid,
+    features: Option<&FeatureGrid>,
+    point: GridPoint,
+    mode: TravelMode,
+) -> i64 {
+    let terrain = grid.terrain(point);
+    let base = mode.cost(terrain);
+    if base <= 0 {
+        return base;
+    }
+    let Some(feature) = features.and_then(|grid| grid.feature(point)) else {
+        return base;
+    };
+    let Some(terrain) = terrain else {
+        return base;
+    };
+    let feature_cost = match (mode, feature) {
+        (TravelMode::Path | TravelMode::Road, Feature::Pass)
+            if matches!(terrain, Terrain::Hills | Terrain::Mountain) =>
+        {
+            2
+        }
+        (TravelMode::Path | TravelMode::Road, Feature::Ford)
+            if matches!(terrain, Terrain::Water) =>
+        {
+            2
+        }
+        (TravelMode::River, Feature::Harbor)
+            if matches!(terrain, Terrain::Water | Terrain::Coast) =>
+        {
+            1
+        }
+        (TravelMode::Rail, Feature::Pass) if terrain == Terrain::Mountain => 2,
+        (TravelMode::Rail, Feature::Ford) if terrain == Terrain::Water => 4,
+        _ => base,
+    };
+    feature_cost.min(base)
 }
 
 /// Sum the mode cost and terrain counts of the cells crossed by `path`.
@@ -404,7 +575,12 @@ fn neighbours(point: GridPoint) -> [GridPoint; 4] {
     ]
 }
 
-fn simplify(grid: &Grid, path: &[GridPoint], mode: TravelMode) -> Vec<GridPoint> {
+fn simplify(
+    grid: &Grid,
+    features: Option<&FeatureGrid>,
+    path: &[GridPoint],
+    mode: TravelMode,
+) -> Vec<GridPoint> {
     let mut corners = Vec::with_capacity(path.len());
     for (index, point) in path.iter().enumerate() {
         if index == 0 || index + 1 == path.len() {
@@ -420,7 +596,8 @@ fn simplify(grid: &Grid, path: &[GridPoint], mode: TravelMode) -> Vec<GridPoint>
 
     let mut prefix = vec![0_i64; path.len()];
     for index in 1..path.len() {
-        prefix[index] = prefix[index - 1].saturating_add(grid.cost(path[index], mode));
+        prefix[index] =
+            prefix[index - 1].saturating_add(effective_cost(grid, features, path[index], mode));
     }
 
     let mut simplified = Vec::with_capacity(corners.len());
@@ -430,7 +607,13 @@ fn simplify(grid: &Grid, path: &[GridPoint], mode: TravelMode) -> Vec<GridPoint>
         let mut furthest = anchor + 1;
         for candidate in anchor + 2..corners.len() {
             let subpath = prefix[corners[candidate]] - prefix[corners[anchor]];
-            match segment_cost_after(grid, path[corners[anchor]], path[corners[candidate]], mode) {
+            match segment_cost_after(
+                grid,
+                features,
+                path[corners[anchor]],
+                path[corners[candidate]],
+                mode,
+            ) {
                 Some(cost) if cost <= subpath => furthest = candidate,
                 _ => break,
             }
@@ -446,6 +629,7 @@ fn simplify(grid: &Grid, path: &[GridPoint], mode: TravelMode) -> Vec<GridPoint>
 /// replaces, so the drawn corridor stays least-cost.
 fn segment_cost_after(
     grid: &Grid,
+    features: Option<&FeatureGrid>,
     from: GridPoint,
     to: GridPoint,
     mode: TravelMode,
@@ -456,13 +640,13 @@ fn segment_cost_after(
     }
     let mut cost = 0_i64;
     for (x, y) in cells {
-        let cell_cost = grid.cost(GridPoint::new(x, y), mode);
+        let cell_cost = effective_cost(grid, features, GridPoint::new(x, y), mode);
         if cell_cost <= 0 {
             return None;
         }
         cost = cost.saturating_add(cell_cost);
     }
-    Some((cost - grid.cost(from, mode)).max(0))
+    Some((cost - effective_cost(grid, features, from, mode)).max(0))
 }
 
 /// All cells touched by the straight segment, conservatively including both
@@ -622,6 +806,71 @@ mod tests {
         assert_eq!(stats.forest, 0);
         assert_eq!(stats.length, 3);
         assert_eq!(stats.cost, 3 + 5);
+    }
+
+    #[test]
+    fn parses_feature_grids_and_rejects_bad_shapes() {
+        let grid = FeatureGrid::parse("3,2|0,1,2;3,0,0").expect("feature grid");
+        assert_eq!(grid.width(), 3);
+        assert_eq!(grid.height(), 2);
+        assert_eq!(grid.feature(GridPoint::new(1, 0)), Some(Feature::Pass));
+        assert_eq!(grid.feature(GridPoint::new(2, 0)), Some(Feature::Ford));
+        assert_eq!(grid.feature(GridPoint::new(0, 1)), Some(Feature::Harbor));
+        assert_eq!(grid.feature(GridPoint::new(3, 0)), None);
+        for text in [
+            "",
+            "3|0;0",
+            "3,2|0,1,2;0,1",
+            "3,2|0,1,4;0,0,0",
+            "0,2|;",
+            "65,1|",
+        ] {
+            assert!(FeatureGrid::parse(text).is_err(), "{text}");
+        }
+    }
+
+    #[test]
+    fn a_pass_can_change_the_chosen_route() {
+        // The marsh gap is cheaper than the mountain until a pass is added.
+        let grid = Grid::parse("5,3|1,1,3,1,1;1,1,4,1,1;1,1,4,1,1").expect("grid");
+        let start = GridPoint::new(0, 1);
+        let goal = GridPoint::new(4, 1);
+        let without = pathfind(&grid, start, goal, TravelMode::Road).expect("path");
+        assert!(without.iter().any(|point| point.y == 0), "{without:?}");
+        let features =
+            FeatureGrid::parse("5,3|0,0,0,0,0;0,0,1,0,0;0,0,0,0,0").expect("feature grid");
+        let with = pathfind_features(&grid, &features, start, goal, TravelMode::Road)
+            .expect("feature path");
+        assert!(with.iter().all(|point| point.y == 1), "{with:?}");
+    }
+
+    #[test]
+    fn a_ford_can_change_the_chosen_route() {
+        // The marsh bridge is cheaper than the water crossing until a ford is added.
+        let grid = Grid::parse("5,3|1,1,3,1,1;1,1,5,1,1;1,1,5,1,1").expect("grid");
+        let start = GridPoint::new(0, 1);
+        let goal = GridPoint::new(4, 1);
+        let without = pathfind(&grid, start, goal, TravelMode::Road).expect("path");
+        assert!(without.iter().any(|point| point.y == 0), "{without:?}");
+        let features =
+            FeatureGrid::parse("5,3|0,0,0,0,0;0,0,2,0,0;0,0,0,0,0").expect("feature grid");
+        let with = pathfind_features(&grid, &features, start, goal, TravelMode::Road)
+            .expect("feature path");
+        assert!(with.iter().all(|point| point.y == 1), "{with:?}");
+    }
+
+    #[test]
+    fn feature_paths_require_matching_grids() {
+        let grid = Grid::parse("3,1|1,1,1").expect("grid");
+        let features = FeatureGrid::parse("2,1|0,0").expect("feature grid");
+        assert!(pathfind_features(
+            &grid,
+            &features,
+            GridPoint::new(0, 0),
+            GridPoint::new(2, 0),
+            TravelMode::Road
+        )
+        .is_err());
     }
 
     #[test]

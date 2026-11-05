@@ -7,8 +7,9 @@
 //! this binary instead.
 
 use arteries_core::{
-    finish_towns, generate_faces, market, pathfind, region_text, route_cost, trade, Grid,
-    GridPoint, TickRoute, TickState, TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED,
+    fbm, finish_towns, generate_faces, generate_world, market, pathfind, pathfind_features,
+    region_text, route_cost, trade, FeatureGrid, Grid, GridPoint, TickRoute, TickState, TickTown,
+    TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED,
 };
 use diamond::{Compute, ComputeContext, ComputeError, RuntimeGrants};
 use serde_json::Value as Json;
@@ -417,6 +418,172 @@ impl Compute for PlanetSummaryKernel {
     }
 }
 
+/// Pure-compute export `arteries.noise`.
+///
+/// Arguments: `(seed, x, y, octaves)`. `x` and `y` are fixed-point coordinates
+/// at `NOISE_SCALE` (1,000,000); the reply is fixed-point fBm in
+/// `[0, NOISE_SCALE]`.
+pub struct Noise;
+
+impl Noise {
+    /// Validate wire arguments and evaluate one fBm sample.
+    ///
+    /// # Errors
+    /// Returns [`ComputeError::InvalidInput`] for malformed arguments or an
+    /// octave count outside the supported range.
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 4 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let seed = int_arg(arguments, 0)?;
+        let x = int_arg(arguments, 1)?;
+        let y = int_arg(arguments, 2)?;
+        let octaves =
+            u32::try_from(int_arg(arguments, 3)?).map_err(|_| ComputeError::InvalidInput)?;
+        if octaves == 0 || octaves > arteries_core::MAX_OCTAVES {
+            return Err(ComputeError::InvalidInput);
+        }
+        Ok(Json::String(fbm(seed, x, y, octaves).to_string()))
+    }
+}
+
+impl Compute for Noise {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
+/// Pure-compute export `arteries.worldgen`.
+///
+/// Arguments: `(seed, width, height, row_start, row_count)`.
+///
+/// Reply: one row per cell row; each cell is six integers
+/// `[elevation, temperature, moisture, biome, river, feature]`.
+pub struct Worldgen;
+
+impl Worldgen {
+    /// Validate wire arguments and generate one row chunk.
+    ///
+    /// # Errors
+    /// Returns [`ComputeError::InvalidInput`] for bad dimensions or a row range
+    /// outside the generated world.
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 5 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let seed = int_arg(arguments, 0)?;
+        let width =
+            usize::try_from(int_arg(arguments, 1)?).map_err(|_| ComputeError::InvalidInput)?;
+        let height =
+            usize::try_from(int_arg(arguments, 2)?).map_err(|_| ComputeError::InvalidInput)?;
+        let start =
+            usize::try_from(int_arg(arguments, 3)?).map_err(|_| ComputeError::InvalidInput)?;
+        let count =
+            usize::try_from(int_arg(arguments, 4)?).map_err(|_| ComputeError::InvalidInput)?;
+        let world = generate_world(seed, width, height).map_err(|_| ComputeError::InvalidInput)?;
+        let end = start.checked_add(count).ok_or(ComputeError::InvalidInput)?;
+        if end > height {
+            return Err(ComputeError::InvalidInput);
+        }
+        let rows = (start..end)
+            .map(|row| world.row_values(row))
+            .collect::<Vec<_>>();
+        Ok(nested_int_list_json(rows))
+    }
+}
+
+impl Compute for Worldgen {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
+/// Pure-compute export `arteries.worldgen_summary`.
+///
+/// Arguments: `(seed, width, height)`. Reply:
+/// `[version, width, height, valid, cells, water, forest, dry, cold,
+/// other_land, rivers, passes, fords, harbors, checksum]`.
+pub struct WorldgenSummary;
+
+impl WorldgenSummary {
+    /// Validate wire arguments and summarise a generated world.
+    ///
+    /// # Errors
+    /// Returns [`ComputeError::InvalidInput`] for bad dimensions.
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 3 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let seed = int_arg(arguments, 0)?;
+        let width =
+            usize::try_from(int_arg(arguments, 1)?).map_err(|_| ComputeError::InvalidInput)?;
+        let height =
+            usize::try_from(int_arg(arguments, 2)?).map_err(|_| ComputeError::InvalidInput)?;
+        let world = generate_world(seed, width, height).map_err(|_| ComputeError::InvalidInput)?;
+        Ok(int_list_json(world.summary()))
+    }
+}
+
+impl Compute for WorldgenSummary {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
+/// Pure-compute export `arteries.pathfind_features`.
+///
+/// Arguments: `(terrain grid, feature grid, from, to, mode)`. The feature grid
+/// uses the same `width,height|rows` shape with codes `0` none, `1` pass,
+/// `2` ford, and `3` harbor.
+pub struct PathfindFeatures;
+
+impl PathfindFeatures {
+    /// Validate wire arguments and find a feature-aware path.
+    ///
+    /// # Errors
+    /// Returns [`ComputeError::InvalidInput`] for malformed grids or endpoints,
+    /// mismatched dimensions, or an unreachable goal.
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 5 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let grid = Grid::parse(text_arg(arguments, 0)?).map_err(|_| ComputeError::InvalidInput)?;
+        let features =
+            FeatureGrid::parse(text_arg(arguments, 1)?).map_err(|_| ComputeError::InvalidInput)?;
+        let from = parse_point(text_arg(arguments, 2)?)?;
+        let to = parse_point(text_arg(arguments, 3)?)?;
+        let mode =
+            TravelMode::parse(text_arg(arguments, 4)?).map_err(|_| ComputeError::InvalidInput)?;
+        let path = pathfind_features(&grid, &features, from, to, mode)
+            .map_err(|_| ComputeError::InvalidInput)?;
+        Ok(int_list_json(
+            path.iter().flat_map(|point| [point.x, point.y]),
+        ))
+    }
+}
+
+impl Compute for PathfindFeatures {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
 struct PlanetInput {
     seed: i64,
     detail: usize,
@@ -612,6 +779,13 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
     )?;
     grants.register_compute(
         "arteries",
+        "noise",
+        &["Int", "Int", "Int", "Int"],
+        "Int",
+        Noise,
+    )?;
+    grants.register_compute(
+        "arteries",
         "pathfind",
         &["Text", "Text", "Text", "Text"],
         "List<Int>",
@@ -672,6 +846,27 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
         ],
         "List<Int>",
         PlanetSummaryKernel,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "worldgen",
+        &["Int", "Int", "Int", "Int", "Int"],
+        "List<List<Int>>",
+        Worldgen,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "worldgen_summary",
+        &["Int", "Int", "Int"],
+        "List<Int>",
+        WorldgenSummary,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "pathfind_features",
+        &["Text", "Text", "Text", "Text", "Text"],
+        "List<Int>",
+        PathfindFeatures,
     )?;
     Ok(())
 }

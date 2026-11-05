@@ -9,18 +9,25 @@
 //! regenerates both and compares, and `tests/terrain-expected.txt` is a frozen
 //! snapshot of the Diamond output for the default seed range.
 
+mod noise;
 mod path;
 mod planet;
 mod tick;
+mod worldgen;
 
+pub use noise::{fbm, hash, ridged, value, warp, MAX_OCTAVES, NOISE_SCALE};
 pub use path::{
-    pathfind, route_cost, Grid, GridPoint, RouteStats, TravelMode, MAX_GRID_CELLS, MAX_GRID_SIDE,
-    MAX_PATH_POINTS,
+    pathfind, pathfind_features, route_cost, FeatureGrid, Grid, GridPoint, RouteStats, TravelMode,
+    MAX_GRID_CELLS, MAX_GRID_SIDE, MAX_PATH_POINTS,
 };
 pub use planet::{generate_faces, MAX_DETAIL, PLANET_SCALE};
 pub use tick::{
     finish_towns, market, trade, FinishPage, TickRoute, TickState, TickTown, CLOTH, FIBER, FISH,
     GOOD_COUNT, GRAIN, ORE, STONE, TIMBER, TOOLS,
+};
+pub use worldgen::{
+    generate as generate_world, Biome, Cell as WorldCell, Feature, World as GeneratedWorld,
+    MAX_ATTEMPTS, MAX_WORLD_SIDE, WG_SCALE, WORLDGEN_VERSION,
 };
 
 /// Map width in cells.

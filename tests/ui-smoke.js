@@ -291,6 +291,20 @@ function assert(condition, message) {
     assert(s.towns.length === 3, 'new world should start with 3 settlements');
     assert(s.maintenance[1] === 'maintained', 'new world upkeep should be clear');
 
+    // M2 terrain depth: the compact overlay generates a richer world summary.
+    await page.getByRole('button', { name: 'Scale view' }).click();
+    await page.waitForSelector('#worldgen-panel', { timeout: 10000 });
+    await page.locator('#worldgen-panel button').click();
+    await page.waitForFunction(
+      () => (document.querySelector('#worldgen-panel')?.innerText || '').includes('16×12'),
+      null,
+      { timeout: 15000 }
+    );
+    const terrain = (await page.locator('#worldgen-panel').innerText()).toLowerCase();
+    for (const label of ['rivers', 'passes', 'fords', 'harbors', 'checksum']) {
+      assert(terrain.includes(label), `worldgen panel missing ${label}`);
+    }
+
     assert(errors.length === 0, 'browser errors: ' + errors.join(' | '));
     await page.screenshot({
       path: process.env.SHOT_PATH || '/tmp/arteries-smoke.png',

@@ -90,6 +90,7 @@ export component Root:
   state scale_summary: ScaleSummary = ScaleSummary(seed: 7, tick: 0, money: 0, towns: 0, routes: 0, phase: 0)
   state scale_step: ScaleStep = ScaleStep(phase: 0, cursor: "", tick: 0, money: 0, pop: 0, prosperity: 0, max_research: 0, traffic: 0, finish: 0, status: "Choose Run to start a compact cycle.")
   state planet_summary: PlanetSummary = PlanetSummary(seed: 7, detail: 0, faces: 0, cells: 0, checksum: 0)
+  state worldgen: WorldgenSummary = empty_worldgen_summary()
   state show_preview: Bool = false
   state draft_plan: RoutePlan = empty_plan()
 
@@ -322,6 +323,9 @@ export component Root:
   on planet_generate:
     planet_summary = rpc.planet_summary(scale_summary.seed, 8)
 
+  on generate_terrain:
+    worldgen = rpc.worldgen_summary(scale_summary.seed, 16, 12)
+
   html:
     <when test={scale_mode and signed_in != "" and loaded}>
       <section class="scale-overlay">
@@ -373,6 +377,16 @@ export component Root:
                 <p>{int_text(planet_summary.faces)} faces · {int_text(planet_summary.cells)} cells · checksum {int_text(planet_summary.checksum)}</p>
               </div>
               <button class="primary" type="button" on-click={planet_generate}>Generate planet</button>
+            </div>
+          </div>
+          <div class="scale-planet" id="worldgen-panel">
+            <div class="scale-cycle-head">
+              <div>
+                <h2>Terrain</h2>
+                <p>{int_text(worldgen.width)}×{int_text(worldgen.height)} · {int_text(worldgen.water)} water · {int_text(worldgen.rivers)} rivers · {int_text(worldgen.passes)} passes · {int_text(worldgen.fords)} fords · {int_text(worldgen.harbors)} harbors</p>
+                <p class="scale-hint">Valid {worldgen.valid} · checksum {int_text(worldgen.checksum)} · forest {int_text(worldgen.forest)} · dry {int_text(worldgen.dry)} · cold {int_text(worldgen.cold)}</p>
+              </div>
+              <button class="primary" type="button" on-click={generate_terrain}>Generate terrain</button>
             </div>
           </div>
         </div>

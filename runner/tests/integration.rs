@@ -1,6 +1,7 @@
 use arteries_core::{MAP_H, MAP_W, MAX_SEED};
 use arteries_runner::{
-    Finish, Market, Pathfind, Planet, PlanetSummaryKernel, RouteCost, TerrainRegion,
+    Finish, Market, Noise, Pathfind, PathfindFeatures, Planet, PlanetSummaryKernel, RouteCost,
+    TerrainRegion, Worldgen, WorldgenSummary,
 };
 use serde_json::{json, Value as Json};
 use std::path::Path;
@@ -476,6 +477,112 @@ fn planet_kernel_rejects_bad_dimensions() {
             Err(diamond::ComputeError::InvalidInput)
         );
     }
+}
+
+#[test]
+fn noise_kernel_is_deterministic_and_in_range() {
+    let a =
+        Noise::evaluate(&[json!("7"), json!("0"), json!("0"), json!("4")]).expect("noise sample");
+    let b =
+        Noise::evaluate(&[json!("7"), json!("0"), json!("0"), json!("4")]).expect("noise sample");
+    assert_eq!(a, b);
+    let value: i64 = a
+        .as_str()
+        .expect("Int reply")
+        .parse()
+        .expect("integer reply");
+    assert!((0..=1_000_000).contains(&value));
+    assert_eq!(
+        Noise::evaluate(&[json!("7"), json!("0"), json!("0"), json!("0")]),
+        Err(diamond::ComputeError::InvalidInput)
+    );
+}
+
+#[test]
+fn worldgen_kernel_summarizes_and_pages() {
+    let summary = WorldgenSummary::evaluate(&[json!("7"), json!("16"), json!("12")])
+        .expect("worldgen summary");
+    let values = summary.as_array().expect("summary rows");
+    assert_eq!(values.len(), 15);
+    assert_eq!(values[0], json!("1"));
+    assert_eq!(values[1], json!("16"));
+    assert_eq!(values[2], json!("12"));
+
+    let page = Worldgen::evaluate(&[
+        json!("7"),
+        json!("16"),
+        json!("12"),
+        json!("10"),
+        json!("2"),
+    ])
+    .expect("worldgen page");
+    let rows = page.as_array().expect("worldgen rows");
+    assert_eq!(rows.len(), 2);
+    assert!(rows
+        .iter()
+        .all(|row| row.as_array().is_some_and(|cells| cells.len() == 16 * 6)));
+
+    let all = Worldgen::evaluate(&[
+        json!("7"),
+        json!("16"),
+        json!("12"),
+        json!("0"),
+        json!("12"),
+    ])
+    .expect("full worldgen");
+    let all_rows = all.as_array().expect("full rows");
+    assert_eq!(all_rows.len(), 12);
+    assert_eq!(all_rows[10], rows[0]);
+}
+
+#[test]
+fn pathfind_features_kernel_prefers_a_pass() {
+    let grid = "5,3|1,1,3,1,1;1,1,4,1,1;1,1,4,1,1";
+    let features = "5,3|0,0,0,0,0;0,0,1,0,0;0,0,0,0,0";
+    let plain = Pathfind::evaluate(&[json!(grid), json!("0,1"), json!("4,1"), json!("road")])
+        .expect("plain path");
+    let with_pass = PathfindFeatures::evaluate(&[
+        json!(grid),
+        json!(features),
+        json!("0,1"),
+        json!("4,1"),
+        json!("road"),
+    ])
+    .expect("feature path");
+    assert_ne!(with_pass, plain);
+    assert_eq!(with_pass, json!(["0", "1", "4", "1"]));
+}
+
+#[test]
+fn worldgen_and_feature_kernels_reject_malformed_arguments() {
+    assert_eq!(
+        Worldgen::evaluate(&[json!("7"), json!("16")]),
+        Err(diamond::ComputeError::InvalidInput)
+    );
+    assert_eq!(
+        Worldgen::evaluate(&[
+            json!("7"),
+            json!("16"),
+            json!("12"),
+            json!("11"),
+            json!("2")
+        ]),
+        Err(diamond::ComputeError::InvalidInput)
+    );
+    assert_eq!(
+        WorldgenSummary::evaluate(&[json!("7"), json!("65"), json!("12")]),
+        Err(diamond::ComputeError::InvalidInput)
+    );
+    assert_eq!(
+        PathfindFeatures::evaluate(&[
+            json!("3,1|1,1,1"),
+            json!("2,1|0,0"),
+            json!("0,0"),
+            json!("2,0"),
+            json!("road"),
+        ]),
+        Err(diamond::ComputeError::InvalidInput)
+    );
 }
 
 #[test]

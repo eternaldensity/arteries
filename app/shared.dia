@@ -105,6 +105,26 @@ export type SurveyPreview:
   material: Text
   warning: Text
 
+export type WorldgenSummary:
+  version: Int
+  width: Int
+  height: Int
+  valid: Bool
+  cells: Int
+  water: Int
+  forest: Int
+  dry: Int
+  cold: Int
+  other_land: Int
+  rivers: Int
+  passes: Int
+  fords: Int
+  harbors: Int
+  checksum: Int
+
+export fn empty_worldgen_summary() -> WorldgenSummary:
+  WorldgenSummary(version: 0, width: 0, height: 0, valid: false, cells: 0, water: 0, forest: 0, dry: 0, cold: 0, other_land: 0, rivers: 0, passes: 0, fords: 0, harbors: 0, checksum: 0)
+
 export fn empty_survey_preview() -> SurveyPreview:
   SurveyPreview(capacity: 0, upkeep: 0, trade: 0, found: "", material: "", warning: "")
 

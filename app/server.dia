@@ -1147,6 +1147,10 @@ export fn planet_summary(seed: Int, detail: Int) -> Result<PlanetSummary, DataEr
   let result = planet_summary_chunks(seed, detail, 0, vertices, faces, 0, 0, 0)?
   Ok(PlanetSummary(seed: seed, detail: detail, faces: nth_int(result, 0), cells: nth_int(result, 1), checksum: nth_int(result, 2)))
 
+export fn worldgen_summary(seed: Int, width: Int, height: Int) -> Result<WorldgenSummary, DataError>:
+  let values = host.compute<List<Int>>("arteries", "worldgen_summary", seed, width, height)?
+  Ok(WorldgenSummary(version: nth_int(values, 0), width: nth_int(values, 1), height: nth_int(values, 2), valid: nth_int(values, 3) == 1, cells: nth_int(values, 4), water: nth_int(values, 5), forest: nth_int(values, 6), dry: nth_int(values, 7), cold: nth_int(values, 8), other_land: nth_int(values, 9), rivers: nth_int(values, 10), passes: nth_int(values, 11), fords: nth_int(values, 12), harbors: nth_int(values, 13), checksum: nth_int(values, 14)))
+
 export fn load_compact() -> Result<ScaleSummary, DataError>:
   let rows = worlds.select(limit: 1)?
   match list_get(rows, 0):
