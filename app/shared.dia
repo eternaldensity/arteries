@@ -75,11 +75,19 @@ export type RoutePlan:
   max_y: Int
 
 export type ScaleSummary:
+  seed: Int
   tick: Int
   money: Int
   towns: Int
   routes: Int
   phase: Int
+
+export type PlanetSummary:
+  seed: Int
+  detail: Int
+  faces: Int
+  cells: Int
+  checksum: Int
 
 export type ScaleStep:
   phase: Int

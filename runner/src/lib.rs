@@ -7,8 +7,8 @@
 //! this binary instead.
 
 use arteries_core::{
-    finish_towns, market, pathfind, region_text, route_cost, trade, Grid, GridPoint, TickRoute,
-    TickState, TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED,
+    finish_towns, generate_faces, market, pathfind, region_text, route_cost, trade, Grid,
+    GridPoint, TickRoute, TickState, TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED,
 };
 use diamond::{Compute, ComputeContext, ComputeError, RuntimeGrants};
 use serde_json::Value as Json;
@@ -330,6 +330,142 @@ impl Compute for Finish {
     }
 }
 
+/// Pure-compute export `arteries.planet`.
+///
+/// Arguments: `(seed, detail, face_start, face_count, vertices, faces)`.
+/// Vertices are `[x, y, z]` fixed-point rows and faces are `[a, b, c, d]`
+/// vertex-index rows from the checked RT tables.
+///
+/// Reply: one row per face, each with `detail * detail` terrain codes.
+pub struct Planet;
+
+impl Planet {
+    /// Validate wire arguments and generate one face chunk.
+    ///
+    /// # Errors
+    /// Returns [`ComputeError::InvalidInput`] for malformed tables, an invalid
+    /// detail, or a face range outside the supplied topology.
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        let input = planet_input(arguments)?;
+        let rows = generate_faces(
+            input.seed,
+            input.detail,
+            input.start,
+            input.count,
+            &input.vertices,
+            &input.faces,
+        )
+        .map_err(|_| ComputeError::InvalidInput)?;
+        Ok(nested_int_list_json(rows))
+    }
+}
+
+impl Compute for Planet {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
+/// Pure-compute export `arteries.planet_summary`.
+///
+/// Takes the same arguments as [`Planet`] and returns
+/// `[face_count, cell_count, terrain_checksum]` without materialising every
+/// cell in Diamond.
+pub struct PlanetSummaryKernel;
+
+impl PlanetSummaryKernel {
+    /// Validate wire arguments and summarise one face chunk.
+    ///
+    /// # Errors
+    /// Returns [`ComputeError::InvalidInput`] for malformed tables, an invalid
+    /// detail, or a face range outside the supplied topology.
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        let input = planet_input(arguments)?;
+        let rows = generate_faces(
+            input.seed,
+            input.detail,
+            input.start,
+            input.count,
+            &input.vertices,
+            &input.faces,
+        )
+        .map_err(|_| ComputeError::InvalidInput)?;
+        let cells = rows.iter().map(Vec::len).sum::<usize>();
+        let checksum = rows
+            .iter()
+            .flat_map(|row| row.iter())
+            .fold(0_i64, |sum, code| sum.saturating_add(*code));
+        Ok(int_list_json([
+            i64::try_from(rows.len()).unwrap_or(0),
+            i64::try_from(cells).unwrap_or(0),
+            checksum,
+        ]))
+    }
+}
+
+impl Compute for PlanetSummaryKernel {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
+struct PlanetInput {
+    seed: i64,
+    detail: usize,
+    start: usize,
+    count: usize,
+    vertices: Vec<[i64; 3]>,
+    faces: Vec<[usize; 4]>,
+}
+
+fn planet_input(arguments: &[Json]) -> Result<PlanetInput, ComputeError> {
+    if arguments.len() != 6 {
+        return Err(ComputeError::InvalidInput);
+    }
+    let seed = int_arg(arguments, 0)?;
+    let detail = usize::try_from(int_arg(arguments, 1)?).map_err(|_| ComputeError::InvalidInput)?;
+    let start = usize::try_from(int_arg(arguments, 2)?).map_err(|_| ComputeError::InvalidInput)?;
+    let count = usize::try_from(int_arg(arguments, 3)?).map_err(|_| ComputeError::InvalidInput)?;
+
+    let vertex_rows = nested_int_list_arg(arguments, 4)?;
+    let mut vertices = Vec::with_capacity(vertex_rows.len());
+    for row in &vertex_rows {
+        if row.len() != 3 {
+            return Err(ComputeError::InvalidInput);
+        }
+        vertices.push([row[0], row[1], row[2]]);
+    }
+
+    let face_rows = nested_int_list_arg(arguments, 5)?;
+    let mut faces = Vec::with_capacity(face_rows.len());
+    for row in &face_rows {
+        if row.len() != 4 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let mut face = [0_usize; 4];
+        for (index, value) in row.iter().enumerate() {
+            face[index] = usize::try_from(*value).map_err(|_| ComputeError::InvalidInput)?;
+        }
+        faces.push(face);
+    }
+    Ok(PlanetInput {
+        seed,
+        detail,
+        start,
+        count,
+        vertices,
+        faces,
+    })
+}
+
 fn parse_tick_state(
     money: i64,
     town_rows: &[Vec<i64>],
@@ -508,6 +644,34 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
         &["Int", "Int", "Int", "Int", "Int", "List<List<Int>>"],
         "List<List<Int>>",
         Finish,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "planet",
+        &[
+            "Int",
+            "Int",
+            "Int",
+            "Int",
+            "List<List<Int>>",
+            "List<List<Int>>",
+        ],
+        "List<List<Int>>",
+        Planet,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "planet_summary",
+        &[
+            "Int",
+            "Int",
+            "Int",
+            "Int",
+            "List<List<Int>>",
+            "List<List<Int>>",
+        ],
+        "List<Int>",
+        PlanetSummaryKernel,
     )?;
     Ok(())
 }

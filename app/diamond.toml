@@ -4,7 +4,7 @@ name = "ArteriesWeb"
 server = "server"
 browser = "ui"
 component = "Root"
-provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>", "Compute<arteries.planet>", "Compute<arteries.planet_summary>"]
 styles = ["app.css"]
 
 [modules.shared]
@@ -19,8 +19,8 @@ target = "shared"
 [modules.server]
 path = "server.dia"
 target = "server"
-imports = ["shared"]
-provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>"]
+imports = ["shared", "rt_tables"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>", "Compute<arteries.planet>", "Compute<arteries.planet_summary>"]
 
 [modules.ui]
 path = "ui.dia"
@@ -36,6 +36,8 @@ advance_finish_chunk = "server.advance_finish_chunk"
 advance_finish_commit = "server.advance_finish_commit"
 load_compact = "server.load_compact"
 advance_scale = "server.advance_scale"
+planet_chunk = "server.planet_chunk"
+planet_summary = "server.planet_summary"
 advance_finish = "server.advance_finish"
 start_route = "server.start_route"
 order_upgrade = "server.order_upgrade"
@@ -153,4 +155,20 @@ result = "List<List<Int>>"
 deterministic = true
 max_input_bytes = 262144
 max_output_bytes = 131072
+max_duration_ms = 2000
+
+[compute.arteries.exports.planet]
+arguments = ["Int", "Int", "Int", "Int", "List<List<Int>>", "List<List<Int>>"]
+result = "List<List<Int>>"
+deterministic = true
+max_input_bytes = 262144
+max_output_bytes = 131072
+max_duration_ms = 2000
+
+[compute.arteries.exports.planet_summary]
+arguments = ["Int", "Int", "Int", "Int", "List<List<Int>>", "List<List<Int>>"]
+result = "List<Int>"
+deterministic = true
+max_input_bytes = 262144
+max_output_bytes = 4096
 max_duration_ms = 2000

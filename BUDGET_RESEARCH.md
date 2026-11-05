@@ -104,8 +104,10 @@ alone reaches about 10. The scale slice now moves to `arteries.market`,
 `arteries.trade`, and `arteries.finish`: a 100-town, 50-route market phase
 completes in six 20-town requests plus ten 5-route requests at roughly 0.6 s
 each, and the finish phase in five more. The UI auto-selects the compact overlay
-above 20 settlements and drives that cycle without loading the full world. This
-is an architecture change, not a micro-optimisation of `shared.dia`.
+above 20 settlements and drives that cycle without loading the full world. The
+same compact surface now has a coarse RT planet generator (30 faces at detail 8,
+six bounded kernel calls). This is an architecture change, not a
+micro-optimisation of `shared.dia`.
 
 ### 2. Server-rendered forms/pages instead of a reactive SPA
 

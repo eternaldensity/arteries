@@ -1,5 +1,7 @@
 use arteries_core::{MAP_H, MAP_W, MAX_SEED};
-use arteries_runner::{Finish, Market, Pathfind, RouteCost, TerrainRegion};
+use arteries_runner::{
+    Finish, Market, Pathfind, Planet, PlanetSummaryKernel, RouteCost, TerrainRegion,
+};
 use serde_json::{json, Value as Json};
 use std::path::Path;
 
@@ -346,6 +348,131 @@ fn market_kernel_rejects_malformed_rows() {
     ] {
         assert_eq!(
             Market::evaluate(&[json!("0"), towns, routes, json!("1"), json!("100")]),
+            Err(diamond::ComputeError::InvalidInput)
+        );
+    }
+}
+
+fn planet_tables() -> (Json, Json) {
+    let vertices = (0..32)
+        .map(|i| {
+            json!([
+                (i * 31_000 - 500_000).to_string(),
+                (i * 17_000 - 260_000).to_string(),
+                (i * 7_000 - 100_000).to_string()
+            ])
+        })
+        .collect();
+    let faces = (0..30)
+        .map(|i| {
+            json!([
+                (i % 32).to_string(),
+                ((i + 1) % 32).to_string(),
+                ((i + 2) % 32).to_string(),
+                ((i + 3) % 32).to_string()
+            ])
+        })
+        .collect();
+    (Json::Array(vertices), Json::Array(faces))
+}
+
+#[test]
+fn planet_kernel_generates_all_faces_and_chunks() {
+    let (vertices, faces) = planet_tables();
+    let all = Planet::evaluate(&[
+        json!("7"),
+        json!("8"),
+        json!("0"),
+        json!("30"),
+        vertices.clone(),
+        faces.clone(),
+    ])
+    .expect("planet");
+    let rows = all.as_array().expect("face rows");
+    assert_eq!(rows.len(), 30);
+    assert!(rows.iter().all(|row| {
+        row.as_array()
+            .is_some_and(|codes| codes.len() == 64 && codes.iter().all(|c| c.as_str().is_some()))
+    }));
+
+    let chunk = Planet::evaluate(&[
+        json!("7"),
+        json!("8"),
+        json!("10"),
+        json!("5"),
+        vertices,
+        faces,
+    ])
+    .expect("chunk");
+    assert_eq!(chunk, Json::Array(rows[10..15].to_vec()));
+}
+
+#[test]
+fn planet_summary_kernel_matches_the_full_grid() {
+    let (vertices, faces) = planet_tables();
+    let all = Planet::evaluate(&[
+        json!("7"),
+        json!("8"),
+        json!("0"),
+        json!("30"),
+        vertices.clone(),
+        faces.clone(),
+    ])
+    .expect("planet");
+    let rows = all.as_array().expect("rows");
+    let cells = rows
+        .iter()
+        .map(|row| row.as_array().map(Vec::len).unwrap_or(0))
+        .sum::<usize>();
+    let checksum = rows
+        .iter()
+        .flat_map(|row| row.as_array().into_iter().flatten())
+        .map(|code| {
+            code.as_str()
+                .and_then(|s| s.parse::<i64>().ok())
+                .unwrap_or(0)
+        })
+        .sum::<i64>();
+    let summary = PlanetSummaryKernel::evaluate(&[
+        json!("7"),
+        json!("8"),
+        json!("0"),
+        json!("30"),
+        vertices.clone(),
+        faces.clone(),
+    ])
+    .expect("summary");
+    assert_eq!(
+        summary,
+        json!(["30", cells.to_string(), checksum.to_string()])
+    );
+
+    let chunk = PlanetSummaryKernel::evaluate(&[
+        json!("7"),
+        json!("8"),
+        json!("10"),
+        json!("5"),
+        vertices,
+        faces,
+    ])
+    .expect("chunk");
+    assert_eq!(chunk.as_array().map(Vec::len), Some(3));
+    assert_eq!(chunk.as_array().and_then(|v| v.first()), Some(&json!("5")));
+}
+
+#[test]
+fn planet_kernel_rejects_bad_dimensions() {
+    let (vertices, faces) = planet_tables();
+    for (detail, start, count) in [("0", "0", "1"), ("17", "0", "1"), ("8", "29", "2")] {
+        assert_eq!(
+            Planet::evaluate(&[
+                json!("7"),
+                json!(detail),
+                json!(start),
+                json!(count),
+                vertices.clone(),
+                faces.clone(),
+            ]),
             Err(diamond::ComputeError::InvalidInput)
         );
     }

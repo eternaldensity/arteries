@@ -33,6 +33,8 @@ of loading the whole world. The overlay pulls `load_compact`, runs the market,
 trade, and finish phases one bounded chunk per click, and shows tick, treasury,
 population, prosperity, traffic, and research totals. Small worlds keep the
 full map and expose the same overlay from the topbar's **Scale view** button.
+The overlay also has a **Generate planet** button that samples the checked RT
+topology into a compact 30-face, detail-8 summary using bounded kernel calls.
 
 ## What is in the prototype
 
@@ -195,10 +197,11 @@ core/
   src/lib.rs       deterministic terrain, frozen against the Diamond oracle
   src/path.rs      A* pathfinding and rasterized route accounting
   src/tick.rs      deterministic market tick for large frontiers
+  src/planet.rs    coarse RT-face planet generation
   src/main.rs      terrain exporter
 runner/
   Cargo.toml       arteries-runner: serves an Arteries project with compute
-  src/lib.rs       kernels (terrain_region, pathfind, route_cost, market, trade, finish)
+  src/lib.rs       kernels (terrain_region, pathfind, route_cost, market, trade, finish, planet)
   src/main.rs      serve binary, requires DIAMOND_POSTGRES_URL
   tests/           validate_compute + end-to-end dispatch against probe projects
 tools/

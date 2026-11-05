@@ -1121,14 +1121,40 @@ export fn advance_finish_commit(max_research: Int, total_prosperity: Int) -> Res
           true => finish_apply(row, max_research, total_prosperity)
           false => Ok([int_text(row.tick), int_text(row.money), int_text(max_research), int_text(total_prosperity)])
 
+fn planet_vertices() -> List<List<Int>>:
+  for i in indices(rt_vertex_count()):
+    let v = rt_vertex(i)
+    [v.x, v.y, v.z]
+
+fn planet_faces() -> List<List<Int>>:
+  for i in indices(rt_face_count()):
+    let f = rt_face(i)
+    [f.a, f.b, f.c, f.d]
+
+export fn planet_chunk(seed: Int, detail: Int, start: Int, count: Int) -> Result<List<List<Int>>, DataError>:
+  host.compute<List<List<Int>>>("arteries", "planet", seed, detail, start, count, planet_vertices(), planet_faces())
+
+fn planet_summary_chunks(seed: Int, detail: Int, start: Int, vertices: List<List<Int>>, faces: List<List<Int>>, faces_acc: Int, cells_acc: Int, checksum_acc: Int) -> Result<List<Int>, DataError>:
+  match start >= len(faces):
+    true => Ok([faces_acc, cells_acc, checksum_acc])
+    false =>
+      let chunk = host.compute<List<Int>>("arteries", "planet_summary", seed, detail, start, 5, vertices, faces)?
+      planet_summary_chunks(seed, detail, start + 5, vertices, faces, faces_acc + nth_int(chunk, 0), cells_acc + nth_int(chunk, 1), checksum_acc + nth_int(chunk, 2))
+
+export fn planet_summary(seed: Int, detail: Int) -> Result<PlanetSummary, DataError>:
+  let vertices = planet_vertices()
+  let faces = planet_faces()
+  let result = planet_summary_chunks(seed, detail, 0, vertices, faces, 0, 0, 0)?
+  Ok(PlanetSummary(seed: seed, detail: detail, faces: nth_int(result, 0), cells: nth_int(result, 1), checksum: nth_int(result, 2)))
+
 export fn load_compact() -> Result<ScaleSummary, DataError>:
   let rows = worlds.select(limit: 1)?
   match list_get(rows, 0):
-    None => Ok(ScaleSummary(tick: 0, money: 0, towns: 0, routes: 0, phase: 0))
+    None => Ok(ScaleSummary(seed: 0, tick: 0, money: 0, towns: 0, routes: 0, phase: 0))
     Some(row) =>
       let town_count = towns.count(world: row.id)?
       let route_count = routes.count(world: row.id)?
-      Ok(ScaleSummary(tick: row.tick, money: row.money, towns: town_count, routes: route_count, phase: row.phase))
+      Ok(ScaleSummary(seed: row.seed, tick: row.tick, money: row.money, towns: town_count, routes: route_count, phase: row.phase))
 
 fn scale_done_step(done: List<Text>, pop: Int, prosperity: Int, traffic: Int) -> ScaleStep:
   ScaleStep(phase: 0, cursor: "", tick: text_int(nth_text(done, 0)), money: text_int(nth_text(done, 1)), pop: pop, prosperity: prosperity, max_research: text_int(nth_text(done, 2)), traffic: traffic, finish: text_int(nth_text(done, 3)), status: "Cycle complete")

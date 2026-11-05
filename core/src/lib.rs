@@ -10,12 +10,14 @@
 //! snapshot of the Diamond output for the default seed range.
 
 mod path;
+mod planet;
 mod tick;
 
 pub use path::{
     pathfind, route_cost, Grid, GridPoint, RouteStats, TravelMode, MAX_GRID_CELLS, MAX_GRID_SIDE,
     MAX_PATH_POINTS,
 };
+pub use planet::{generate_faces, MAX_DETAIL, PLANET_SCALE};
 pub use tick::{
     finish_towns, market, trade, FinishPage, TickRoute, TickState, TickTown, CLOTH, FIBER, FISH,
     GOOD_COUNT, GRAIN, ORE, STONE, TIMBER, TOOLS,

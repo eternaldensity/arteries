@@ -942,3 +942,9 @@ button.tiny { padding: 2px 8px; font-size: 13px; border-radius: 6px; }
   letter-spacing: 0;
   text-transform: none;
 }
+
+.scale-planet {
+  margin-top: 20px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 18px;
+}

@@ -50,8 +50,9 @@ export component Root:
   state pending_dismantle: Text = ""
   state scale_mode: Bool = false
   state scale_active: Bool = false
-  state scale_summary: ScaleSummary = ScaleSummary(tick: 0, money: 0, towns: 0, routes: 0, phase: 0)
+  state scale_summary: ScaleSummary = ScaleSummary(seed: 7, tick: 0, money: 0, towns: 0, routes: 0, phase: 0)
   state scale_step: ScaleStep = ScaleStep(phase: 0, cursor: "", tick: 0, money: 0, pop: 0, prosperity: 0, max_research: 0, traffic: 0, finish: 0, status: "Choose Run to start a compact cycle.")
+  state planet_summary: PlanetSummary = PlanetSummary(seed: 7, detail: 0, faces: 0, cells: 0, checksum: 0)
 
   derived world: World = game.world
   derived iv: InspectView = game.inspect
@@ -146,7 +147,7 @@ export component Root:
     loaded = false
     game = empty_game()
     scale_active = false
-    scale_summary = ScaleSummary(tick: 0, money: 0, towns: 0, routes: 0, phase: 0)
+    scale_summary = ScaleSummary(seed: 7, tick: 0, money: 0, towns: 0, routes: 0, phase: 0)
     scale_step = ScaleStep(phase: 0, cursor: "", tick: 0, money: 0, pop: 0, prosperity: 0, max_research: 0, traffic: 0, finish: 0, status: "Choose Run to start a compact cycle.")
     auth_notice = "Signed out."
 
@@ -243,7 +244,7 @@ export component Root:
   on scale_continue:
     scale_step = rpc.advance_scale(24, "daily", scale_req_phase, scale_req_cursor, scale_req_pop, scale_req_prosperity, scale_req_max, scale_req_traffic, scale_req_finish)
     scale_active = scale_step.phase != 0
-    scale_summary = ScaleSummary(tick: scale_step.tick, money: scale_step.money, towns: scale_summary.towns, routes: scale_summary.routes, phase: scale_step.phase)
+    scale_summary = ScaleSummary(seed: scale_summary.seed, tick: scale_step.tick, money: scale_step.money, towns: scale_summary.towns, routes: scale_summary.routes, phase: scale_step.phase)
 
   on scale_refresh:
     scale_summary = rpc.load_compact()
@@ -257,6 +258,9 @@ export component Root:
 
   on scale_exit:
     scale_mode = false
+
+  on planet_generate:
+    planet_summary = rpc.planet_summary(scale_summary.seed, 8)
 
   html:
     <when test={scale_mode and signed_in != "" and loaded}>
@@ -301,6 +305,15 @@ export component Root:
               <span>Max research <strong>{int_text(scale_step.max_research)}</strong></span>
             </div>
             <p class="scale-hint">Each click advances one bounded chunk. Repeat until the status says Cycle complete; the browser never loads the full frontier.</p>
+          </div>
+          <div class="scale-planet">
+            <div class="scale-cycle-head">
+              <div>
+                <h2>Planet</h2>
+                <p>{int_text(planet_summary.faces)} faces · {int_text(planet_summary.cells)} cells · checksum {int_text(planet_summary.checksum)}</p>
+              </div>
+              <button class="primary" type="button" on-click={planet_generate}>Generate planet</button>
+            </div>
           </div>
         </div>
       </section>
