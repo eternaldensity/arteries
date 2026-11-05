@@ -394,10 +394,14 @@ completed in six bounded requests at ~0.6 s each. Trade followed in ten
 pages, applying harvest/storm/caravan, tech, history, and upkeep. The compact
 result matched the staged path on a 3-town differential. The chunked walk uses
 the resource cursor's live-view contract, so a cycle assumes no concurrent
-writer between pages. Full-state Text is still a last resort. The staged RPC
-protocol is already replay-safe: a repeated `advance_market` while `phase = 1`
-and a repeated `advance_finish` while `phase = 0` are no-ops, which was verified
-against a live runner.
+writer between pages. The UI now auto-selects this path above 20 settlements:
+sign-in calls `load_compact`, skips the full-world `load_game`, and drives
+`advance_scale` from a compact overlay. A 100-settlement, 50-route cycle was
+exercised in Chromium, and the small prototype keeps the full map with a
+"Scale view" button for the overlay. Full-state Text is still a last resort.
+The staged RPC protocol is already replay-safe: a repeated `advance_market`
+while `phase = 1` and a repeated `advance_finish` while `phase = 0` are no-ops,
+which was verified against a live runner.
 
 ---
 
@@ -688,7 +692,7 @@ transport only when H3's chunked staged RPCs actually hit their limit.
 | **H0 — `arteries-core` + exporter** ✅ terrain slice | `core/` crate (`arteries-core`) plus the `arteries-gen` CLI; `tools/gen-maps.sh` consumes it, `tools/check-core.sh` diffs it against the Diamond generator, and `core/tests/terrain-expected.txt` freezes seeds 0–15. Noise and hydrology join the crate with M2 | Outputs match on fixed seeds; renderer consumes the crate — **landed for terrain** |
 | **H1 — First compute export** ✅ landed | `runner/` crate (`arteries-runner`) registers `arteries.terrain_region` and serves with grants; the real app now declares `[compute.arteries]` with `terrain_region` in `app/diamond.toml` and calls it from `server.terrain_region`; `runner/tests` proves `validate_compute`, exact packed regions, and the app manifest/registration match | `diamond check`/`build` pass; packed region round-trips and matches the CLI map; `tests/ui-smoke.js` does not yet call the compute export — **landed** |
 | **H2 — Pathfinding** ✅ landed | `core/src/path.rs` implements deterministic 4-neighbour A* and rasterized route accounting; `arteries-runner` registers `pathfind` + `route_cost`; the app packs terrain through `terrain_region`, requests an A* corridor from `survey_path`, and persists the full plan in the row's fixed-width `waypoints` text (`storage.version = 2`); the sentinel `bend = 100` still marks an auto corridor, and manual bend switches back to the hand-shaped polyline; legacy rows with empty waypoints recompute once | 64×64 A* completes in milliseconds; built surveys reload byte-for-byte from stored waypoints even when the stored path is changed out-of-band; `route_cost` stats match the drawn line — **landed** |
-| **H3 — Stateful tick** ✅ landed (scale path) | Rust `arteries.market`, `arteries.trade`, and `arteries.finish` kernels use the compact row ABI. `advance_compact_chunk` pages 20 towns for production and 5 routes for trade (loading only endpoint towns by `ord`); `advance_finish_chunk`/`advance_finish_commit` page events, tech, history, and upkeep. A 100-settlement, 50-route frontier completed market in 6 pages, trade in 10, and finish in 5, all around 0.6 s; the compact path matches the staged path on a 3-town differential | 100-settlement + 50-route tick verified in bounded pages within the request deadline; replay no-op verified; the prototype UI still uses the staged path |
+| **H3 — Stateful tick** ✅ landed (scale path) | Rust `arteries.market`, `arteries.trade`, and `arteries.finish` kernels use the compact row ABI. `advance_compact_chunk` pages 20 towns for production and 5 routes for trade (loading only endpoint towns by `ord`); `advance_finish_chunk`/`advance_finish_commit` page events, tech, history, and upkeep. The UI auto-selects a compact overlay above 20 settlements and drives `advance_scale`; the 100-settlement, 50-route cycle completed in Chromium. The compact path matches the staged path on a 3-town differential | 100-settlement + 50-route tick verified in bounded pages and through the browser overlay; replay no-op verified; small worlds keep the full staged view |
 | **H4 — Planet generation** | Declare `generate_planet` and register the kernel; chunk the call or run it as a durable job | A planet generates in bounded chunks within the request deadline; generation validation passes |
 
 **Precondition for H1+:** a Diamond build containing PR #2 (§14). H0–H2 have

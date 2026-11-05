@@ -48,6 +48,10 @@ export component Root:
   state password: Text = ""
   state auth_notice: Text = "Sign in to load the authoritative world."
   state pending_dismantle: Text = ""
+  state scale_mode: Bool = false
+  state scale_active: Bool = false
+  state scale_summary: ScaleSummary = ScaleSummary(tick: 0, money: 0, towns: 0, routes: 0, phase: 0)
+  state scale_step: ScaleStep = ScaleStep(phase: 0, cursor: "", tick: 0, money: 0, pop: 0, prosperity: 0, max_research: 0, traffic: 0, finish: 0, status: "Choose Run to start a compact cycle.")
 
   derived world: World = game.world
   derived iv: InspectView = game.inspect
@@ -81,6 +85,30 @@ export component Root:
     true => for i in alt_idx:
       survey_alt_text(nth_plan(alt_plans, i), i)
     false => []
+  derived scale_button: Text = match scale_active:
+    true => "Continue cycle"
+    false => "Run 1 day"
+  derived scale_req_phase: Int = match scale_active:
+    true => scale_step.phase
+    false => 0
+  derived scale_req_cursor: Text = match scale_active:
+    true => scale_step.cursor
+    false => ""
+  derived scale_req_pop: Int = match scale_active:
+    true => scale_step.pop
+    false => 0
+  derived scale_req_prosperity: Int = match scale_active:
+    true => scale_step.prosperity
+    false => 0
+  derived scale_req_max: Int = match scale_active:
+    true => scale_step.max_research
+    false => 0
+  derived scale_req_traffic: Int = match scale_active:
+    true => scale_step.traffic
+    false => 0
+  derived scale_req_finish: Int = match scale_active:
+    true => scale_step.finish
+    false => 0
 
   on mount:
     signed_in = session.user()
@@ -88,19 +116,38 @@ export component Root:
   on sign_in:
     signed_in = session.login(username, password)
     password = ""
-    game = server_adopt(rpc.load_game())
+    scale_summary = rpc.load_compact()
+    scale_mode = scale_summary.towns > 20
+    game = match scale_mode:
+      true => game
+      false => server_adopt(rpc.load_game())
     loaded = true
-    auth_notice = "Signed in. The world is authoritative on the server."
+    scale_active = false
+    scale_step = ScaleStep(phase: scale_summary.phase, cursor: "", tick: scale_summary.tick, money: scale_summary.money, pop: 0, prosperity: 0, max_research: 0, traffic: 0, finish: 0, status: "Compact view ready.")
+    auth_notice = match scale_mode:
+      true => "Signed in. Compact view loaded."
+      false => "Signed in. The world is authoritative on the server."
 
   on resume:
-    game = server_adopt(rpc.load_game())
+    scale_summary = rpc.load_compact()
+    scale_mode = scale_summary.towns > 20
+    game = match scale_mode:
+      true => game
+      false => server_adopt(rpc.load_game())
     loaded = true
-    auth_notice = "World loaded."
+    scale_active = false
+    scale_step = ScaleStep(phase: scale_summary.phase, cursor: "", tick: scale_summary.tick, money: scale_summary.money, pop: 0, prosperity: 0, max_research: 0, traffic: 0, finish: 0, status: "Compact view ready.")
+    auth_notice = match scale_mode:
+      true => "Compact world loaded."
+      false => "World loaded."
 
   on sign_out:
     signed_in = session.logout()
     loaded = false
     game = empty_game()
+    scale_active = false
+    scale_summary = ScaleSummary(tick: 0, money: 0, towns: 0, routes: 0, phase: 0)
+    scale_step = ScaleStep(phase: 0, cursor: "", tick: 0, money: 0, pop: 0, prosperity: 0, max_research: 0, traffic: 0, finish: 0, status: "Choose Run to start a compact cycle.")
     auth_notice = "Signed out."
 
   on pick(id: Text):
@@ -193,7 +240,72 @@ export component Root:
   on refresh_inspect:
     game = game_refresh(game)
 
+  on scale_continue:
+    scale_step = rpc.advance_scale(24, "daily", scale_req_phase, scale_req_cursor, scale_req_pop, scale_req_prosperity, scale_req_max, scale_req_traffic, scale_req_finish)
+    scale_active = scale_step.phase != 0
+    scale_summary = ScaleSummary(tick: scale_step.tick, money: scale_step.money, towns: scale_summary.towns, routes: scale_summary.routes, phase: scale_step.phase)
+
+  on scale_refresh:
+    scale_summary = rpc.load_compact()
+    scale_step = ScaleStep(phase: scale_summary.phase, cursor: "", tick: scale_summary.tick, money: scale_summary.money, pop: scale_step.pop, prosperity: scale_step.prosperity, max_research: scale_step.max_research, traffic: scale_step.traffic, finish: scale_step.finish, status: "Refreshed.")
+
+  on scale_enter:
+    scale_summary = rpc.load_compact()
+    scale_mode = true
+    scale_active = false
+    scale_step = ScaleStep(phase: scale_summary.phase, cursor: "", tick: scale_summary.tick, money: scale_summary.money, pop: 0, prosperity: 0, max_research: 0, traffic: 0, finish: 0, status: "Compact view ready.")
+
+  on scale_exit:
+    scale_mode = false
+
   html:
+    <when test={scale_mode and signed_in != "" and loaded}>
+      <section class="scale-overlay">
+        <div class="scale-card">
+          <header class="scale-head">
+            <div>
+              <p class="eyebrow">Scale mode</p>
+              <h1>Compact frontier</h1>
+              <p>Server-authoritative chunks without loading the whole world into the browser.</p>
+            </div>
+            <when test={scale_summary.towns <= 20}>
+              <button class="ghost" type="button" on-click={scale_exit}>Exit scale view</button>
+            </when>
+            <when test={scale_summary.towns > 20}>
+              <button class="ghost" type="button" on-click={sign_out}>Sign out</button>
+            </when>
+          </header>
+          <div class="scale-grid">
+            <div><span>Tick</span><strong>{int_text(scale_summary.tick)}</strong></div>
+            <div><span>Crowns</span><strong>{int_text(scale_summary.money)}</strong></div>
+            <div><span>Settlements</span><strong>{int_text(scale_summary.towns)}</strong></div>
+            <div><span>Routes</span><strong>{int_text(scale_summary.routes)}</strong></div>
+            <div><span>Phase</span><strong>{int_text(scale_summary.phase)}</strong></div>
+          </div>
+          <div class="scale-cycle">
+            <div class="scale-cycle-head">
+              <div>
+                <h2>Cycle</h2>
+                <p>{scale_step.status}</p>
+              </div>
+              <div class="actions">
+                <button class="primary" type="button" on-click={scale_continue}>{scale_button}</button>
+                <button class="ghost" type="button" on-click={scale_refresh}>Refresh</button>
+              </div>
+            </div>
+            <div class="scale-stats">
+              <span>Market pop <strong>{int_text(scale_step.pop)}</strong></span>
+              <span>Market prosperity <strong>{int_text(scale_step.prosperity)}</strong></span>
+              <span>Trade traffic <strong>{int_text(scale_step.traffic)}</strong></span>
+              <span>Finish prosperity <strong>{int_text(scale_step.finish)}</strong></span>
+              <span>Max research <strong>{int_text(scale_step.max_research)}</strong></span>
+            </div>
+            <p class="scale-hint">Each click advances one bounded chunk. Repeat until the status says Cycle complete; the browser never loads the full frontier.</p>
+          </div>
+        </div>
+      </section>
+    </when>
+
     <when test={signed_in == ""}>
       <main class="app login-shell">
         <section class="login-card">
@@ -223,7 +335,7 @@ export component Root:
       </main>
     </when>
 
-    <when test={signed_in != "" and loaded}>
+    <when test={signed_in != "" and loaded and not scale_mode}>
     <main class="app">
       <header class="topbar">
         <div class="brand">
@@ -239,6 +351,7 @@ export component Root:
             <strong class={money_class(world)}>{world.money}</strong>
           </div>
           <button class="ghost" type="button" on-click={new_seed}>New world</button>
+          <button class="ghost" type="button" on-click={scale_enter}>Scale view</button>
           <button class="ghost" type="button" on-click={sign_out}>Sign out</button>
         </div>
       </header>

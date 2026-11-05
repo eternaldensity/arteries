@@ -25,8 +25,14 @@ Open <http://127.0.0.1:3032/> (or set `PORT`). Use plain HTTP; the development
 server does not provide TLS. The database must already exist. Arteries declares
 a compute export, so it must be served by `arteries-runner`: `diamond serve` has
 no way to register compute kernels. `runserv.example.sh` builds the project,
-initializes a fresh database (or applies the supported one-step schema
-migration), creates the development account, and starts the runner.
+initializes a fresh database (or applies the supported additive schema
+migrations), creates the development account, and starts the runner.
+
+At more than 20 settlements, sign-in opens a **compact scale overlay** instead
+of loading the whole world. The overlay pulls `load_compact`, runs the market,
+trade, and finish phases one bounded chunk per click, and shows tick, treasury,
+population, prosperity, traffic, and research totals. Small worlds keep the
+full map and expose the same overlay from the topbar's **Scale view** button.
 
 ## What is in the prototype
 

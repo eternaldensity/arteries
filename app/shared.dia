@@ -74,6 +74,25 @@ export type RoutePlan:
   min_y: Int
   max_y: Int
 
+export type ScaleSummary:
+  tick: Int
+  money: Int
+  towns: Int
+  routes: Int
+  phase: Int
+
+export type ScaleStep:
+  phase: Int
+  cursor: Text
+  tick: Int
+  money: Int
+  pop: Int
+  prosperity: Int
+  max_research: Int
+  traffic: Int
+  finish: Int
+  status: Text
+
 export type Route:
   id: Text
   a: Text
@@ -1200,6 +1219,9 @@ fn int_of_at(text: Text, i: Int, acc: Int) -> Int:
 
 fn int_of(text: Text) -> Int:
   int_of_at(text, 0, 0)
+
+export fn text_int(text: Text) -> Int:
+  int_of(text)
 
 export fn encode_plan(plan: RoutePlan) -> Text:
   let header = "v1" + pad4(len(plan.path)) + pad8(plan.length) + pad8(plan.water) + pad8(plan.mountain) + pad8(plan.forest) + pad8(plan.money) + pad8(plan.timber) + pad8(plan.stone) + pad8(plan.min_y) + pad8(plan.max_y)

@@ -1121,6 +1121,78 @@ export fn advance_finish_commit(max_research: Int, total_prosperity: Int) -> Res
           true => finish_apply(row, max_research, total_prosperity)
           false => Ok([int_text(row.tick), int_text(row.money), int_text(max_research), int_text(total_prosperity)])
 
+export fn load_compact() -> Result<ScaleSummary, DataError>:
+  let rows = worlds.select(limit: 1)?
+  match list_get(rows, 0):
+    None => Ok(ScaleSummary(tick: 0, money: 0, towns: 0, routes: 0, phase: 0))
+    Some(row) =>
+      let town_count = towns.count(world: row.id)?
+      let route_count = routes.count(world: row.id)?
+      Ok(ScaleSummary(tick: row.tick, money: row.money, towns: town_count, routes: route_count, phase: row.phase))
+
+fn scale_done_step(done: List<Text>, pop: Int, prosperity: Int, traffic: Int) -> ScaleStep:
+  ScaleStep(phase: 0, cursor: "", tick: text_int(nth_text(done, 0)), money: text_int(nth_text(done, 1)), pop: pop, prosperity: prosperity, max_research: text_int(nth_text(done, 2)), traffic: traffic, finish: text_int(nth_text(done, 3)), status: "Cycle complete")
+
+fn scale_market_step(hours: Int, cadence: Text, cursor: Text, pop: Int, prosperity: Int, max_research: Int, traffic: Int, finish: Int) -> Result<ScaleStep, DataError>:
+  let result = advance_compact_chunk(hours, cadence, cursor, 20)?
+  let next_phase = text_int(nth_text(result, 1))
+  let next_cursor = nth_text(result, 0)
+  let tick = text_int(nth_text(result, 2))
+  let money = text_int(nth_text(result, 3))
+  let amount = text_int(nth_text(result, 4))
+  let other = text_int(nth_text(result, 5))
+  let pop2 = match next_phase == 2:
+    true => pop + amount
+    false => pop
+  let prosperity2 = match next_phase == 2:
+    true => prosperity + other
+    false => prosperity
+  let traffic2 = match next_phase == 3:
+    true => traffic + amount
+    false => traffic
+  let status = match next_phase == 2:
+    true => "Settling market"
+    false => match next_phase == 3:
+      true => "Trading routes"
+      false => match next_phase == 1:
+        true => "Market done"
+        false => "Running"
+  Ok(ScaleStep(phase: next_phase, cursor: next_cursor, tick: tick, money: money, pop: pop2, prosperity: prosperity2, max_research: max_research, traffic: traffic2, finish: finish, status: status))
+
+fn scale_finish_step(row: WorldRow, phase: Int, cursor: Text, pop: Int, prosperity: Int, max_research: Int, traffic: Int, finish: Int) -> Result<ScaleStep, DataError>:
+  match phase == 5:
+    true =>
+      let done = advance_finish_commit(max_research, finish)?
+      Ok(scale_done_step(done, pop, prosperity, traffic))
+    false =>
+      let result = advance_finish_chunk(cursor, 20)?
+      let next_phase = text_int(nth_text(result, 1))
+      let next_cursor = nth_text(result, 0)
+      let page_max = text_int(nth_text(result, 2))
+      let page_finish = text_int(nth_text(result, 3))
+      let finish2 = finish + page_finish
+      let max2 = match page_max > max_research:
+        true => page_max
+        false => max_research
+      match next_phase == 5:
+        true =>
+          let done = advance_finish_commit(max2, finish2)?
+          Ok(scale_done_step(done, pop, prosperity, traffic))
+        false => Ok(ScaleStep(phase: next_phase, cursor: next_cursor, tick: row.tick, money: row.money, pop: pop, prosperity: prosperity, max_research: max2, traffic: traffic, finish: finish2, status: "Applying events"))
+
+export fn advance_scale(hours: Int, cadence: Text, phase: Int, cursor: Text, pop: Int, prosperity: Int, max_research: Int, traffic: Int, finish: Int) -> Result<ScaleStep, DataError>:
+  let rows = worlds.select(limit: 1)?
+  match list_get(rows, 0):
+    None => Ok(ScaleStep(phase: 0, cursor: "", tick: 0, money: 0, pop: pop, prosperity: prosperity, max_research: max_research, traffic: traffic, finish: finish, status: "No world."))
+    Some(row) =>
+      match phase == 0 or phase == 2 or phase == 3:
+        true => scale_market_step(hours, cadence, cursor, pop, prosperity, max_research, traffic, finish)
+        false => match phase == 1 or phase == 4 or phase == 5:
+          true => scale_finish_step(row, phase, cursor, pop, prosperity, max_research, traffic, finish)
+          false =>
+            let summary = load_compact()?
+            Ok(ScaleStep(phase: summary.phase, cursor: "", tick: summary.tick, money: summary.money, pop: pop, prosperity: prosperity, max_research: max_research, traffic: traffic, finish: finish, status: "Idle"))
+
 export fn advance_market(hours: Int, cadence: Text) -> Result<Game, DataError>:
   let state = load_state()?
   let current = state_game(state, "")

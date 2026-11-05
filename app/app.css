@@ -823,3 +823,122 @@ button.tiny { padding: 2px 8px; font-size: 13px; border-radius: 6px; }
   color: var(--text);
 }
 .login-card button { margin-top: 8px; }
+
+/* Compact scale overlay: chunked tick without the full-world view. */
+.scale-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow: auto;
+  padding: 32px 20px;
+  background:
+    radial-gradient(900px 500px at 10% -10%, rgba(94, 234, 212, .12), transparent 60%),
+    radial-gradient(800px 500px at 100% 0%, rgba(232, 180, 90, .08), transparent 55%),
+    var(--bg);
+}
+.scale-card {
+  max-width: 980px;
+  margin: 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  padding: 28px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .35);
+}
+.scale-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+}
+.scale-head h1 {
+  margin: 4px 0 6px;
+  font-size: 28px;
+  letter-spacing: .04em;
+}
+.scale-head p {
+  margin: 0;
+  color: var(--muted);
+  max-width: 620px;
+}
+.eyebrow {
+  margin: 0;
+  color: var(--teal);
+  font-size: 11px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.scale-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+  margin: 22px 0;
+}
+.scale-grid div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--panel-2);
+}
+.scale-grid span {
+  color: var(--faint);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.scale-grid strong {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+.scale-cycle {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 18px;
+}
+.scale-cycle-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+}
+.scale-cycle-head h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+.scale-cycle-head p {
+  margin: 0;
+  color: var(--muted);
+}
+.scale-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  margin: 16px 0;
+}
+.scale-stats span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.scale-stats strong {
+  color: var(--text);
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.scale-hint {
+  margin: 0;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.login-card .check,
+.scale-card .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
