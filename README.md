@@ -9,6 +9,9 @@ The current build is a compact, playable prototype rather than a full game. It
 focuses on one complete loop: **survey → connect → trade → prosper → research →
 unlock a better mode → upgrade → maintain.**
 
+For a one-page map of the runtime, see
+[`docs/architecture.svg`](docs/architecture.svg).
+
 ## Run it
 
 ```sh
