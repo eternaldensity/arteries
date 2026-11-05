@@ -603,6 +603,10 @@ enforces some of this per call *(PR #2)*; the rest is on Arteries:
   `contract.json`, so changing any of those is a visible contract change —
   bump the payload version alongside it.
 - Store `generation_version` and `host_extension_version` with the world.
+- The H2 saved-plan codec (`v1` in the row's `waypoints` text) is a storage
+  format: changing its layout requires a `storage.version` bump and an explicit
+  migration. Empty waypoints mean a pre-persistence row and fall back to
+  recomputation.
 - A saved world records the versions it was produced with; opening it on a
   newer build must migrate explicitly or refuse, never silently change results.
 - Keep the old implementation available for at least one release during
@@ -659,7 +663,7 @@ transport only when H3's chunked staged RPCs actually hit their limit.
 | --- | --- | --- |
 | **H0 — `arteries-core` + exporter** ✅ terrain slice | `core/` crate (`arteries-core`) plus the `arteries-gen` CLI; `tools/gen-maps.sh` consumes it, `tools/check-core.sh` diffs it against the Diamond generator, and `core/tests/terrain-expected.txt` freezes seeds 0–15. Noise and hydrology join the crate with M2 | Outputs match on fixed seeds; renderer consumes the crate — **landed for terrain** |
 | **H1 — First compute export** ✅ landed | `runner/` crate (`arteries-runner`) registers `arteries.terrain_region` and serves with grants; the real app now declares `[compute.arteries]` with `terrain_region` in `app/diamond.toml` and calls it from `server.terrain_region`; `runner/tests` proves `validate_compute`, exact packed regions, and the app manifest/registration match | `diamond check`/`build` pass; packed region round-trips and matches the CLI map; `tests/ui-smoke.js` does not yet call the compute export — **landed** |
-| **H2 — Pathfinding** ✅ landed | `core/src/path.rs` implements deterministic 4-neighbour A* and rasterized route accounting; `arteries-runner` registers `pathfind` + `route_cost`; the app packs terrain through `terrain_region`, requests an A* corridor from `survey_path`, and stores the sentinel `bend = 100` so loading recomputes the same path; manual bend switches back to the hand-shaped polyline | 64×64 A* completes in milliseconds; the packed survey round-trips through build/reload and matches the rasterized `route_cost` stats — **landed** |
+| **H2 — Pathfinding** ✅ landed | `core/src/path.rs` implements deterministic 4-neighbour A* and rasterized route accounting; `arteries-runner` registers `pathfind` + `route_cost`; the app packs terrain through `terrain_region`, requests an A* corridor from `survey_path`, and persists the full plan in the row's fixed-width `waypoints` text (`storage.version = 2`); the sentinel `bend = 100` still marks an auto corridor, and manual bend switches back to the hand-shaped polyline; legacy rows with empty waypoints recompute once | 64×64 A* completes in milliseconds; built surveys reload byte-for-byte from stored waypoints even when the stored path is changed out-of-band; `route_cost` stats match the drawn line — **landed** |
 | **H3 — Stateful tick** | **Not a compute export.** Move the tick out of Diamond via the §8 options: staged Diamond RPCs (current), an HTTP service, or a fork with transactional host ops | 100-settlement tick runs in bounded chunks within the request deadline; replay/rollback verified |
 | **H4 — Planet generation** | Declare `generate_planet` and register the kernel; chunk the call or run it as a durable job | A planet generates in bounded chunks within the request deadline; generation validation passes |
 
@@ -682,7 +686,7 @@ with the target region size. Otherwise complete the gameplay phases first, as
 | Running an unmerged Diamond build | Pin the exact revision next to the binary; re-run `verification/examples.py` and the Arteries smoke test on upgrade |
 | Deadline overruns | `ComputeContext::checkpoint` inside kernel loops + chunking; `max_duration_ms` is a post-call check; do not add nested blocking; check the admission class |
 | Nondeterminism | Integer/fixed-point, sorted iteration, no f64, digest assertions; `deterministic = true` is declared but not proven |
-| Algorithm drift on recomputed A* routes | H2 stores only the sentinel bend and recomputes the path on load, so a kernel change alters historical routes. Bump `generation_version` before changing the cost model/pathfinder, and persist waypoints at D4 |
+| Algorithm drift on saved routes | H2 now persists the full plan (`waypoints`, storage version 2), so new routes are immune to pathfinder changes. Only legacy rows with empty waypoints still recompute; bump `generation_version` before changing the cost model, and re-save or migrate legacy rows |
 | Payload limits | Binary encoding, chunking, handle-based state for the tick |
 | Schema coupling (stateful op) | One versioned data-access module; contract tests |
 | Security/resource abuse | Declared input/output/duration caps, `catch_unwind`, bounded pool; **no upstream kill switch yet** — disable by removing the manifest declaration (§10) |

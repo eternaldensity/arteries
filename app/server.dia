@@ -163,6 +163,7 @@ type RouteRow:
   traffic: Int
   capacity: Int
   upkeep: Int
+  waypoints: Text = ""
 
 type NewRouteRow:
   world: WorldId
@@ -178,6 +179,7 @@ type NewRouteRow:
   traffic: Int
   capacity: Int
   upkeep: Int
+  waypoints: Text = ""
 
 type ProjectRow:
   id: ProjectId
@@ -195,6 +197,7 @@ type ProjectRow:
   bend: Int
   start_tick: Int
   ready_tick: Int
+  waypoints: Text = ""
 
 type NewProjectRow:
   world: WorldId
@@ -210,6 +213,7 @@ type NewProjectRow:
   bend: Int
   start_tick: Int
   ready_tick: Int
+  waypoints: Text = ""
 
 type LogRow:
   id: LogId
@@ -290,6 +294,7 @@ type EditRouteRow:
   traffic: Int
   capacity: Int
   upkeep: Int
+  waypoints: Text = ""
 
 type EditProjectRow:
   ord: Int
@@ -304,6 +309,7 @@ type EditProjectRow:
   bend: Int
   start_tick: Int
   ready_tick: Int
+  waypoints: Text = ""
 
 type Loaded:
   id: WorldId
@@ -433,11 +439,19 @@ fn route_plan(world: World, from: Text, to: Text, bend: Int) -> RoutePlan:
     true => auto_plan(world, from, to)
     false => plan_route_bend(world, from, to, bend)
 
+# Saved plans carry their own path and stats; only rows created before the
+# waypoints column fall back to recomputing from the world and bend.
+fn stored_plan(world: World, from: Text, to: Text, bend: Int, waypoints: Text) -> RoutePlan:
+  let stored = decode_plan(waypoints, bend)
+  match len(stored.path) > 0:
+    true => stored
+    false => route_plan(world, from, to, bend)
+
 fn route_from_row(world: World, row: RouteRow) -> Route:
-  Route(id: row.key, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, plan: route_plan(world, row.a, row.b, row.bend), fee: row.fee, traffic: row.traffic, capacity: row.capacity, upkeep: row.upkeep)
+  Route(id: row.key, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, plan: stored_plan(world, row.a, row.b, row.bend, row.waypoints), fee: row.fee, traffic: row.traffic, capacity: row.capacity, upkeep: row.upkeep)
 
 fn project_from_row(world: World, row: ProjectRow) -> Project:
-  Project(id: row.key, kind: row.kind, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, route_id: row.route_id, plan: route_plan(world, row.a, row.b, row.bend), start_tick: row.start_tick, ready_tick: row.ready_tick)
+  Project(id: row.key, kind: row.kind, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, route_id: row.route_id, plan: stored_plan(world, row.a, row.b, row.bend, row.waypoints), start_tick: row.start_tick, ready_tick: row.ready_tick)
 
 # ---------------------------------------------------------------- loading
 
@@ -532,16 +546,16 @@ fn edit_site_row(x: Site, ord: Int) -> EditSiteRow:
   EditSiteRow(ord: ord, key: x.id, name: x.name, x: x.x, y: x.y, terrain: x.terrain, resource: x.resource, richness: x.richness, founded: x.founded)
 
 fn new_route_row(x: Route, world: WorldId, ord: Int) -> NewRouteRow:
-  NewRouteRow(world: world, ord: ord, key: x.id, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, bend: x.plan.bend, fee: x.fee, traffic: x.traffic, capacity: x.capacity, upkeep: x.upkeep)
+  NewRouteRow(world: world, ord: ord, key: x.id, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, bend: x.plan.bend, fee: x.fee, traffic: x.traffic, capacity: x.capacity, upkeep: x.upkeep, waypoints: encode_plan(x.plan))
 
 fn edit_route_row(x: Route, ord: Int) -> EditRouteRow:
-  EditRouteRow(ord: ord, key: x.id, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, bend: x.plan.bend, fee: x.fee, traffic: x.traffic, capacity: x.capacity, upkeep: x.upkeep)
+  EditRouteRow(ord: ord, key: x.id, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, bend: x.plan.bend, fee: x.fee, traffic: x.traffic, capacity: x.capacity, upkeep: x.upkeep, waypoints: encode_plan(x.plan))
 
 fn new_project_row(x: Project, world: WorldId, ord: Int) -> NewProjectRow:
-  NewProjectRow(world: world, ord: ord, key: x.id, kind: x.kind, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, route_id: x.route_id, bend: x.plan.bend, start_tick: x.start_tick, ready_tick: x.ready_tick)
+  NewProjectRow(world: world, ord: ord, key: x.id, kind: x.kind, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, route_id: x.route_id, bend: x.plan.bend, start_tick: x.start_tick, ready_tick: x.ready_tick, waypoints: encode_plan(x.plan))
 
 fn edit_project_row(x: Project, ord: Int) -> EditProjectRow:
-  EditProjectRow(ord: ord, key: x.id, kind: x.kind, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, route_id: x.route_id, bend: x.plan.bend, start_tick: x.start_tick, ready_tick: x.ready_tick)
+  EditProjectRow(ord: ord, key: x.id, kind: x.kind, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, route_id: x.route_id, bend: x.plan.bend, start_tick: x.start_tick, ready_tick: x.ready_tick, waypoints: encode_plan(x.plan))
 
 fn save_towns(items: List<Town>, world: WorldId, existing: List<TownRow>, i: Int) -> Result<Bool, DataError>:
   match list_get(items, i):

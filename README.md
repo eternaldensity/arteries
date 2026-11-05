@@ -25,8 +25,8 @@ Open <http://127.0.0.1:3032/> (or set `PORT`). Use plain HTTP; the development
 server does not provide TLS. The database must already exist. Arteries declares
 a compute export, so it must be served by `arteries-runner`: `diamond serve` has
 no way to register compute kernels. `runserv.example.sh` builds the project,
-initializes the database, creates the development account, and starts the
-runner.
+initializes a fresh database (or applies the supported one-step schema
+migration), creates the development account, and starts the runner.
 
 ## What is in the prototype
 
@@ -66,6 +66,8 @@ Routes are not fixed links. Click two settlements to survey one:
   mountain, and forest cells without double-counting;
 - the Route desk can bend the interior waypoints left or right, which switches
   to the hand-shaped five-point polyline, or return to the automatic corridor;
+- every route and project row stores its full corridor, so a saved route keeps
+  its exact geometry even if the pathfinding algorithm changes later;
 - built routes are drawn as exact 2D segments, so diagonals follow their real
   angle and length;
 - length, river crossings, mountain crossings, construction cost, material
@@ -197,6 +199,8 @@ tools/
   render_maps.py        SVG map renderer
   gen-maps.sh           regenerate the map assets
   check-core.sh         diff the Rust core against the Diamond generator
+  check-plan-codec.sh   round-trip stored route plans against shared.dia
+  plan_codec_main.dia   standalone codec check appended by that script
 tests/
   ui-smoke.js      real-browser acceptance and exploration driver
 ```
@@ -233,6 +237,12 @@ inside Diamond):
 
 ```sh
 ./tools/check-rt-tables.sh
+```
+
+Verify the persisted route-plan codec against the real shared module:
+
+```sh
+./tools/check-plan-codec.sh
 ```
 
 Static checks and build:

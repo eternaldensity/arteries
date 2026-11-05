@@ -2,3 +2,4 @@
 core/tests/terrain-expected.txt text eol=lf
 runner/tests/fixtures/*.dia text eol=lf
 runner/tests/fixtures/*.toml text eol=lf
+tools/*.dia text eol=lf

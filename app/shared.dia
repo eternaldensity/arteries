@@ -1083,6 +1083,73 @@ export fn plan_from_path(flat: List<Int>, stats: List<Int>) -> RoutePlan:
   let forest = nth_int(stats, 4)
   RoutePlan(path: points, bend: auto_bend(), length: length, water: water, mountain: mountain, forest: forest, money: 8 + length + water * 5 + mountain * 8, timber: 1 + length / 14 + water, stone: 1 + length / 18 + mountain * 2, min_y: min_point_y(points, 0, map_h()), max_y: max_point_y(points, 0, 0))
 
+# Persisted route plans use a fixed-width text format so a saved corridor is
+# never re-derived from the current pathfinding algorithm:
+# v1 | count(4) | 9 stats(8 each) | count * (x,y)(4 each).
+fn zero_pad(text: Text, width: Int) -> Text:
+  match len(text) >= width:
+    true => text
+    false => zero_pad("0" + text, width)
+
+fn pad4(value: Int) -> Text:
+  zero_pad(int_text(value), 4)
+
+fn pad8(value: Int) -> Text:
+  zero_pad(int_text(value), 8)
+
+fn digit_value(c: Text) -> Int:
+  match c == "0":
+    true => 0
+    false => match c == "1":
+      true => 1
+      false => match c == "2":
+        true => 2
+        false => match c == "3":
+          true => 3
+          false => match c == "4":
+            true => 4
+            false => match c == "5":
+              true => 5
+              false => match c == "6":
+                true => 6
+                false => match c == "7":
+                  true => 7
+                  false => match c == "8":
+                    true => 8
+                    false => match c == "9":
+                      true => 9
+                      false => 0
+
+fn int_of_at(text: Text, i: Int, acc: Int) -> Int:
+  match i >= len(text):
+    true => acc
+    false => int_of_at(text, i + 1, acc * 10 + digit_value(text_slice(text, i, 1)))
+
+fn int_of(text: Text) -> Int:
+  int_of_at(text, 0, 0)
+
+export fn encode_plan(plan: RoutePlan) -> Text:
+  let header = "v1" + pad4(len(plan.path)) + pad8(plan.length) + pad8(plan.water) + pad8(plan.mountain) + pad8(plan.forest) + pad8(plan.money) + pad8(plan.timber) + pad8(plan.stone) + pad8(plan.min_y) + pad8(plan.max_y)
+  let points = for p in plan.path:
+    pad4(p.x) + pad4(p.y)
+  match len(header) == 78:
+    true => header + join_text(points, "")
+    false => ""
+
+export fn decode_plan(text: Text, bend: Int) -> RoutePlan:
+  match len(text) < 78:
+    true => empty_plan()
+    false => match text_slice(text, 0, 2) != "v1":
+      true => empty_plan()
+      false =>
+        let count = int_of(text_slice(text, 2, 4))
+        match count <= 0 or len(text) != 78 + count * 8:
+          true => empty_plan()
+          false =>
+            let points = for i in indices(count):
+              Point(x: int_of(text_slice(text, 78 + i * 8, 4)), y: int_of(text_slice(text, 82 + i * 8, 4)))
+            RoutePlan(path: points, bend: bend, length: int_of(text_slice(text, 6, 8)), water: int_of(text_slice(text, 14, 8)), mountain: int_of(text_slice(text, 22, 8)), forest: int_of(text_slice(text, 30, 8)), money: int_of(text_slice(text, 38, 8)), timber: int_of(text_slice(text, 46, 8)), stone: int_of(text_slice(text, 54, 8)), min_y: int_of(text_slice(text, 62, 8)), max_y: int_of(text_slice(text, 70, 8)))
+
 fn near_segment(px: Int, py: Int, a: Point, b: Point) -> Bool:
   let vx = b.x - a.x
   let vy = b.y - a.y

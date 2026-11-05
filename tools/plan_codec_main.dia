@@ -1,0 +1,18 @@
+fn x_at(points: List<Point>, i: Int) -> Int:
+  match list_get(points, i):
+    Some(point) => point.x
+    None => -1
+
+fn y_at(points: List<Point>, i: Int) -> Int:
+  match list_get(points, i):
+    Some(point) => point.y
+    None => -1
+
+fn main() -> Text:
+  let plan = RoutePlan(path: [Point(x: 1, y: 2), Point(x: 3, y: 4)], bend: auto_bend(), length: 3, water: 1, mountain: 2, forest: 0, money: 32, timber: 1, stone: 1, min_y: 2, max_y: 4)
+  let text = encode_plan(plan)
+  let decoded = decode_plan(text, auto_bend())
+  let legacy = decode_plan("", 0)
+  match len(text) == 94 and len(decoded.path) == 2 and decoded.length == 3 and decoded.water == 1 and decoded.mountain == 2 and decoded.money == 32 and decoded.bend == auto_bend() and x_at(decoded.path, 0) == 1 and y_at(decoded.path, 0) == 2 and x_at(decoded.path, 1) == 3 and y_at(decoded.path, 1) == 4 and len(legacy.path) == 0:
+    true => "ok"
+    false => text

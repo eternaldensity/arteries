@@ -6,8 +6,8 @@
 #
 # Required:
 #   DIAMOND_POSTGRES_URL   PostgreSQL connection string for the app database.
-#                          The database must already exist. Initialize it with
-#                          `diamond project-init build --postgres-env ...`.
+#                          The database must already exist. The script
+#                          initializes it or applies the supported migration.
 #   UI_PASSWORD            Password for the development account when it is
 #                          created. Never commit a real password.
 #
@@ -17,6 +17,8 @@
 #   PORT                   Loopback HTTP port (default: 3032)
 #   DIAMOND                Path to the Diamond executable (default: PATH lookup)
 #   RUNNER                 Path to the arteries-runner executable (default: PATH lookup)
+#   DIAMOND_MIGRATION_POSTGRES  Migration connection string (default:
+#                          DIAMOND_POSTGRES_URL; use a migration-capable role)
 #
 # Example:
 #   DIAMOND_POSTGRES_URL='host=/path/to/socket dbname=arteries user=me' \
@@ -56,7 +58,25 @@ chmod 700 "$MAILBOX"
 
 rm -rf build
 "$DIAMOND" build app/diamond.toml --out build
-"$DIAMOND" project-init build --postgres-env DIAMOND_POSTGRES_URL
+
+# Initialize a fresh database, or apply the one supported additive migration
+# when an existing database is one schema version behind.
+status=$("$DIAMOND" project-status build --postgres-env DIAMOND_POSTGRES_URL 2>/dev/null || true)
+if [ -z "$status" ]; then
+  "$DIAMOND" project-init build --postgres-env DIAMOND_POSTGRES_URL
+else
+  actual=$(printf '%s' "$status" | sed -n 's/.*"version":\([0-9][0-9]*\).*/\1/p')
+  expected=$(printf '%s' "$status" | sed -n 's/.*"expected_version":\([0-9][0-9]*\).*/\1/p')
+  if [ -z "$actual" ] || [ -z "$expected" ]; then
+    echo "cannot read the database schema version" >&2
+    exit 1
+  fi
+  if [ "$actual" != "$expected" ]; then
+    migration=${DIAMOND_MIGRATION_POSTGRES:-$DIAMOND_POSTGRES_URL}
+    DIAMOND_MIGRATION_POSTGRES=$migration \
+      "$DIAMOND" project-migrate build --postgres-env DIAMOND_MIGRATION_POSTGRES
+  fi
+fi
 
 existing="$(psql "$DIAMOND_POSTGRES_URL" -Atc \
   "select count(*) from diamond_identity.users where username='${UI_USER}' and verified and not disabled")"
