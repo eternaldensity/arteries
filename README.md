@@ -205,7 +205,7 @@ core/
   src/planet.rs    coarse RT-face planet generation
   src/noise.rs     fixed-point value/fBm/ridged noise and domain warping
   src/worldgen.rs  elevation, climate, biomes, rivers, features, validation
-  src/main.rs      terrain exporter
+  src/main.rs      terrain + worldgen table exporter
 runner/
   Cargo.toml       arteries-runner: serves an Arteries project with compute
   src/lib.rs       kernels (terrain_region, noise, worldgen, pathfind, pathfind_features, route_cost, market, trade, finish, planet)
@@ -214,8 +214,10 @@ runner/
 tools/
   gen_terrain_main.dia  Diamond terrain exporter (differential oracle)
   render_maps.py        SVG map renderer
-  gen-maps.sh           regenerate the map assets
+  gen-maps.sh           regenerate the map assets (worldgen by default)
   check-core.sh         diff the Rust core against the Diamond generator
+  gen-worldgen-tables.sh  bake app/worldgen_tables.dia from worldgen
+  check-worldgen-tables.sh  diff the baked table against the generator
   check-plan-codec.sh   round-trip stored route plans against shared.dia
   plan_codec_main.dia   standalone codec check appended by that script
   check-tick-scale.sh   probe the staged tick at a chosen settlement count

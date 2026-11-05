@@ -8,8 +8,8 @@
 
 use arteries_core::{
     fbm, finish_towns, generate_faces, generate_world, market, pathfind, pathfind_features,
-    region_text, route_cost, trade, FeatureGrid, Grid, GridPoint, TickRoute, TickState, TickTown,
-    TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED,
+    region_text, route_cost, route_cost_features, trade, FeatureGrid, Grid, GridPoint, TickRoute,
+    TickState, TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED,
 };
 use diamond::{Compute, ComputeContext, ComputeError, RuntimeGrants};
 use serde_json::Value as Json;
@@ -542,6 +542,58 @@ impl Compute for WorldgenSummary {
     }
 }
 
+/// Pure-compute export `arteries.route_cost_features`.
+///
+/// Arguments: `(terrain grid, feature grid, path, mode)`. Reply is the same
+/// `[surcharge, length, water, mountain, forest]` shape as `route_cost`, with
+/// pass and ford discounts applied to the surcharge.
+pub struct RouteCostFeatures;
+
+impl RouteCostFeatures {
+    /// Validate wire arguments and account for a feature-aware route.
+    ///
+    /// # Errors
+    /// Returns [`ComputeError::InvalidInput`] for malformed grids or paths,
+    /// mismatched dimensions, or impassable cells.
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 4 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let grid = Grid::parse(text_arg(arguments, 0)?).map_err(|_| ComputeError::InvalidInput)?;
+        let features =
+            FeatureGrid::parse(text_arg(arguments, 1)?).map_err(|_| ComputeError::InvalidInput)?;
+        let values = int_list_arg(arguments, 2)?;
+        if values.len() < 2 || values.len() % 2 != 0 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let path = values
+            .chunks(2)
+            .map(|pair| GridPoint::new(pair[0], pair[1]))
+            .collect::<Vec<_>>();
+        let mode =
+            TravelMode::parse(text_arg(arguments, 3)?).map_err(|_| ComputeError::InvalidInput)?;
+        let stats = route_cost_features(&grid, &features, &path, mode)
+            .map_err(|_| ComputeError::InvalidInput)?;
+        Ok(int_list_json([
+            stats.cost,
+            stats.length,
+            stats.water,
+            stats.mountain,
+            stats.forest,
+        ]))
+    }
+}
+
+impl Compute for RouteCostFeatures {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
 /// Pure-compute export `arteries.pathfind_features`.
 ///
 /// Arguments: `(terrain grid, feature grid, from, to, mode)`. The feature grid
@@ -860,6 +912,13 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
         &["Int", "Int", "Int"],
         "List<Int>",
         WorldgenSummary,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "route_cost_features",
+        &["Text", "Text", "List<Int>", "Text"],
+        "List<Int>",
+        RouteCostFeatures,
     )?;
     grants.register_compute(
         "arteries",

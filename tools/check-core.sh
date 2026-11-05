@@ -53,7 +53,8 @@ GEN="$TMP/gen_terrain.dia"
 seed=0
 while [ "$seed" -lt "$COUNT" ]; do
   sed 's/^export //' "$ROOT/app/rt_tables.dia" > "$GEN"
-  sed 's/^export //' "$ROOT/app/shared.dia" >> "$GEN"
+  sed 's/^export //' "$ROOT/app/worldgen_tables.dia" >> "$GEN"
+sed 's/^export //' "$ROOT/app/shared.dia" >> "$GEN"
   sed "s/__SEED__/$seed/" "$ROOT/tools/gen_terrain_main.dia" >> "$GEN"
   "$DIAMOND" check "$GEN" >/dev/null
   "$DIAMOND" run "$GEN" >> "$TMP/diamond.txt"

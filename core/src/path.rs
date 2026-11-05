@@ -484,31 +484,7 @@ fn effective_cost(
 /// # Errors
 /// Rejects empty, odd-shaped, out-of-bounds, or impassable paths.
 pub fn route_cost(grid: &Grid, path: &[GridPoint], mode: TravelMode) -> Result<RouteStats, String> {
-    if path.is_empty() {
-        return Err("path is empty".to_string());
-    }
-    for point in path {
-        if grid.index(*point).is_none() {
-            return Err(format!(
-                "path point ({}, {}) is out of bounds",
-                point.x, point.y
-            ));
-        }
-        if grid.cost(*point, mode) <= 0 {
-            return Err("path crosses an impassable cell".to_string());
-        }
-    }
-
-    let mut cells = BTreeSet::new();
-    for pair in path.windows(2) {
-        for cell in segment_cells(pair[0], pair[1]) {
-            cells.insert(cell);
-        }
-    }
-    // The origin cell is not crossed, so it neither counts as terrain nor
-    // contributes to the charge.
-    cells.remove(&(path[0].x, path[0].y));
-
+    let cells = route_cells(grid, path, mode)?;
     let mut stats = RouteStats {
         cost: 0,
         length: 0,
@@ -517,13 +493,9 @@ pub fn route_cost(grid: &Grid, path: &[GridPoint], mode: TravelMode) -> Result<R
         forest: 0,
     };
     for (x, y) in cells {
-        let point = GridPoint::new(x, y);
         let terrain = grid
-            .terrain(point)
+            .terrain(GridPoint::new(x, y))
             .ok_or_else(|| "path crosses a cell outside the grid".to_string())?;
-        if mode.cost(Some(terrain)) <= 0 {
-            return Err("path crosses an impassable cell".to_string());
-        }
         match terrain {
             Terrain::Water => stats.water += 1,
             Terrain::Mountain => stats.mountain += 1,
@@ -542,6 +514,91 @@ pub fn route_cost(grid: &Grid, path: &[GridPoint], mode: TravelMode) -> Result<R
         .saturating_add(stats.water.saturating_mul(5))
         .saturating_add(stats.mountain.saturating_mul(8));
     Ok(stats)
+}
+
+/// Rasterize a route and charge it with worldgen feature discounts.
+///
+/// A ford charges 2 instead of the usual 5 for a water cell, and a pass charges
+/// 2 instead of the usual 8 for a mountain cell. The raw water/mountain/forest
+/// counts are still returned for the survey display.
+///
+/// # Errors
+/// Rejects mismatched grids and the same malformed paths as [`route_cost`].
+pub fn route_cost_features(
+    grid: &Grid,
+    features: &FeatureGrid,
+    path: &[GridPoint],
+    mode: TravelMode,
+) -> Result<RouteStats, String> {
+    if grid.width != features.width() || grid.height != features.height() {
+        return Err("terrain and feature grids must have matching dimensions".to_string());
+    }
+    let cells = route_cells(grid, path, mode)?;
+    let mut stats = RouteStats {
+        cost: 0,
+        length: 0,
+        water: 0,
+        mountain: 0,
+        forest: 0,
+    };
+    let mut surcharge = 0_i64;
+    for (x, y) in cells {
+        let point = GridPoint::new(x, y);
+        let terrain = grid
+            .terrain(point)
+            .ok_or_else(|| "path crosses a cell outside the grid".to_string())?;
+        let feature = features.feature(point).unwrap_or(Feature::None);
+        match terrain {
+            Terrain::Water => {
+                stats.water += 1;
+                surcharge = surcharge.saturating_add(if feature == Feature::Ford { 2 } else { 5 });
+            }
+            Terrain::Mountain => {
+                stats.mountain += 1;
+                surcharge = surcharge.saturating_add(if feature == Feature::Pass { 2 } else { 8 });
+            }
+            Terrain::Forest => stats.forest += 1,
+            _ => {}
+        }
+    }
+    for pair in path.windows(2) {
+        stats.length = stats
+            .length
+            .saturating_add(segment_length(pair[0], pair[1]));
+    }
+    stats.cost = stats.length.saturating_add(surcharge);
+    Ok(stats)
+}
+
+fn route_cells(
+    grid: &Grid,
+    path: &[GridPoint],
+    mode: TravelMode,
+) -> Result<BTreeSet<(i64, i64)>, String> {
+    if path.is_empty() {
+        return Err("path is empty".to_string());
+    }
+    for point in path {
+        if grid.index(*point).is_none() {
+            return Err(format!(
+                "path point ({}, {}) is out of bounds",
+                point.x, point.y
+            ));
+        }
+        if grid.cost(*point, mode) <= 0 {
+            return Err("path crosses an impassable cell".to_string());
+        }
+    }
+    let mut cells = BTreeSet::new();
+    for pair in path.windows(2) {
+        for cell in segment_cells(pair[0], pair[1]) {
+            cells.insert(cell);
+        }
+    }
+    // The origin cell is not crossed, so it neither counts as terrain nor
+    // contributes to the charge.
+    cells.remove(&(path[0].x, path[0].y));
+    Ok(cells)
 }
 
 fn check_endpoint(grid: &Grid, point: GridPoint, mode: TravelMode) -> Result<(), String> {
@@ -857,6 +914,19 @@ mod tests {
         let with = pathfind_features(&grid, &features, start, goal, TravelMode::Road)
             .expect("feature path");
         assert!(with.iter().all(|point| point.y == 1), "{with:?}");
+    }
+
+    #[test]
+    fn route_cost_features_applies_pass_and_ford_discounts() {
+        let grid = Grid::parse("3,1|1,4,1").expect("grid");
+        let features = FeatureGrid::parse("3,1|0,1,0").expect("feature grid");
+        let path = [GridPoint::new(0, 0), GridPoint::new(2, 0)];
+        let plain = route_cost(&grid, &path, TravelMode::Road).expect("plain cost");
+        let discounted =
+            route_cost_features(&grid, &features, &path, TravelMode::Road).expect("feature cost");
+        assert_eq!(plain.cost, 2 + 8);
+        assert_eq!(discounted.cost, 2 + 2);
+        assert_eq!(discounted.mountain, 1);
     }
 
     #[test]

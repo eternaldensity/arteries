@@ -508,6 +508,9 @@ export component Root:
             <span class="key r-river"><span class="swatch"></span>River</span>
             <span class="key r-rail"><span class="swatch"></span>Rail</span>
             <span class="key site-key"><span class="swatch"></span>Unclaimed site</span>
+            <span class="key f-pass"><span class="swatch"></span>Pass</span>
+            <span class="key f-ford"><span class="swatch"></span>Ford</span>
+            <span class="key f-harbor"><span class="swatch"></span>Harbor</span>
           </div>
         </section>
 

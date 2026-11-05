@@ -14,6 +14,7 @@ trap 'rm -rf "$TMP"' EXIT
 GEN="$TMP/tick_market.dia"
 
 sed 's/^export //' "$ROOT/app/rt_tables.dia" > "$GEN"
+sed 's/^export //' "$ROOT/app/worldgen_tables.dia" >> "$GEN"
 sed 's/^export //' "$ROOT/app/shared.dia" >> "$GEN"
 cat "$ROOT/tools/tick_market_main.dia" >> "$GEN"
 

@@ -20,6 +20,7 @@ type WorldRow:
   id: WorldId
   owner: UserId @created_by_principal
   seed: Int
+  generation_version: Int = 1
   tick: Int
   money: Int
   tech_road: Bool
@@ -35,6 +36,7 @@ type WorldRow:
 
 type NewWorldRow:
   seed: Int
+  generation_version: Int = 1
   tick: Int
   money: Int
   tech_road: Bool
@@ -50,6 +52,7 @@ type NewWorldRow:
 
 type EditWorldRow:
   seed: Int
+  generation_version: Int = 1
   tick: Int
   money: Int
   tech_road: Bool
@@ -419,11 +422,10 @@ fn town_from_row(row: TownRow) -> Town:
 fn site_from_row(row: SiteRow) -> Site:
   Site(id: row.key, name: row.name, x: row.x, y: row.y, terrain: row.terrain, resource: row.resource, richness: row.richness, founded: row.founded)
 
-# Packed terrain for the pathfinding kernel. The terrain body comes from the
-# registered kernel, so generation stays single-sourced in `arteries-core`.
-fn packed_terrain(world: World) -> Result<Text, DataError>:
-  let rows = host.compute<Text>("arteries", "terrain_region", world.seed, 1, 0, 0, 0, map_w(), map_h())?
-  Ok(int_text(map_w()) + "," + int_text(map_h()) + "|" + rows)
+# Packed terrain and features come from the baked worldgen table, so the map,
+# markers, and route planner all use the same generation.
+fn packed_terrain(world: World) -> Text:
+  terrain_grid(world.seed)
 
 # A kernel-planned corridor is a pure function of the world and endpoints, so
 # persisted rows only need the sentinel bend; loading recomputes the same path.
@@ -432,17 +434,17 @@ fn auto_plan(world: World, from: Text, to: Text) -> RoutePlan:
   let tb = find_town(world.towns, to)
   match ta.id == "" or tb.id == "" or ta.id == tb.id:
     true => empty_plan()
-    false => match packed_terrain(world):
-      Err(_) => plan_route_bend(world, from, to, 0)
-      Ok(grid) =>
-        let start = int_text(ta.x) + "," + int_text(ta.y)
-        let goal = int_text(tb.x) + "," + int_text(tb.y)
-        match host.compute<List<Int>>("arteries", "pathfind", grid, start, goal, "road"):
-          Err(_) => plan_route_bend(world, from, to, 0)
-          Ok(flat) =>
-            match host.compute<List<Int>>("arteries", "route_cost", grid, flat, "road"):
-              Err(_) => plan_route_bend(world, from, to, 0)
-              Ok(stats) => plan_from_path(flat, stats)
+    false =>
+      let grid = packed_terrain(world)
+      let features = feature_grid(world.seed)
+      let start = int_text(ta.x) + "," + int_text(ta.y)
+      let goal = int_text(tb.x) + "," + int_text(tb.y)
+      match host.compute<List<Int>>("arteries", "pathfind_features", grid, features, start, goal, "road"):
+        Err(_) => plan_route_bend(world, from, to, 0)
+        Ok(flat) =>
+          match host.compute<List<Int>>("arteries", "route_cost_features", grid, features, flat, "road"):
+            Err(_) => plan_route_bend(world, from, to, 0)
+            Ok(stats) => plan_from_path(flat, stats)
 
 fn route_plan(world: World, from: Text, to: Text, bend: Int) -> RoutePlan:
   match bend == auto_bend():

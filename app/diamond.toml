@@ -4,23 +4,27 @@ name = "ArteriesWeb"
 server = "server"
 browser = "ui"
 component = "Root"
-provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>", "Compute<arteries.planet>", "Compute<arteries.planet_summary>", "Compute<arteries.worldgen>", "Compute<arteries.worldgen_summary>", "Compute<arteries.pathfind_features>", "Compute<arteries.noise>"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>", "Compute<arteries.planet>", "Compute<arteries.planet_summary>", "Compute<arteries.worldgen>", "Compute<arteries.worldgen_summary>", "Compute<arteries.pathfind_features>", "Compute<arteries.noise>", "Compute<arteries.route_cost_features>"]
 styles = ["app.css"]
 
 [modules.shared]
 path = "shared.dia"
 target = "shared"
-imports = ["rt_tables"]
+imports = ["rt_tables", "worldgen_tables"]
 
 [modules.rt_tables]
 path = "rt_tables.dia"
+target = "shared"
+
+[modules.worldgen_tables]
+path = "worldgen_tables.dia"
 target = "shared"
 
 [modules.server]
 path = "server.dia"
 target = "server"
 imports = ["shared", "rt_tables"]
-provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>", "Compute<arteries.planet>", "Compute<arteries.planet_summary>", "Compute<arteries.worldgen>", "Compute<arteries.worldgen_summary>", "Compute<arteries.pathfind_features>", "Compute<arteries.noise>"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>", "Compute<arteries.planet>", "Compute<arteries.planet_summary>", "Compute<arteries.worldgen>", "Compute<arteries.worldgen_summary>", "Compute<arteries.pathfind_features>", "Compute<arteries.noise>", "Compute<arteries.route_cost_features>"]
 
 [modules.ui]
 path = "ui.dia"
@@ -56,7 +60,7 @@ new_seed = "server.new_seed"
 
 [storage]
 profile = "relational-v1"
-version = 3
+version = 4
 
 [storage.resources.Worlds]
 scope = "id"
@@ -207,4 +211,12 @@ result = "Int"
 deterministic = true
 max_input_bytes = 1024
 max_output_bytes = 1024
+max_duration_ms = 2000
+
+[compute.arteries.exports.route_cost_features]
+arguments = ["Text", "Text", "List<Int>", "Text"]
+result = "List<Int>"
+deterministic = true
+max_input_bytes = 131072
+max_output_bytes = 4096
 max_duration_ms = 2000

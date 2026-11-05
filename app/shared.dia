@@ -646,6 +646,33 @@ fn terrain_cost(t: Terrain) -> Int:
     Coast => 1
     Marsh => 3
 
+export fn terrain_code(t: Terrain) -> Int:
+  match t:
+    Plains => 1
+    Forest => 2
+    Hills => 3
+    Mountain => 4
+    Water => 5
+    Coast => 6
+    Marsh => 7
+
+fn terrain_from_code(code: Int) -> Terrain:
+  match code == 1:
+    true => Plains
+    false => match code == 2:
+      true => Forest
+      false => match code == 3:
+        true => Hills
+        false => match code == 4:
+          true => Mountain
+          false => match code == 5:
+            true => Water
+            false => match code == 6:
+              true => Coast
+              false => match code == 7:
+                true => Marsh
+                false => Water
+
 fn terrain_of(seed: Int, x: Int, y: Int) -> Terrain:
   let block = mod_int((x / 2) * 7 + (y / 2) * 11 + seed, 17)
   let fine = mod_int(x * 5 + y * 9 + seed * 3, 23)
@@ -668,10 +695,57 @@ fn terrain_of(seed: Int, x: Int, y: Int) -> Terrain:
               true => Marsh
               false => Plains
 
-fn terrain_at(seed: Int, x: Int, y: Int) -> Terrain:
+fn worldgen_terrain_code(seed: Int, x: Int, y: Int) -> Int:
+  let rows = worldgen_terrain_rows(mod_int(seed, map_count()))
+  let index = y * map_w() + x
+  match index < len(rows):
+    true => digit_value(text_slice(rows, index, 1))
+    false => terrain_code(terrain_of(seed, x, y))
+
+fn worldgen_feature_code(seed: Int, x: Int, y: Int) -> Int:
+  let rows = worldgen_feature_rows(mod_int(seed, map_count()))
+  let index = y * map_w() + x
+  match index < len(rows):
+    true => digit_value(text_slice(rows, index, 1))
+    false => 0
+
+export fn terrain_at(seed: Int, x: Int, y: Int) -> Terrain:
   match x < 0 or y < 0 or x >= map_w() or y >= map_h():
     true => Water
-    false => terrain_of(seed, x, y)
+    false => terrain_from_code(worldgen_terrain_code(seed, x, y))
+
+export fn feature_name(code: Int) -> Text:
+  match code == 1:
+    true => "Pass"
+    false => match code == 2:
+      true => "Ford"
+      false => match code == 3:
+        true => "Harbor"
+        false => ""
+
+export fn feature_detail(code: Int) -> Text:
+  match code == 1:
+    true => "roads cross cheaper"
+    false => match code == 2:
+      true => "shallow crossing"
+      false => match code == 3:
+        true => "sheltered port"
+        false => ""
+
+# Packed grids for the pathfinding kernels.
+export fn terrain_grid(seed: Int) -> Text:
+  let rows = for y in indices(map_h()):
+    let cells = for x in indices(map_w()):
+      int_text(terrain_code(terrain_at(seed, x, y)))
+    join_text(cells, ",")
+  int_text(map_w()) + "," + int_text(map_h()) + "|" + join_text(rows, ";")
+
+export fn feature_grid(seed: Int) -> Text:
+  let rows = for y in indices(map_h()):
+    let cells = for x in indices(map_w()):
+      int_text(worldgen_feature_code(seed, x, y))
+    join_text(cells, ",")
+  int_text(map_w()) + "," + int_text(map_h()) + "|" + join_text(rows, ";")
 
 # ---------------------------------------------------------------- anchors
 
@@ -927,7 +1001,7 @@ fn make_sites(seed: Int) -> List<Site>:
 
 export fn new_world(seed: Int) -> World:
   let safe_seed = mod_int(seed, map_count())
-  World(seed: safe_seed, tick: 0, money: 160, towns: make_towns(seed), sites: make_sites(seed), routes: [], log: ["Seed " + int_text(seed) + ": a new frontier. Survey a route between two settlements."], history: [], tech_road: false, tech_river: false, tech_rail: false)
+  World(seed: safe_seed, tick: 0, money: 160, towns: make_towns(safe_seed), sites: make_sites(safe_seed), routes: [], log: ["Seed " + int_text(safe_seed) + ": a new frontier. Survey a route between two settlements."], history: [], tech_road: false, tech_river: false, tech_rail: false)
 
 export fn seed_world(world: World, seed: Int) -> World:
   new_world(seed)
@@ -1224,11 +1298,12 @@ fn path_points(flat: List<Int>) -> List<Point>:
 # [cost, length, water, mountain, forest].
 export fn plan_from_path(flat: List<Int>, stats: List<Int>) -> RoutePlan:
   let points = path_points(flat)
+  let surcharge = nth_int(stats, 0)
   let length = nth_int(stats, 1)
   let water = nth_int(stats, 2)
   let mountain = nth_int(stats, 3)
   let forest = nth_int(stats, 4)
-  RoutePlan(path: points, bend: auto_bend(), length: length, water: water, mountain: mountain, forest: forest, money: 8 + length + water * 5 + mountain * 8, timber: 1 + length / 14 + water, stone: 1 + length / 18 + mountain * 2, min_y: min_point_y(points, 0, map_h()), max_y: max_point_y(points, 0, 0))
+  RoutePlan(path: points, bend: auto_bend(), length: length, water: water, mountain: mountain, forest: forest, money: 8 + surcharge, timber: 1 + length / 14 + water, stone: 1 + length / 18 + mountain * 2, min_y: min_point_y(points, 0, map_h()), max_y: max_point_y(points, 0, 0))
 
 # Persisted route plans use a fixed-width text format so a saved corridor is
 # never re-derived from the current pathfinding algorithm:

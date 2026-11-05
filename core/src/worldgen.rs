@@ -642,6 +642,58 @@ fn checksum(cells: &[Cell]) -> i64 {
     sum
 }
 
+/// Flat terrain and feature codes for one seed, row-major.
+///
+/// # Errors
+/// Rejects dimensions outside the generator bounds.
+pub fn table_for(seed: i64, width: usize, height: usize) -> Result<(Vec<i64>, Vec<i64>), String> {
+    let world = generate(seed, width, height)?;
+    let terrain = world
+        .cells
+        .iter()
+        .map(|cell| cell.biome.terrain().code())
+        .collect();
+    let features = world.cells.iter().map(|cell| cell.feature.code()).collect();
+    Ok((terrain, features))
+}
+
+/// Asset-pipeline line for one seed: `seed|row;row` using worldgen terrain.
+///
+/// # Errors
+/// Rejects dimensions outside the generator bounds.
+pub fn map_line(seed: i64, width: usize, height: usize) -> Result<String, String> {
+    let world = generate(seed, width, height)?;
+    let rows = (0..height)
+        .map(|y| {
+            (0..width)
+                .map(|x| {
+                    world
+                        .cell(x, y)
+                        .map(|cell| cell.biome.terrain().code())
+                        .unwrap_or(Terrain::Water.code())
+                        .to_string()
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .collect::<Vec<_>>();
+    let features = (0..height)
+        .map(|y| {
+            (0..width)
+                .map(|x| {
+                    world
+                        .cell(x, y)
+                        .map(|cell| cell.feature.code())
+                        .unwrap_or(0)
+                        .to_string()
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .collect::<Vec<_>>();
+    Ok(format!("{seed}|{}|{}", rows.join(";"), features.join(";")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

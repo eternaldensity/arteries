@@ -16,7 +16,7 @@ fn map_code(t: Terrain) -> Int:
 
 fn map_row_text(seed: Int, y: Int) -> Text:
   let cells = for x in indices(map_w()):
-    int_text(map_code(terrain_at(seed, x, y)))
+    int_text(map_code(terrain_of(seed, x, y)))
   join_text(cells, ",")
 
 fn map_manifest_line(seed: Int) -> Text:

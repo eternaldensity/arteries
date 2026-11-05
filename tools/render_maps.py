@@ -22,11 +22,14 @@ def main():
     for line in source.read_text().splitlines():
         if not line.strip():
             continue
-        seed_text, rows_text = line.split("|", 1)
-        seed = int(seed_text)
-        rows = rows_text.split(";")
+        parts = line.split("|")
+        if len(parts) not in (2, 3):
+            raise SystemExit(f"bad map data line: {line[:40]}")
+        seed = int(parts[0])
+        rows = parts[1].split(";")
         if len(rows) != H or any(len(row.split(",")) != W for row in rows):
             raise SystemExit(f"bad map data for seed {seed}")
+        feature_rows = parts[2].split(";") if len(parts) == 3 else []
         rects = []
         for y, row in enumerate(rows):
             for x, code in enumerate(row.split(",")):
@@ -34,6 +37,38 @@ def main():
                 rects.append(
                     f'<rect x="{x}" y="{y}" width="1.01" height="1.01" fill="{pattern}"/>'
                 )
+        icons = []
+        for y, row in enumerate(feature_rows):
+            for x, code in enumerate(row.split(",")):
+                if code == "0":
+                    continue
+                cx, cy = x + 0.5, y + 0.5
+                icons.append(
+                    f'<circle cx="{cx}" cy="{cy}" r=".3" fill="#0b1220" opacity=".6"/>'
+                )
+                if code == "1":
+                    icons.append(
+                        f'<path d="M{cx-.28} {cy+.18} L{cx-.08} {cy-.20} L{cx+.02} {cy+.02}" '
+                        f'fill="none" stroke="#f3d79a" stroke-width=".09" stroke-linecap="round"/>'
+                    )
+                    icons.append(
+                        f'<path d="M{cx+.10} {cy+.02} L{cx+.20} {cy-.20} L{cx+.40} {cy+.18}" '
+                        f'fill="none" stroke="#f3d79a" stroke-width=".09" stroke-linecap="round"/>'
+                    )
+                elif code == "2":
+                    icons.append(
+                        f'<path d="M{cx-.32} {cy+.10} Q{cx-.16} {cy-.06} {cx} {cy+.10} '
+                        f'T{cx+.32} {cy+.10}" fill="none" stroke="#65a9f3" stroke-width=".09" '
+                        f'stroke-linecap="round"/>'
+                    )
+                elif code == "3":
+                    icons.append(
+                        f'<circle cx="{cx}" cy="{cy}" r=".18" fill="#5eead4" opacity=".95"/>'
+                    )
+                    icons.append(
+                        f'<path d="M{cx} {cy-.30} V{cy+.26} M{cx-.16} {cy+.04} H{cx+.16}" '
+                        f'stroke="#0b1220" stroke-width=".07" stroke-linecap="round"/>'
+                    )
         svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" preserveAspectRatio="none">
 <defs>
   <pattern id="forest" width="2" height="2" patternUnits="userSpaceOnUse">
@@ -66,6 +101,7 @@ def main():
 </defs>
 <rect width="{W}" height="{H}" fill="#263b30"/>
 {''.join(rects)}
+{''.join(icons)}
 <path d="M0 0H{W}V{H}H0Z" fill="none" stroke="#0b1220" stroke-width=".04"/>
 </svg>
 '''

@@ -955,3 +955,6 @@ button.tiny { padding: 2px 8px; font-size: 13px; border-radius: 6px; }
   border-top: 1px solid var(--line-soft);
   padding-top: 8px;
 }
+.key.f-pass .swatch { background: #f3d79a; }
+.key.f-ford .swatch { background: #65a9f3; }
+.key.f-harbor .swatch { background: #5eead4; border-radius: 50%; }
