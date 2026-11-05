@@ -53,7 +53,10 @@ Every seed produces a different 10 × 6 frontier:
   seeds 0–15;
 - a meandering river, a coastline, hills, and forest cover are laid over it;
 - three settlements start in different corners of the map with complementary
-  endowments;
+  endowments taken from their biome;
+- town climate is baked from the temperature/moisture tables: cold settlements demand
+  extra cloth and grain, dry settlements extra tools and grain, so trade
+  corridors follow the geography rather than a fixed recipe;
 - three unclaimed resource sites can be founded by routing past them;
 - site markers show their resource and richness directly on the map, and any
   site can be clicked for a full inspector panel;

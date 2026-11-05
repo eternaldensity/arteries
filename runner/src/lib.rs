@@ -9,7 +9,7 @@
 use arteries_core::{
     fbm, finish_towns, generate_faces, generate_world, market, pathfind, pathfind_features,
     region_text, route_cost, route_cost_features, trade, FeatureGrid, Grid, GridPoint, TickRoute,
-    TickState, TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED,
+    TickState, TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED, TOWN_ROW_LEN,
 };
 use diamond::{Compute, ComputeContext, ComputeError, RuntimeGrants};
 use serde_json::Value as Json;
@@ -291,19 +291,20 @@ impl Finish {
 
         let mut towns = Vec::with_capacity(town_rows.len());
         for row in &town_rows {
-            if row.len() != 3 + GOOD_COUNT * 2 {
+            if row.len() != TOWN_ROW_LEN {
                 return Err(ComputeError::InvalidInput);
             }
             let mut endow = [0_i64; GOOD_COUNT];
             let mut stock = [0_i64; GOOD_COUNT];
             endow.copy_from_slice(&row[3..3 + GOOD_COUNT]);
-            stock.copy_from_slice(&row[3 + GOOD_COUNT..]);
+            stock.copy_from_slice(&row[3 + GOOD_COUNT..3 + GOOD_COUNT * 2]);
             towns.push(TickTown {
                 pop: row[0],
                 prosperity: row[1],
                 research: row[2],
                 endow,
                 stock,
+                climate: row_climate(row)?,
             });
         }
 
@@ -685,6 +686,15 @@ fn planet_input(arguments: &[Json]) -> Result<PlanetInput, ComputeError> {
     })
 }
 
+fn row_climate(row: &[i64]) -> Result<i64, ComputeError> {
+    let climate = row[3 + GOOD_COUNT * 2];
+    if (0..=2).contains(&climate) {
+        Ok(climate)
+    } else {
+        Err(ComputeError::InvalidInput)
+    }
+}
+
 fn parse_tick_state(
     money: i64,
     town_rows: &[Vec<i64>],
@@ -692,19 +702,20 @@ fn parse_tick_state(
 ) -> Result<TickState, ComputeError> {
     let mut towns = Vec::with_capacity(town_rows.len());
     for row in town_rows {
-        if row.len() != 3 + GOOD_COUNT * 2 {
+        if row.len() != TOWN_ROW_LEN {
             return Err(ComputeError::InvalidInput);
         }
         let mut endow = [0_i64; GOOD_COUNT];
         let mut stock = [0_i64; GOOD_COUNT];
         endow.copy_from_slice(&row[3..3 + GOOD_COUNT]);
-        stock.copy_from_slice(&row[3 + GOOD_COUNT..]);
+        stock.copy_from_slice(&row[3 + GOOD_COUNT..3 + GOOD_COUNT * 2]);
         towns.push(TickTown {
             pop: row[0],
             prosperity: row[1],
             research: row[2],
             endow,
             stock,
+            climate: row_climate(row)?,
         });
     }
 

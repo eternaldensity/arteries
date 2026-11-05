@@ -21,6 +21,9 @@ pub const CLOTH: usize = 6;
 pub const FISH: usize = 7;
 
 /// One town's mutable market state.
+///
+/// `climate` is `0` temperate, `1` cold, or `2` dry/hot. It only changes trade
+/// needs; production still comes from `endow`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TickTown {
     pub pop: i64,
@@ -28,7 +31,12 @@ pub struct TickTown {
     pub research: i64,
     pub endow: [i64; GOOD_COUNT],
     pub stock: [i64; GOOD_COUNT],
+    pub climate: i64,
 }
+
+/// Number of integers in one compact town row: pop, prosperity, research,
+/// 8 endowments, 8 stocks, and climate.
+pub const TOWN_ROW_LEN: usize = 3 + GOOD_COUNT * 2 + 1;
 
 /// One route's mutable market state. `a` and `b` index into [`TickState::towns`].
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -129,6 +137,7 @@ fn advance_town_days(town: &TickTown, days: i64) -> TickTown {
             research,
             endow: town.endow,
             stock: growth_stock(&after),
+            climate: town.climate,
         }
     } else if days >= 7 && food == 0 && town.pop > 1 && prosperity <= 4 {
         TickTown {
@@ -137,6 +146,7 @@ fn advance_town_days(town: &TickTown, days: i64) -> TickTown {
             research,
             endow: town.endow,
             stock: after,
+            climate: town.climate,
         }
     } else {
         TickTown {
@@ -145,6 +155,7 @@ fn advance_town_days(town: &TickTown, days: i64) -> TickTown {
             research,
             endow: town.endow,
             stock: after,
+            climate: town.climate,
         }
     }
 }
@@ -239,10 +250,29 @@ fn apply_moves(a: &mut TickTown, b: &mut TickTown, moves: &TradeMoves) {
 }
 
 fn need_of(town: &TickTown, good: usize) -> i64 {
-    match good {
+    let base = match good {
         GRAIN => town.pop,
         FISH => town.pop / 3 + 1,
         _ => town.pop / 2 + 1,
+    };
+    let food_extra = if town.climate == 0 { 0 } else { town.pop / 4 };
+    match good {
+        GRAIN => base + food_extra,
+        CLOTH => {
+            base + if town.climate == 1 {
+                town.pop / 2 + 1
+            } else {
+                0
+            }
+        }
+        TOOLS => {
+            base + if town.climate == 2 {
+                town.pop / 2 + 1
+            } else {
+                0
+            }
+        }
+        _ => base,
     }
 }
 
@@ -333,6 +363,7 @@ mod tests {
             research: 0,
             endow: [4, 0, 0, 0, 1, 0, 0, 0],
             stock,
+            climate: 0,
         }
     }
 
@@ -378,6 +409,26 @@ mod tests {
     }
 
     #[test]
+    fn climate_changes_trade_needs() {
+        let temperate = town(8, [0; GOOD_COUNT]);
+        let cold = TickTown {
+            climate: 1,
+            ..town(8, [0; GOOD_COUNT])
+        };
+        let dry = TickTown {
+            climate: 2,
+            ..town(8, [0; GOOD_COUNT])
+        };
+        assert_eq!(need_of(&temperate, GRAIN), 8);
+        assert_eq!(need_of(&cold, GRAIN), 10);
+        assert_eq!(need_of(&cold, CLOTH), 10);
+        assert_eq!(need_of(&temperate, CLOTH), 5);
+        assert_eq!(need_of(&dry, GRAIN), 10);
+        assert_eq!(need_of(&dry, TOOLS), 10);
+        assert_eq!(need_of(&temperate, TOOLS), 5);
+    }
+
+    #[test]
     fn matches_the_diamond_market_period() {
         let mut state = TickState {
             money: 160,
@@ -388,6 +439,7 @@ mod tests {
                     research: 0,
                     endow: [4, 0, 0, 0, 1, 0, 0, 0],
                     stock: [16, 4, 4, 4, 2, 0, 0, 4],
+                    climate: 0,
                 },
                 TickTown {
                     pop: 4,
@@ -395,6 +447,7 @@ mod tests {
                     research: 0,
                     endow: [0, 3, 1, 0, 0, 0, 0, 0],
                     stock: [8, 6, 2, 0, 0, 0, 0, 0],
+                    climate: 0,
                 },
             ],
             routes: vec![route(0, 1)],
@@ -431,6 +484,7 @@ mod tests {
                 research: 0,
                 endow: [4, 0, 0, 0, 1, 0, 0, 0],
                 stock: [16, 4, 4, 4, 2, 0, 0, 4],
+                climate: 0,
             },
             TickTown {
                 pop: 4,
@@ -438,6 +492,7 @@ mod tests {
                 research: 0,
                 endow: [0, 3, 1, 0, 0, 0, 0, 0],
                 stock: [8, 6, 2, 0, 0, 0, 0, 0],
+                climate: 0,
             },
         ];
         let summary = finish_towns(&mut towns, 7, 0, 28, 2, 0).expect("finish");
@@ -517,6 +572,7 @@ mod tests {
                 research: i,
                 endow: [4, 1, 1, 1, 1, 0, 0, 1],
                 stock: [12, 4, 4, 4, 2, 0, 0, 3],
+                climate: 0,
             });
         }
         let mut routes = Vec::with_capacity(50);

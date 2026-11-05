@@ -699,6 +699,8 @@ pub struct WorldTables {
     pub temperature: Vec<i64>,
     /// Moisture bucket `0..=9`.
     pub moisture: Vec<i64>,
+    /// Climate code: `0` temperate, `1` cold, `2` dry/hot.
+    pub climate: Vec<i64>,
 }
 
 /// One economy class for a biome.
@@ -722,6 +724,18 @@ fn bucket(value: i64) -> i64 {
     (value.saturating_mul(10) / WG_SCALE).clamp(0, 9)
 }
 
+/// One climate code from bucketed temperature and moisture.
+#[must_use]
+pub const fn climate_code(temperature: i64, moisture: i64) -> i64 {
+    if temperature <= 2 {
+        1
+    } else if temperature >= 7 && moisture <= 2 {
+        2
+    } else {
+        0
+    }
+}
+
 /// Flat terrain, feature, biome, temperature, and moisture tables for one seed.
 ///
 /// # Errors
@@ -739,15 +753,20 @@ pub fn table_for(seed: i64, width: usize, height: usize) -> Result<WorldTables, 
         .iter()
         .map(|cell| economy_class(cell.biome))
         .collect();
-    let temperature = world
+    let temperature: Vec<i64> = world
         .cells
         .iter()
         .map(|cell| bucket(cell.temperature))
         .collect();
-    let moisture = world
+    let moisture: Vec<i64> = world
         .cells
         .iter()
         .map(|cell| bucket(cell.moisture))
+        .collect();
+    let climate = temperature
+        .iter()
+        .zip(&moisture)
+        .map(|(temp, moist)| climate_code(*temp, *moist))
         .collect();
     Ok(WorldTables {
         terrain,
@@ -755,6 +774,7 @@ pub fn table_for(seed: i64, width: usize, height: usize) -> Result<WorldTables, 
         biome,
         temperature,
         moisture,
+        climate,
     })
 }
 
@@ -888,6 +908,16 @@ mod tests {
         assert_eq!(bucket(0), 0);
         assert_eq!(bucket(WG_SCALE), 9);
         assert_eq!(bucket(WG_SCALE / 2), 5);
+    }
+
+    #[test]
+    fn climate_codes_follow_temperature_and_moisture() {
+        assert_eq!(climate_code(0, 9), 1);
+        assert_eq!(climate_code(2, 9), 1);
+        assert_eq!(climate_code(3, 9), 0);
+        assert_eq!(climate_code(7, 2), 2);
+        assert_eq!(climate_code(7, 3), 0);
+        assert_eq!(climate_code(9, 0), 2);
     }
 
     #[test]

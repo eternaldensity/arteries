@@ -23,12 +23,12 @@ pub use path::{
 pub use planet::{generate_faces, MAX_DETAIL, PLANET_SCALE};
 pub use tick::{
     finish_towns, market, trade, FinishPage, TickRoute, TickState, TickTown, CLOTH, FIBER, FISH,
-    GOOD_COUNT, GRAIN, ORE, STONE, TIMBER, TOOLS,
+    GOOD_COUNT, GRAIN, ORE, STONE, TIMBER, TOOLS, TOWN_ROW_LEN,
 };
 pub use worldgen::{
-    generate as generate_world, map_line as worldgen_map_line, table_for as worldgen_table_for,
-    Biome, Cell as WorldCell, Feature, World as GeneratedWorld, WorldTables, MAX_ATTEMPTS,
-    MAX_WORLD_SIDE, WG_SCALE, WORLDGEN_VERSION,
+    climate_code, generate as generate_world, map_line as worldgen_map_line,
+    table_for as worldgen_table_for, Biome, Cell as WorldCell, Feature, World as GeneratedWorld,
+    WorldTables, MAX_ATTEMPTS, MAX_WORLD_SIDE, WG_SCALE, WORLDGEN_VERSION,
 };
 
 /// Map width in cells.

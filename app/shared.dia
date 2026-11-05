@@ -210,6 +210,7 @@ export type TradeMoves:
   moved: Int
 
 export type NetState:
+  seed: Int
   towns: List<Town>
   routes: List<Route>
 
@@ -301,6 +302,7 @@ export type InspectView:
   prosperity: Int
   research: Int
   terrain: Text
+  climate: Text
   value: Int
   insight: Text
   shortages: Text
@@ -571,16 +573,31 @@ fn set_prosperity(t: Town, p: Int) -> Town:
 fn add_research(t: Town, r: Int) -> Town:
   with_state(t, TownState(pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research + r, stock: t.state.stock))
 
-export fn need_of(t: Town, g: Good) -> Int:
+export fn need_of_at(t: Town, climate: Int, g: Good) -> Int:
+  let cold = climate == 1
+  let dry = climate == 2
+  let food_extra = match cold or dry:
+    true => t.state.pop / 4
+    false => 0
+  let cloth_extra = match cold:
+    true => t.state.pop / 2 + 1
+    false => 0
+  let tools_extra = match dry:
+    true => t.state.pop / 2 + 1
+    false => 0
   match g:
-    Grain => t.state.pop
+    Grain => t.state.pop + food_extra
     Fish => t.state.pop / 3 + 1
     Timber => t.state.pop / 2 + 1
     Stone => t.state.pop / 2 + 1
     Ore => t.state.pop / 2 + 1
     Fiber => t.state.pop / 2 + 1
-    Tools => t.state.pop / 2 + 1
-    Cloth => t.state.pop / 2 + 1
+    Tools => t.state.pop / 2 + 1 + tools_extra
+    Cloth => t.state.pop / 2 + 1 + cloth_extra
+
+# Without a known geography, use the temperate baseline.
+export fn need_of(t: Town, g: Good) -> Int:
+  need_of_at(t, 0, g)
 
 fn variety(t: Town) -> Int:
   let flags = for g in goods():
@@ -729,6 +746,24 @@ fn worldgen_moisture_at(seed: Int, x: Int, y: Int) -> Int:
   match index < len(rows):
     true => digit_value(text_slice(rows, index, 1))
     false => 5
+
+fn worldgen_climate_at(seed: Int, x: Int, y: Int) -> Int:
+  let rows = worldgen_climate_rows(mod_int(seed, map_count()))
+  let index = y * map_w() + x
+  match index < len(rows):
+    true => digit_value(text_slice(rows, index, 1))
+    false => 0
+
+# 0 temperate, 1 cold, 2 dry/hot.
+export fn town_climate(seed: Int, x: Int, y: Int) -> Int:
+  worldgen_climate_at(seed, x, y)
+
+export fn climate_name(code: Int) -> Text:
+  match code == 1:
+    true => "Cold"
+    false => match code == 2:
+      true => "Dry"
+      false => "Temperate"
 
 export fn terrain_at(seed: Int, x: Int, y: Int) -> Terrain:
   match x < 0 or y < 0 or x >= map_w() or y >= map_h():
@@ -1808,7 +1843,7 @@ export fn rt_face_polygon(i: Int) -> List<RtVec>:
   [rt_vertex(f.a), rt_vertex(f.b), rt_vertex(f.c), rt_vertex(f.d)]
 
 export fn empty_inspect_view() -> InspectView:
-  InspectView(ready: false, is_site: false, name: "", status: "", tone: "ok", resource: "", richness: 0, founded: false, pop: 0, prosperity: 0, research: 0, terrain: "", value: 0, insight: "", shortages: "none", connected: 0, goods: zeros(len(goods())), needs: zeros(len(goods())), endows: zeros(len(goods())))
+  InspectView(ready: false, is_site: false, name: "", status: "", tone: "ok", resource: "", richness: 0, founded: false, pop: 0, prosperity: 0, research: 0, terrain: "", climate: "", value: 0, insight: "", shortages: "none", connected: 0, goods: zeros(len(goods())), needs: zeros(len(goods())), endows: zeros(len(goods())))
 
 export fn inspect_view(world: World, id: Text) -> InspectView:
   let t = find_town(world.towns, id)
@@ -1829,15 +1864,16 @@ export fn inspect_view(world: World, id: Text) -> InspectView:
             false => match len(world.towns) >= max_settlements():
               true => "Unclaimed " + good_name(s.resource) + " site. The frontier charter has reached its settlement limit."
               false => "Unclaimed " + good_name(s.resource) + " site. Route a line within one tile to found a settlement here."
-          InspectView(ready: true, is_site: true, name: s.name, status: status, tone: tone, resource: good_name(s.resource), richness: s.richness, founded: s.founded, pop: 0, prosperity: 0, research: 0, terrain: terrain_name(s.terrain), value: s.richness, insight: insight, shortages: "none", connected: 0, goods: zeros(len(goods())), needs: zeros(len(goods())), endows: zeros(len(goods())))
+          InspectView(ready: true, is_site: true, name: s.name, status: status, tone: tone, resource: good_name(s.resource), richness: s.richness, founded: s.founded, pop: 0, prosperity: 0, research: 0, terrain: terrain_name(s.terrain), climate: "", value: s.richness, insight: insight, shortages: "none", connected: 0, goods: zeros(len(goods())), needs: zeros(len(goods())), endows: zeros(len(goods())))
     false =>
+      let climate = town_climate(world.seed, t.x, t.y)
       let goods_now = for g in goods():
         stock(t, g)
       let needs = for g in goods():
-        need_of(t, g)
+        need_of_at(t, climate, g)
       let endows = for g in goods():
         endow_of(t, g)
-      InspectView(ready: true, is_site: false, name: t.name, status: status_text(t), tone: status_tone(t), resource: "", richness: 0, founded: false, pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, terrain: terrain_name(t.terrain), value: market_value(t), insight: town_insight(world, t), shortages: shortage_text(t), connected: connected_routes(world, t.id), goods: goods_now, needs: needs, endows: endows)
+      InspectView(ready: true, is_site: false, name: t.name, status: status_text(t), tone: status_tone(t), resource: "", richness: 0, founded: false, pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, terrain: terrain_name(t.terrain), climate: climate_name(climate), value: market_value(t), insight: town_insight(world, t), shortages: shortage_text_at(t, climate), connected: connected_routes(world, t.id), goods: goods_now, needs: needs, endows: endows)
 
 export fn inspect_stock(iv: InspectView, g: Good) -> Int:
   nth_int(iv.goods, good_index(g))
@@ -1985,15 +2021,19 @@ fn join_nonempty(xs: List<Text>, i: Int, acc: Text) -> Text:
         true => join_nonempty(xs, i + 1, x)
         false => join_nonempty(xs, i + 1, acc + " · " + x)
 
-export fn shortage_text(t: Town) -> Text:
+export fn shortage_text_at(t: Town, climate: Int) -> Text:
   let parts = for g in goods():
-    match need_of(t, g) > stock(t, g):
-      true => good_short(g) + " -" + int_text(need_of(t, g) - stock(t, g))
+    let need = need_of_at(t, climate, g)
+    match need > stock(t, g):
+      true => good_short(g) + " -" + int_text(need - stock(t, g))
       false => ""
   let text = join_nonempty(parts, 0, "")
   match text == "":
     true => "none"
     false => text
+
+export fn shortage_text(t: Town) -> Text:
+  shortage_text_at(t, 0)
 
 export fn usage_class(r: Route) -> Text:
   let p = match r.capacity <= 0:
@@ -2338,7 +2378,7 @@ export fn survey_trade_volume(world: World, from: Text, to: Text, plan: RoutePla
     true => 0
     false =>
       let cap = route_capacity(Path, plan)
-      let moves = trade_moves(a, b, Route(id: "", a: a.id, b: b.id, a_name: a.name, b_name: b.name, mode: Path, plan: plan, fee: 1, traffic: 0, capacity: cap, upkeep: 0), cap)
+      let moves = trade_moves(a, b, town_climate(world.seed, a.x, a.y), town_climate(world.seed, b.x, b.y), Route(id: "", a: a.id, b: b.id, a_name: a.name, b_name: b.name, mode: Path, plan: plan, fee: 1, traffic: 0, capacity: cap, upkeep: 0), cap)
       moves.moved
 
 # How materials are split between endpoints when paying for the plan.
@@ -2669,23 +2709,23 @@ fn advance_town(t: Town) -> Town:
       true => Town(id: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, endow: t.endow, state: TownState(pop: t.state.pop - 1, prosperity: clamp(prosperity - 1, 0, 30), research: research, stock: after))
       false => Town(id: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, endow: t.endow, state: TownState(pop: t.state.pop, prosperity: prosperity, research: research, stock: after))
 
-fn move_ab(a: Town, b: Town, g: Good, quota: Int, fee: Int) -> Int:
+fn move_ab(a: Town, b: Town, climate_a: Int, climate_b: Int, g: Good, quota: Int, fee: Int) -> Int:
   let penalty = match g:
     Grain => fee / 2
     Fish => fee / 2
     _ => fee
-  let surplus_a = stock(a, g) - need_of(a, g) - 1
-  let need_b = max_int(need_of(b, g) - stock(b, g) - penalty, 0)
+  let surplus_a = stock(a, g) - need_of_at(a, climate_a, g) - 1
+  let need_b = max_int(need_of_at(b, climate_b, g) - stock(b, g) - penalty, 0)
   match surplus_a > 0 and need_b > 0:
     true => min_int(min_int(surplus_a, need_b), quota)
     false => 0
 
-fn trade_moves(a: Town, b: Town, route: Route, capacity: Int) -> TradeMoves:
+fn trade_moves(a: Town, b: Town, climate_a: Int, climate_b: Int, route: Route, capacity: Int) -> TradeMoves:
   let quota = max_int(1, capacity / len(goods()))
   let ab = for g in goods():
-    move_ab(a, b, g, quota, route.fee)
+    move_ab(a, b, climate_a, climate_b, g, quota, route.fee)
   let ba = for g in goods():
-    move_ab(b, a, g, quota, route.fee)
+    move_ab(b, a, climate_b, climate_a, g, quota, route.fee)
   TradeMoves(ab: ab, ba: ba, moved: total(ab) + total(ba))
 
 fn apply_moves(a: Town, b: Town, moves: TradeMoves) -> TradeResult:
@@ -2702,11 +2742,11 @@ fn trade_net(net: NetState, route: Route, scale: Int) -> NetState:
     true => net
     false =>
       let cap = max_int(2, route.capacity * scale / 100)
-      let moves = trade_moves(a, b, route, cap)
+      let moves = trade_moves(a, b, town_climate(net.seed, a.x, a.y), town_climate(net.seed, b.x, b.y), route, cap)
       let result = apply_moves(a, b, moves)
       let towns = replace_town(replace_town(net.towns, result.a), result.b)
       let changed = Route(id: route.id, a: route.a, b: route.b, a_name: route.a_name, b_name: route.b_name, mode: route.mode, plan: route.plan, fee: route.fee, traffic: route.traffic + result.moved, capacity: route.capacity, upkeep: route.upkeep)
-      NetState(towns: towns, routes: replace_route(net.routes, changed))
+      NetState(seed: net.seed, towns: towns, routes: replace_route(net.routes, changed))
 
 fn trade_pass(net: NetState, i: Int, scale: Int) -> NetState:
   match list_get(net.routes, i):
@@ -2802,7 +2842,7 @@ fn reset_traffic(routes: List<Route>) -> List<Route>:
 export fn tick_scaled(world: World, scale: Int) -> World:
   let towns0 = for t in world.towns:
     advance_town(t)
-  let net2 = trade_pass(NetState(towns: towns0, routes: reset_traffic(world.routes)), 0, scale)
+  let net2 = trade_pass(NetState(seed: world.seed, towns: towns0, routes: reset_traffic(world.routes)), 0, scale)
   let best = max_research(net2.towns, 0)
   let msgs_tech = tech_messages(world, best)
   let road = world.tech_road or best >= road_research()
@@ -3285,7 +3325,7 @@ fn refresh_inspect_light(world: World, id: Text, iv: InspectView) -> InspectView
     false =>
       let goods_now = for g in goods():
         stock(t, g)
-      InspectView(ready: true, is_site: false, name: t.name, status: status_text(t), tone: status_tone(t), resource: "", richness: 0, founded: false, pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, terrain: terrain_name(t.terrain), value: market_value(t), insight: iv.insight, shortages: iv.shortages, connected: connected_routes(world, t.id), goods: goods_now, needs: iv.needs, endows: iv.endows)
+      InspectView(ready: true, is_site: false, name: t.name, status: status_text(t), tone: status_tone(t), resource: "", richness: 0, founded: false, pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, terrain: terrain_name(t.terrain), climate: iv.climate, value: market_value(t), insight: iv.insight, shortages: iv.shortages, connected: connected_routes(world, t.id), goods: goods_now, needs: iv.needs, endows: iv.endows)
 
 export fn game_tick(game: Game, n: Int) -> Game:
   let before = game.world.tick
@@ -3536,11 +3576,11 @@ fn trade_net_days(net: NetState, route: Route, scale: Int, days: Int) -> NetStat
     true => net
     false =>
       let cap = max_int(2, route.capacity * scale / 100 * days)
-      let moves = trade_moves(a, b, route, cap)
+      let moves = trade_moves(a, b, town_climate(net.seed, a.x, a.y), town_climate(net.seed, b.x, b.y), route, cap)
       let result = apply_moves(a, b, moves)
       let towns = replace_town(replace_town(net.towns, result.a), result.b)
       let changed = Route(id: route.id, a: route.a, b: route.b, a_name: route.a_name, b_name: route.b_name, mode: route.mode, plan: route.plan, fee: route.fee, traffic: route.traffic + result.moved, capacity: route.capacity, upkeep: route.upkeep)
-      NetState(towns: towns, routes: replace_route(net.routes, changed))
+      NetState(seed: net.seed, towns: towns, routes: replace_route(net.routes, changed))
 
 fn trade_pass_days(net: NetState, i: Int, scale: Int, days: Int) -> NetState:
   match list_get(net.routes, i):
@@ -3553,7 +3593,7 @@ export fn market_period(world: World, days: Int, scale: Int) -> World:
     false =>
       let towns0 = for t in world.towns:
         advance_town_days(t, days)
-      let net2 = trade_pass_days(NetState(towns: towns0, routes: reset_traffic(world.routes)), 0, scale, days)
+      let net2 = trade_pass_days(NetState(seed: world.seed, towns: towns0, routes: reset_traffic(world.routes)), 0, scale, days)
       let income = for r in net2.routes:
         r.traffic * r.fee
       World(seed: world.seed, tick: world.tick, money: world.money + total(income), towns: net2.towns, sites: world.sites, routes: net2.routes, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
@@ -3608,7 +3648,7 @@ export fn game_finish_period(game: Game, days: Int, from: Int) -> Game:
 export fn market_stage(world: World, scale: Int) -> World:
   let towns0 = for t in world.towns:
     advance_town(t)
-  let net2 = trade_pass(NetState(towns: towns0, routes: reset_traffic(world.routes)), 0, scale)
+  let net2 = trade_pass(NetState(seed: world.seed, towns: towns0, routes: reset_traffic(world.routes)), 0, scale)
   let income = for r in net2.routes:
     r.traffic * r.fee
   World(seed: world.seed, tick: world.tick, money: world.money + total(income), towns: net2.towns, sites: world.sites, routes: net2.routes, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)

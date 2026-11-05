@@ -622,6 +622,7 @@ export component Root:
                   <div><span>Pop</span><strong>{iv.pop}</strong></div>
                   <div><span>Prosperity</span><strong>{iv.prosperity}</strong></div>
                   <div><span>Research</span><strong>{iv.research}</strong></div>
+                  <div><span>Climate</span><strong>{iv.climate}</strong></div>
                 </when>
               </div>
             </div>

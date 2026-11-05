@@ -182,11 +182,11 @@ fn market_kernel_matches_the_diamond_market_period() {
     let towns = json!([
         [
             "4", "6", "0", "4", "0", "0", "0", "1", "0", "0", "0", "16", "4", "4", "4", "2", "0",
-            "0", "4"
+            "0", "4", "0"
         ],
         [
             "4", "6", "0", "0", "3", "1", "0", "0", "0", "0", "0", "8", "6", "2", "0", "0", "0",
-            "0", "0"
+            "0", "0", "0"
         ]
     ]);
     let routes = json!([["0", "1", "1", "0", "20", "1"]]);
@@ -208,11 +208,11 @@ fn finish_kernel_matches_the_diamond_finish_period() {
     let towns = json!([
         [
             "4", "6", "0", "4", "0", "0", "0", "1", "0", "0", "0", "16", "4", "4", "4", "2", "0",
-            "0", "4"
+            "0", "4", "0"
         ],
         [
             "4", "6", "0", "0", "3", "1", "0", "0", "0", "0", "0", "8", "6", "2", "0", "0", "0",
-            "0", "0"
+            "0", "0", "0"
         ]
     ]);
     let reply = Finish::evaluate(&[
@@ -241,6 +241,7 @@ fn finish_kernel_pages_a_hundred_towns() {
         let mut row = vec!["2".to_string(), "6".to_string(), "0".to_string()];
         row.extend(["4", "0", "0", "0", "1", "0", "0", "0"].map(String::from));
         row.extend(["1", "1", "1", "1", "1", "1", "1", "1"].map(String::from));
+        row.push("0".to_string());
         towns.push(Json::Array(row.into_iter().map(Json::String).collect()));
     }
     let reply = Finish::evaluate(&[
@@ -265,7 +266,7 @@ fn finish_kernel_pages_a_hundred_towns() {
 fn finish_kernel_rejects_out_of_range_pages() {
     let row = json!([
         "2", "6", "0", "4", "0", "0", "0", "1", "0", "0", "0", "1", "1", "1", "1", "1", "1", "1",
-        "1"
+        "1", "0"
     ]);
     for (count, start) in [("0", "0"), ("1", "0"), ("1", "1")] {
         assert_eq!(
@@ -293,6 +294,7 @@ fn market_kernel_handles_a_hundred_towns_through_the_abi() {
         ];
         row.extend(["4", "1", "1", "1", "1", "0", "0", "1"].map(String::from));
         row.extend(["12", "4", "4", "4", "2", "0", "0", "3"].map(String::from));
+        row.push("0".to_string());
         towns.push(Json::Array(row.into_iter().map(Json::String).collect()));
     }
     let mut routes = Vec::with_capacity(50);
@@ -333,8 +335,10 @@ fn market_kernel_handles_a_hundred_towns_through_the_abi() {
 fn market_kernel_rejects_malformed_rows() {
     let good_town = json!([
         "4", "6", "0", "4", "0", "0", "0", "1", "0", "0", "0", "16", "4", "4", "4", "2", "0", "0",
-        "4"
+        "4", "0"
     ]);
+    let mut bad_climate = good_town.clone();
+    bad_climate[19] = json!("3");
     for (towns, routes) in [
         (json!([["4"]]), json!([])),
         (json!([good_town.clone()]), json!([["0", "0", "1"]])),
@@ -346,6 +350,7 @@ fn market_kernel_rejects_malformed_rows() {
             json!([good_town.clone()]),
             json!([["-1", "0", "1", "0", "20", "1"]]),
         ),
+        (json!([bad_climate]), json!([])),
     ] {
         assert_eq!(
             Market::evaluate(&[json!("0"), towns, routes, json!("1"), json!("100")]),

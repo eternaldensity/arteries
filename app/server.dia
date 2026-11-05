@@ -700,8 +700,8 @@ fn town_ord_index_range(rows: List<TownRow>, ord: Int, start: Int, count: Int) -
 fn town_ord_index(rows: List<TownRow>, ord: Int) -> Int:
   town_ord_index_range(rows, ord, 0, len(rows))
 
-fn town_state_row(row: TownRow) -> List<Int>:
-  [row.pop, row.prosperity, row.research, row.endow0, row.endow1, row.endow2, row.endow3, row.endow4, row.endow5, row.endow6, row.endow7, row.stock0, row.stock1, row.stock2, row.stock3, row.stock4, row.stock5, row.stock6, row.stock7]
+fn town_state_row(row: TownRow, seed: Int) -> List<Int>:
+  [row.pop, row.prosperity, row.research, row.endow0, row.endow1, row.endow2, row.endow3, row.endow4, row.endow5, row.endow6, row.endow7, row.stock0, row.stock1, row.stock2, row.stock3, row.stock4, row.stock5, row.stock6, row.stock7, town_climate(seed, row.x, row.y)]
 
 fn route_state_row(row: RouteRow, a: Int, b: Int) -> List<Int>:
   [a, b, row.fee, row.traffic, row.capacity, row.upkeep]
@@ -868,7 +868,7 @@ fn compact_with_row(row: WorldRow, hours: Int, cadence: Text) -> Result<List<Int
     true => Ok(compact_summary(row, town_rows, route_rows))
     false =>
       let town_values = for t in town_rows:
-        town_state_row(t)
+        town_state_row(t, row.seed)
       let route_values = for r in route_rows:
         route_state_row(r, town_row_index(town_rows, r.a), town_row_index(town_rows, r.b))
       let result = host.compute<List<List<Int>>>("arteries", "market", row.money, town_values, route_values, days, compact_scale(row))?
@@ -943,7 +943,7 @@ fn trade_chunk_page(row: WorldRow, after: Text, limit: Int) -> Result<List<Text>
     false =>
       let page = trade_page_values(route_rows, row.id, 0, [], [])?
       let town_values = for t in page.towns:
-        town_state_row(t)
+        town_state_row(t, row.seed)
       let result = host.compute<List<List<Int>>>("arteries", "trade", row.money, town_values, page.routes, row.settle_days, compact_scale_at(row, row.settle_from))?
       let money_row = match list_get(result, 0):
         Some(values) => values
@@ -971,7 +971,7 @@ fn compact_chunk_page(row: WorldRow, after: Text, limit: Int) -> Result<List<Tex
         Ok(["", "1", int_text(done.tick), int_text(done.money), "0", "0"])
     false =>
       let town_values = for t in town_rows:
-        town_state_row(t)
+        town_state_row(t, row.seed)
       let no_routes = []
       let result = host.compute<List<List<Int>>>("arteries", "market", row.money, town_values, no_routes, row.settle_days, compact_scale_at(row, row.settle_from))?
       let money_row = match list_get(result, 0):
@@ -1022,7 +1022,7 @@ fn finish_chunk_page(row: WorldRow, after: Text, limit: Int) -> Result<List<Text
         Some(town) => town.ord
         None => 0
       let town_values = for t in town_rows:
-        town_state_row(t)
+        town_state_row(t, row.seed)
       let result = host.compute<List<List<Int>>>("arteries", "finish", row.seed, row.settle_from, row.settle_days, town_count, start_index, town_values)?
       let summary = match list_get(result, 0):
         Some(values) => values

@@ -203,6 +203,11 @@ function assert(condition, message) {
     );
     await town('Riverford').click();
     await page.waitForTimeout(300);
+    const townNumbers = await page.locator('.inspector-numbers').innerText();
+    assert(
+      /Climate\s+(Cold|Dry|Temperate)/i.test(townNumbers),
+      `town inspector has no climate: ${townNumbers}`
+    );
 
     for (const [a, b] of [
       ['Riverford', 'Hillcrest'],
