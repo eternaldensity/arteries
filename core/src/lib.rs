@@ -17,7 +17,7 @@ pub use path::{
     MAX_PATH_POINTS,
 };
 pub use tick::{
-    finish_towns, market, FinishPage, TickRoute, TickState, TickTown, CLOTH, FIBER, FISH,
+    finish_towns, market, trade, FinishPage, TickRoute, TickState, TickTown, CLOTH, FIBER, FISH,
     GOOD_COUNT, GRAIN, ORE, STONE, TIMBER, TOOLS,
 };
 

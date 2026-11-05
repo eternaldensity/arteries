@@ -892,6 +892,30 @@ fn find_town_range(towns: List<Town>, id: Text, start: Int, count: Int) -> Town:
 export fn find_town(towns: List<Town>, id: Text) -> Town:
   find_town_range(towns, id, 0, len(towns))
 
+fn town_position_small(towns: List<Town>, id: Text, start: Int, count: Int) -> Int:
+  match count <= 0:
+    true => -1
+    false => match list_get(towns, start):
+      None => -1
+      Some(t) => match t.id == id:
+        true => start
+        false => town_position_small(towns, id, start + 1, count - 1)
+
+fn town_position_range(towns: List<Town>, id: Text, start: Int, count: Int) -> Int:
+  match count <= 0:
+    true => -1
+    false => match count <= 8:
+      true => town_position_small(towns, id, start, count)
+      false =>
+        let half = count / 2
+        let left = town_position_range(towns, id, start, half)
+        match left >= 0:
+          true => left
+          false => town_position_range(towns, id, start + half, count - half)
+
+export fn town_position(towns: List<Town>, id: Text) -> Int:
+  town_position_range(towns, id, 0, len(towns))
+
 export fn town_exists(world: World, id: Text) -> Bool:
   match id == "":
     true => false

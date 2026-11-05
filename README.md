@@ -192,7 +192,7 @@ core/
   src/main.rs      terrain exporter
 runner/
   Cargo.toml       arteries-runner: serves an Arteries project with compute
-  src/lib.rs       kernels (terrain_region, pathfind, route_cost, market, finish)
+  src/lib.rs       kernels (terrain_region, pathfind, route_cost, market, trade, finish)
   src/main.rs      serve binary, requires DIAMOND_POSTGRES_URL
   tests/           validate_compute + end-to-end dispatch against probe projects
 tools/

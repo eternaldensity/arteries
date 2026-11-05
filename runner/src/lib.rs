@@ -7,8 +7,8 @@
 //! this binary instead.
 
 use arteries_core::{
-    finish_towns, market, pathfind, region_text, route_cost, Grid, GridPoint, TickRoute, TickState,
-    TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED,
+    finish_towns, market, pathfind, region_text, route_cost, trade, Grid, GridPoint, TickRoute,
+    TickState, TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED,
 };
 use diamond::{Compute, ComputeContext, ComputeError, RuntimeGrants};
 use serde_json::Value as Json;
@@ -203,64 +203,47 @@ impl Market {
         let route_rows = nested_int_list_arg(arguments, 2)?;
         let days = int_arg(arguments, 3)?;
         let scale = int_arg(arguments, 4)?;
-
-        let mut towns = Vec::with_capacity(town_rows.len());
-        for row in &town_rows {
-            if row.len() != 3 + GOOD_COUNT * 2 {
-                return Err(ComputeError::InvalidInput);
-            }
-            let mut endow = [0_i64; GOOD_COUNT];
-            let mut stock = [0_i64; GOOD_COUNT];
-            endow.copy_from_slice(&row[3..3 + GOOD_COUNT]);
-            stock.copy_from_slice(&row[3 + GOOD_COUNT..]);
-            towns.push(TickTown {
-                pop: row[0],
-                prosperity: row[1],
-                research: row[2],
-                endow,
-                stock,
-            });
-        }
-
-        let mut routes = Vec::with_capacity(route_rows.len());
-        for row in &route_rows {
-            if row.len() != 6 {
-                return Err(ComputeError::InvalidInput);
-            }
-            let a = usize::try_from(row[0]).map_err(|_| ComputeError::InvalidInput)?;
-            let b = usize::try_from(row[1]).map_err(|_| ComputeError::InvalidInput)?;
-            if a >= towns.len() || b >= towns.len() {
-                return Err(ComputeError::InvalidInput);
-            }
-            routes.push(TickRoute {
-                a,
-                b,
-                fee: row[2],
-                traffic: row[3],
-                capacity: row[4],
-                upkeep: row[5],
-            });
-        }
-
-        let mut state = TickState {
-            money,
-            towns,
-            routes,
-        };
+        let mut state = parse_tick_state(money, &town_rows, &route_rows)?;
         market(&mut state, days, scale);
+        Ok(tick_state_json(&state))
+    }
+}
 
-        let mut result = Vec::with_capacity(1 + state.towns.len() + state.routes.len());
-        result.push(vec![state.money]);
-        for town in &state.towns {
-            let mut row = Vec::with_capacity(3 + GOOD_COUNT);
-            row.extend([town.pop, town.prosperity, town.research]);
-            row.extend(town.stock);
-            result.push(row);
+/// Pure-compute export `arteries.trade`.
+///
+/// Arguments and reply are the same row format as [`Market`], but only route
+/// trade is applied. The chunked market uses this after all town pages have
+/// been produced.
+pub struct Trade;
+
+impl Trade {
+    /// Validate wire arguments and run one trade page.
+    ///
+    /// # Errors
+    /// Returns [`ComputeError::InvalidInput`] for malformed rows or out-of-range
+    /// town indices.
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 5 {
+            return Err(ComputeError::InvalidInput);
         }
-        for route in &state.routes {
-            result.push(vec![route.traffic]);
-        }
-        Ok(nested_int_list_json(result))
+        let money = int_arg(arguments, 0)?;
+        let town_rows = nested_int_list_arg(arguments, 1)?;
+        let route_rows = nested_int_list_arg(arguments, 2)?;
+        let days = int_arg(arguments, 3)?;
+        let scale = int_arg(arguments, 4)?;
+        let mut state = parse_tick_state(money, &town_rows, &route_rows)?;
+        trade(&mut state, days, scale);
+        Ok(tick_state_json(&state))
+    }
+}
+
+impl Compute for Trade {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
     }
 }
 
@@ -345,6 +328,70 @@ impl Compute for Finish {
     ) -> Result<Json, ComputeError> {
         Self::evaluate(arguments)
     }
+}
+
+fn parse_tick_state(
+    money: i64,
+    town_rows: &[Vec<i64>],
+    route_rows: &[Vec<i64>],
+) -> Result<TickState, ComputeError> {
+    let mut towns = Vec::with_capacity(town_rows.len());
+    for row in town_rows {
+        if row.len() != 3 + GOOD_COUNT * 2 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let mut endow = [0_i64; GOOD_COUNT];
+        let mut stock = [0_i64; GOOD_COUNT];
+        endow.copy_from_slice(&row[3..3 + GOOD_COUNT]);
+        stock.copy_from_slice(&row[3 + GOOD_COUNT..]);
+        towns.push(TickTown {
+            pop: row[0],
+            prosperity: row[1],
+            research: row[2],
+            endow,
+            stock,
+        });
+    }
+
+    let mut routes = Vec::with_capacity(route_rows.len());
+    for row in route_rows {
+        if row.len() != 6 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let a = usize::try_from(row[0]).map_err(|_| ComputeError::InvalidInput)?;
+        let b = usize::try_from(row[1]).map_err(|_| ComputeError::InvalidInput)?;
+        if a >= towns.len() || b >= towns.len() {
+            return Err(ComputeError::InvalidInput);
+        }
+        routes.push(TickRoute {
+            a,
+            b,
+            fee: row[2],
+            traffic: row[3],
+            capacity: row[4],
+            upkeep: row[5],
+        });
+    }
+    Ok(TickState {
+        money,
+        towns,
+        routes,
+    })
+}
+
+fn tick_state_json(state: &TickState) -> Json {
+    let mut result = Vec::with_capacity(1 + state.towns.len() + state.routes.len());
+    result.push(vec![state.money]);
+    for town in &state.towns {
+        let mut row = Vec::with_capacity(3 + GOOD_COUNT);
+        row.extend([town.pop, town.prosperity, town.research]);
+        row.extend(town.stock);
+        result.push(row);
+    }
+    for route in &state.routes {
+        result.push(vec![route.traffic]);
+    }
+    nested_int_list_json(result)
 }
 
 fn int_arg(arguments: &[Json], index: usize) -> Result<i64, ComputeError> {
@@ -447,6 +494,13 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
         &["Int", "List<List<Int>>", "List<List<Int>>", "Int", "Int"],
         "List<List<Int>>",
         Market,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "trade",
+        &["Int", "List<List<Int>>", "List<List<Int>>", "Int", "Int"],
+        "List<List<Int>>",
+        Trade,
     )?;
     grants.register_compute(
         "arteries",

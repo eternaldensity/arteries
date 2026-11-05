@@ -332,6 +332,7 @@ names; the call site is `host.compute<Reply>("arteries", "<name>", args...)`.
 | `pathfind` | `(Text, Text, Text, Text) -> List<Int>` | packed terrain `width,height|rows`, `x,y` endpoints, mode; deterministic 4-neighbour A*, simplified corner points; grids up to 64×64 |
 | `route_cost` | `(Text, List<Int>, Text) -> List<Int>` | `[surcharge, length, water, mountain, forest]` rasterized from the drawn polyline; `surcharge = length + water*5 + mountain*8`, exactly the survey's charge above its 8-crown base (drawn == charged) |
 | `market` | `(Int, List<List<Int>>, List<List<Int>>, Int, Int) -> List<List<Int>>` | `(money, town rows, route rows, days, scale)`; each town row is `[pop, prosperity, research, 8 endowments, 8 stocks]`, each route row is `[a_index, b_index, fee, traffic, capacity, upkeep]`; reply is `[money]`, one 11-int town row, then one traffic row per route |
+| `trade` | `(Int, List<List<Int>>, List<List<Int>>, Int, Int) -> List<List<Int>>` | same row format as `market`, but only route trade; the chunked market calls it with one route page and its endpoint towns |
 | `finish` | `(Int, Int, Int, Int, Int, List<List<Int>>) -> List<List<Int>>` | `(seed, from, days, town_count, page_start, town rows)`; applies harvest/storm/caravan events to one page using global target indices; reply is `[max_research, total_prosperity]` plus one 11-int town row per page town |
 | `plan_many` | `(Text, Text, Text, Int) -> Text` | alternates in one call |
 | `digest` | `(Text) -> Text` | stable hash for determinism checks and save integrity |
@@ -388,14 +389,14 @@ comfortable at 5 settlements and fails at 10; finish alone reaches about 10.
 `tools/check-tick-scale.sh` records the probe. The **market slice** now avoids
 that ceiling: `arteries.market` takes the row-based `List<List<Int>>` state and
 `advance_compact_chunk` pages 20 towns per request. A live 100-town probe
-completed in six bounded requests at ~0.6 s each. The finish phase followed in
-five pages, applying harvest/storm/caravan, tech, history, and upkeep; the
-compact result matched the staged path on a 3-town differential. The chunked
-walk uses the resource cursor's live-view contract, so a cycle assumes no
-concurrent writer between pages. Many-route trade chunking is the remaining
-scale item; full-state Text is still a last resort. The staged RPC protocol is
-already replay-safe: a repeated `advance_market` while `phase = 1` and a
-repeated `advance_finish` while `phase = 0` are no-ops, which was verified
+completed in six bounded requests at ~0.6 s each. Trade followed in ten
+5-route pages, loading only the endpoint towns by `ord`; finish followed in five
+pages, applying harvest/storm/caravan, tech, history, and upkeep. The compact
+result matched the staged path on a 3-town differential. The chunked walk uses
+the resource cursor's live-view contract, so a cycle assumes no concurrent
+writer between pages. Full-state Text is still a last resort. The staged RPC
+protocol is already replay-safe: a repeated `advance_market` while `phase = 1`
+and a repeated `advance_finish` while `phase = 0` are no-ops, which was verified
 against a live runner.
 
 ---
@@ -626,6 +627,10 @@ enforces some of this per call *(PR #2)*; the rest is on Arteries:
   format: changing its layout requires a `storage.version` bump and an explicit
   migration. Empty waypoints mean a pre-persistence row and fall back to
   recomputation.
+- Storage version 3 adds `a_ord`/`b_ord` to route rows so the compact trade
+  page can load only its endpoint towns through the existing `(world, ord)`
+  index. Legacy rows with 0/0 are skipped by the compact trade path and remain
+  on the staged path until re-saved.
 - A saved world records the versions it was produced with; opening it on a
   newer build must migrate explicitly or refuse, never silently change results.
 - Keep the old implementation available for at least one release during
@@ -683,7 +688,7 @@ transport only when H3's chunked staged RPCs actually hit their limit.
 | **H0 — `arteries-core` + exporter** ✅ terrain slice | `core/` crate (`arteries-core`) plus the `arteries-gen` CLI; `tools/gen-maps.sh` consumes it, `tools/check-core.sh` diffs it against the Diamond generator, and `core/tests/terrain-expected.txt` freezes seeds 0–15. Noise and hydrology join the crate with M2 | Outputs match on fixed seeds; renderer consumes the crate — **landed for terrain** |
 | **H1 — First compute export** ✅ landed | `runner/` crate (`arteries-runner`) registers `arteries.terrain_region` and serves with grants; the real app now declares `[compute.arteries]` with `terrain_region` in `app/diamond.toml` and calls it from `server.terrain_region`; `runner/tests` proves `validate_compute`, exact packed regions, and the app manifest/registration match | `diamond check`/`build` pass; packed region round-trips and matches the CLI map; `tests/ui-smoke.js` does not yet call the compute export — **landed** |
 | **H2 — Pathfinding** ✅ landed | `core/src/path.rs` implements deterministic 4-neighbour A* and rasterized route accounting; `arteries-runner` registers `pathfind` + `route_cost`; the app packs terrain through `terrain_region`, requests an A* corridor from `survey_path`, and persists the full plan in the row's fixed-width `waypoints` text (`storage.version = 2`); the sentinel `bend = 100` still marks an auto corridor, and manual bend switches back to the hand-shaped polyline; legacy rows with empty waypoints recompute once | 64×64 A* completes in milliseconds; built surveys reload byte-for-byte from stored waypoints even when the stored path is changed out-of-band; `route_cost` stats match the drawn line — **landed** |
-| **H3 — Stateful tick** ✅ core scale slice landed | Rust `arteries.market` and `arteries.finish` kernels use the compact row ABI; `advance_compact_chunk` pages 20 towns per request for production and `advance_finish_chunk`/`advance_finish_commit` page events, tech, history, and upkeep. A 100-settlement frontier completed market in 6 bounded requests and finish in 5, all around 0.6 s; the compact path matches the staged path on a 3-town differential. Many-route trade chunking remains on the staged path | 100-settlement market+finish tick verified in bounded pages within the request deadline; replay no-op verified; trade-route chunking is the remaining scale item |
+| **H3 — Stateful tick** ✅ landed (scale path) | Rust `arteries.market`, `arteries.trade`, and `arteries.finish` kernels use the compact row ABI. `advance_compact_chunk` pages 20 towns for production and 5 routes for trade (loading only endpoint towns by `ord`); `advance_finish_chunk`/`advance_finish_commit` page events, tech, history, and upkeep. A 100-settlement, 50-route frontier completed market in 6 pages, trade in 10, and finish in 5, all around 0.6 s; the compact path matches the staged path on a 3-town differential | 100-settlement + 50-route tick verified in bounded pages within the request deadline; replay no-op verified; the prototype UI still uses the staged path |
 | **H4 — Planet generation** | Declare `generate_planet` and register the kernel; chunk the call or run it as a durable job | A planet generates in bounded chunks within the request deadline; generation validation passes |
 
 **Precondition for H1+:** a Diamond build containing PR #2 (§14). H0–H2 have

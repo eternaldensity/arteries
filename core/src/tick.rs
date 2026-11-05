@@ -60,12 +60,20 @@ pub fn market(state: &mut TickState, days: i64, scale: i64) {
     for town in &mut state.towns {
         *town = advance_town_days(town, days);
     }
-    for route in &mut state.routes {
-        route.traffic = 0;
-    }
+    trade(state, days, scale);
+}
 
+/// Apply route trade only, leaving production and growth untouched.
+///
+/// This is the chunked-market trade stage: the caller passes the endpoint
+/// towns for one route page and the routes use page-local indices.
+pub fn trade(state: &mut TickState, days: i64, scale: i64) {
+    if days <= 0 {
+        return;
+    }
     let mut income = 0_i64;
     for index in 0..state.routes.len() {
+        state.routes[index].traffic = 0;
         let (a, b, fee, capacity) = {
             let route = &state.routes[index];
             (route.a, route.b, route.fee, route.capacity)
@@ -466,6 +474,25 @@ mod tests {
         let mut towns = vec![town(2, [1; GOOD_COUNT]); 2];
         assert!(finish_towns(&mut towns, 7, 0, 28, 1, 0).is_err());
         assert!(finish_towns(&mut towns, 7, 0, 28, 0, 0).is_err());
+    }
+
+    #[test]
+    fn trade_is_production_free() {
+        let mut state = TickState {
+            money: 160,
+            towns: vec![
+                town(4, [16, 4, 4, 4, 2, 0, 0, 4]),
+                town(4, [0, 0, 0, 0, 0, 0, 0, 0]),
+            ],
+            routes: vec![route(0, 1)],
+        };
+        let before = state.towns.clone();
+        trade(&mut state, 7, 100);
+        assert_eq!(state.towns[0].pop, before[0].pop);
+        assert_eq!(state.towns[0].prosperity, before[0].prosperity);
+        assert_eq!(state.towns[0].research, before[0].research);
+        assert!(state.routes[0].traffic > 0);
+        assert!(state.money >= 160);
     }
 
     #[test]

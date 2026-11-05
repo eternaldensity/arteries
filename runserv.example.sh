@@ -59,8 +59,8 @@ chmod 700 "$MAILBOX"
 rm -rf build
 "$DIAMOND" build app/diamond.toml --out build
 
-# Initialize a fresh database, or apply the one supported additive migration
-# when an existing database is one schema version behind.
+# Initialize a fresh database, or apply the supported additive migrations when
+# an existing database is behind the current schema version.
 status=$("$DIAMOND" project-status build --postgres-env DIAMOND_POSTGRES_URL 2>/dev/null || true)
 if [ -z "$status" ]; then
   "$DIAMOND" project-init build --postgres-env DIAMOND_POSTGRES_URL
@@ -71,11 +71,18 @@ else
     echo "cannot read the database schema version" >&2
     exit 1
   fi
-  if [ "$actual" != "$expected" ]; then
+  while [ "$actual" != "$expected" ]; do
     migration=${DIAMOND_MIGRATION_POSTGRES:-$DIAMOND_POSTGRES_URL}
     DIAMOND_MIGRATION_POSTGRES=$migration \
       "$DIAMOND" project-migrate build --postgres-env DIAMOND_MIGRATION_POSTGRES
-  fi
+    status=$("$DIAMOND" project-status build --postgres-env DIAMOND_POSTGRES_URL 2>/dev/null || true)
+    actual=$(printf '%s' "$status" | sed -n 's/.*"version":\([0-9][0-9]*\).*/\1/p')
+    expected=$(printf '%s' "$status" | sed -n 's/.*"expected_version":\([0-9][0-9]*\).*/\1/p')
+    if [ -z "$actual" ] || [ -z "$expected" ]; then
+      echo "cannot read the database schema version after migration" >&2
+      exit 1
+    fi
+  done
 fi
 
 existing="$(psql "$DIAMOND_POSTGRES_URL" -Atc \

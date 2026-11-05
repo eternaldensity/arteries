@@ -164,6 +164,8 @@ type RouteRow:
   capacity: Int
   upkeep: Int
   waypoints: Text = ""
+  a_ord: Int = 0
+  b_ord: Int = 0
 
 type NewRouteRow:
   world: WorldId
@@ -180,6 +182,8 @@ type NewRouteRow:
   capacity: Int
   upkeep: Int
   waypoints: Text = ""
+  a_ord: Int = 0
+  b_ord: Int = 0
 
 type ProjectRow:
   id: ProjectId
@@ -295,6 +299,8 @@ type EditRouteRow:
   capacity: Int
   upkeep: Int
   waypoints: Text = ""
+  a_ord: Int = 0
+  b_ord: Int = 0
 
 type EditProjectRow:
   ord: Int
@@ -322,6 +328,10 @@ type Loaded:
   epoch: Int
   settle_days: Int
   settle_from: Int
+
+type TradePage:
+  towns: List<TownRow>
+  routes: List<List<Int>>
 
 # ---------------------------------------------------------------- resources
 
@@ -545,11 +555,11 @@ fn new_site_row(x: Site, world: WorldId, ord: Int) -> NewSiteRow:
 fn edit_site_row(x: Site, ord: Int) -> EditSiteRow:
   EditSiteRow(ord: ord, key: x.id, name: x.name, x: x.x, y: x.y, terrain: x.terrain, resource: x.resource, richness: x.richness, founded: x.founded)
 
-fn new_route_row(x: Route, world: WorldId, ord: Int) -> NewRouteRow:
-  NewRouteRow(world: world, ord: ord, key: x.id, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, bend: x.plan.bend, fee: x.fee, traffic: x.traffic, capacity: x.capacity, upkeep: x.upkeep, waypoints: encode_plan(x.plan))
+fn new_route_row(x: Route, world: WorldId, ord: Int, towns: List<Town>) -> NewRouteRow:
+  NewRouteRow(world: world, ord: ord, key: x.id, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, bend: x.plan.bend, fee: x.fee, traffic: x.traffic, capacity: x.capacity, upkeep: x.upkeep, waypoints: encode_plan(x.plan), a_ord: town_position(towns, x.a), b_ord: town_position(towns, x.b))
 
-fn edit_route_row(x: Route, ord: Int) -> EditRouteRow:
-  EditRouteRow(ord: ord, key: x.id, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, bend: x.plan.bend, fee: x.fee, traffic: x.traffic, capacity: x.capacity, upkeep: x.upkeep, waypoints: encode_plan(x.plan))
+fn edit_route_row(x: Route, ord: Int, towns: List<Town>) -> EditRouteRow:
+  EditRouteRow(ord: ord, key: x.id, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, bend: x.plan.bend, fee: x.fee, traffic: x.traffic, capacity: x.capacity, upkeep: x.upkeep, waypoints: encode_plan(x.plan), a_ord: town_position(towns, x.a), b_ord: town_position(towns, x.b))
 
 fn new_project_row(x: Project, world: WorldId, ord: Int) -> NewProjectRow:
   NewProjectRow(world: world, ord: ord, key: x.id, kind: x.kind, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, route_id: x.route_id, bend: x.plan.bend, start_tick: x.start_tick, ready_tick: x.ready_tick, waypoints: encode_plan(x.plan))
@@ -585,7 +595,7 @@ fn save_sites(items: List<Site>, world: WorldId, existing: List<SiteRow>, i: Int
           let created = sites.create(new_site_row(s, world, i))?
           save_sites(items, world, existing, i + 1)
 
-fn save_routes(items: List<Route>, world: WorldId, existing: List<RouteRow>, i: Int) -> Result<Bool, DataError>:
+fn save_routes(items: List<Route>, world: WorldId, existing: List<RouteRow>, i: Int, towns: List<Town>) -> Result<Bool, DataError>:
   match list_get(items, i):
     None => match len(existing) <= i:
       true => Ok(true)
@@ -593,11 +603,11 @@ fn save_routes(items: List<Route>, world: WorldId, existing: List<RouteRow>, i: 
     Some(r) =>
       match list_get(existing, i):
         Some(row) =>
-          let updated = routes.update(row.id, edit_route_row(r, i))?
-          save_routes(items, world, existing, i + 1)
+          let updated = routes.update(row.id, edit_route_row(r, i, towns))?
+          save_routes(items, world, existing, i + 1, towns)
         None =>
-          let created = routes.create(new_route_row(r, world, i))?
-          save_routes(items, world, existing, i + 1)
+          let created = routes.create(new_route_row(r, world, i, towns))?
+          save_routes(items, world, existing, i + 1, towns)
 
 fn save_projects(items: List<Project>, world: WorldId, existing: List<ProjectRow>, i: Int) -> Result<Bool, DataError>:
   match list_get(items, i):
@@ -634,7 +644,7 @@ fn save_children(world: WorldId, game: Game) -> Result<Bool, DataError>:
   let project_rows = projects.page(world: world, order: "ord", after: "", limit: 100)?
   save_towns(game.world.towns, world, town_rows, 0)?
   save_sites(game.world.sites, world, site_rows, 0)?
-  save_routes(game.world.routes, world, route_rows, 0)?
+  save_routes(game.world.routes, world, route_rows, 0, game.world.towns)?
   save_projects(game.projects, world, project_rows, 0)?
   Ok(true)
 
@@ -664,6 +674,30 @@ fn town_row_index_range(rows: List<TownRow>, key: Text, start: Int, count: Int) 
 fn town_row_index(rows: List<TownRow>, key: Text) -> Int:
   town_row_index_range(rows, key, 0, len(rows))
 
+fn town_ord_index_small(rows: List<TownRow>, ord: Int, start: Int, count: Int) -> Int:
+  match count <= 0:
+    true => -1
+    false => match list_get(rows, start):
+      None => -1
+      Some(row) => match row.ord == ord:
+        true => start
+        false => town_ord_index_small(rows, ord, start + 1, count - 1)
+
+fn town_ord_index_range(rows: List<TownRow>, ord: Int, start: Int, count: Int) -> Int:
+  match count <= 0:
+    true => -1
+    false => match count <= 8:
+      true => town_ord_index_small(rows, ord, start, count)
+      false =>
+        let half = count / 2
+        let left = town_ord_index_range(rows, ord, start, half)
+        match left >= 0:
+          true => left
+          false => town_ord_index_range(rows, ord, start + half, count - half)
+
+fn town_ord_index(rows: List<TownRow>, ord: Int) -> Int:
+  town_ord_index_range(rows, ord, 0, len(rows))
+
 fn town_state_row(row: TownRow) -> List<Int>:
   [row.pop, row.prosperity, row.research, row.endow0, row.endow1, row.endow2, row.endow3, row.endow4, row.endow5, row.endow6, row.endow7, row.stock0, row.stock1, row.stock2, row.stock3, row.stock4, row.stock5, row.stock6, row.stock7]
 
@@ -674,7 +708,7 @@ fn compact_town_edit(row: TownRow, values: List<Int>) -> EditTownRow:
   EditTownRow(ord: row.ord, key: row.key, name: row.name, x: row.x, y: row.y, terrain: row.terrain, pop: nth_int(values, 0), prosperity: nth_int(values, 1), research: nth_int(values, 2), endow0: row.endow0, endow1: row.endow1, endow2: row.endow2, endow3: row.endow3, endow4: row.endow4, endow5: row.endow5, endow6: row.endow6, endow7: row.endow7, stock0: nth_int(values, 3), stock1: nth_int(values, 4), stock2: nth_int(values, 5), stock3: nth_int(values, 6), stock4: nth_int(values, 7), stock5: nth_int(values, 8), stock6: nth_int(values, 9), stock7: nth_int(values, 10))
 
 fn compact_route_edit(row: RouteRow, values: List<Int>) -> EditRouteRow:
-  EditRouteRow(ord: row.ord, key: row.key, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, bend: row.bend, fee: row.fee, traffic: nth_int(values, 0), capacity: row.capacity, upkeep: row.upkeep, waypoints: row.waypoints)
+  EditRouteRow(ord: row.ord, key: row.key, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, bend: row.bend, fee: row.fee, traffic: nth_int(values, 0), capacity: row.capacity, upkeep: row.upkeep, waypoints: row.waypoints, a_ord: row.a_ord, b_ord: row.b_ord)
 
 fn save_compact_towns_small(rows: List<TownRow>, values: List<List<Int>>, start: Int, end: Int) -> Result<Bool, DataError>:
   match start >= end:
@@ -731,6 +765,11 @@ fn compact_scale(row: WorldRow) -> Int:
 fn town_cursor(rows: List<TownRow>) -> Result<Text, DataError>:
   match list_get(rows, len(rows) - 1):
     Some(row) => towns.cursor(row: row, order: "ord")
+    None => Ok("")
+
+fn route_cursor(rows: List<RouteRow>) -> Result<Text, DataError>:
+  match list_get(rows, len(rows) - 1):
+    Some(row) => routes.cursor(row: row, order: "ord")
     None => Ok("")
 
 fn has_routes(world: WorldId) -> Result<Bool, DataError>:
@@ -871,11 +910,60 @@ fn compact_start(row: WorldRow, hours: Int, cadence: Text) -> Result<WorldRow, D
   let days = settlement_days(start, target, cadence)
   worlds.update(row.id, compact_edit_world(row, target, row.money, 2, days, start))
 
+fn add_endpoint(rows: List<TownRow>, world: WorldId, ord: Int) -> Result<List<TownRow>, DataError>:
+  match town_ord_index(rows, ord) >= 0:
+    true => Ok(rows)
+    false =>
+      let found = towns.select(world: world, ord: ord, limit: 1)?
+      match list_get(found, 0):
+        Some(row) => Ok(list_append(rows, row))
+        None => Ok(rows)
+
+fn trade_page_values(route_rows: List<RouteRow>, world: WorldId, i: Int, towns_acc: List<TownRow>, route_acc: List<List<Int>>) -> Result<TradePage, DataError>:
+  match list_get(route_rows, i):
+    None => Ok(TradePage(towns: towns_acc, routes: route_acc))
+    Some(route) =>
+      let towns1 = add_endpoint(towns_acc, world, route.a_ord)?
+      let towns2 = add_endpoint(towns1, world, route.b_ord)?
+      let a = town_ord_index(towns2, route.a_ord)
+      let b = town_ord_index(towns2, route.b_ord)
+      trade_page_values(route_rows, world, i + 1, towns2, list_append(route_acc, route_state_row(route, a, b)))
+
+fn trade_chunk_page(row: WorldRow, after: Text, limit: Int) -> Result<List<Text>, DataError>:
+  let trade_limit = match limit > 5:
+    true => 5
+    false => limit
+  let route_rows = routes.page(world: row.id, order: "ord", after: after, limit: trade_limit)?
+  match len(route_rows) == 0:
+    true =>
+      let done = worlds.update(row.id, compact_edit_world(row, row.tick, row.money, 1, row.settle_days, row.settle_from))?
+      Ok(["", "1", int_text(done.tick), int_text(done.money), "0", "0"])
+    false =>
+      let page = trade_page_values(route_rows, row.id, 0, [], [])?
+      let town_values = for t in page.towns:
+        town_state_row(t)
+      let result = host.compute<List<List<Int>>>("arteries", "trade", row.money, town_values, page.routes, row.settle_days, compact_scale_at(row, row.settle_from))?
+      let money_row = match list_get(result, 0):
+        Some(values) => values
+        None => []
+      let money = nth_int(money_row, 0)
+      let updated_towns = list_slice(result, 1, len(page.towns))
+      save_compact_towns(page.towns, updated_towns, 0, len(page.towns))?
+      let updated_routes = list_slice(result, 1 + len(page.towns), len(route_rows))
+      save_compact_routes(route_rows, updated_routes, 0, len(route_rows))?
+      let traffic = for values in updated_routes:
+        nth_int(values, 0)
+      let cursor = route_cursor(route_rows)?
+      let updated = worlds.update(row.id, compact_edit_world(row, row.tick, money, 3, row.settle_days, row.settle_from))?
+      Ok([cursor, "3", int_text(updated.tick), int_text(money), int_text(total(traffic)), "0"])
+
 fn compact_chunk_page(row: WorldRow, after: Text, limit: Int) -> Result<List<Text>, DataError>:
   let town_rows = towns.page(world: row.id, order: "ord", after: after, limit: limit)?
   match len(town_rows) == 0:
     true => match has_routes(row.id)?:
-      true => Ok(["", "3", int_text(row.tick), int_text(row.money), "0", "0"])
+      true =>
+        let routed = worlds.update(row.id, compact_edit_world(row, row.tick, row.money, 3, row.settle_days, row.settle_from))?
+        Ok(["", "3", int_text(routed.tick), int_text(routed.money), "0", "0"])
       false =>
         let done = worlds.update(row.id, compact_edit_world(row, row.tick, row.money, 1, row.settle_days, row.settle_from))?
         Ok(["", "1", int_text(done.tick), int_text(done.money), "0", "0"])
@@ -912,7 +1000,7 @@ export fn advance_compact_chunk(hours: Int, cadence: Text, after: Text, limit: I
       match start_row.phase == 1:
         true => Ok(["", "1", int_text(start_row.tick), int_text(start_row.money), "0", "0"])
         false => match start_row.phase == 3:
-          true => Ok(["", "3", int_text(start_row.tick), int_text(start_row.money), "0", "0"])
+          true => trade_chunk_page(start_row, after, page_limit)
           false => compact_chunk_page(start_row, after, page_limit)
 
 fn boundary_in_period_server(start: Int, days: Int, cadence: Int) -> Bool:

@@ -4,7 +4,7 @@ name = "ArteriesWeb"
 server = "server"
 browser = "ui"
 component = "Root"
-provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>"]
 styles = ["app.css"]
 
 [modules.shared]
@@ -20,7 +20,7 @@ target = "shared"
 path = "server.dia"
 target = "server"
 imports = ["shared"]
-provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>"]
 
 [modules.ui]
 path = "ui.dia"
@@ -48,7 +48,7 @@ new_seed = "server.new_seed"
 
 [storage]
 profile = "relational-v1"
-version = 2
+version = 3
 
 [storage.resources.Worlds]
 scope = "id"
@@ -139,6 +139,14 @@ max_duration_ms = 2000
 
 [compute.arteries.exports.finish]
 arguments = ["Int", "Int", "Int", "Int", "Int", "List<List<Int>>"]
+result = "List<List<Int>>"
+deterministic = true
+max_input_bytes = 262144
+max_output_bytes = 131072
+max_duration_ms = 2000
+
+[compute.arteries.exports.trade]
+arguments = ["Int", "List<List<Int>>", "List<List<Int>>", "Int", "Int"]
 result = "List<List<Int>>"
 deterministic = true
 max_input_bytes = 262144
