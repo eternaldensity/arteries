@@ -196,6 +196,11 @@ function assert(condition, message) {
       (await page.locator('.inspector-title h3').textContent()).length > 0,
       'site inspector has no name'
     );
+    const siteInspect = await page.locator('.site-inspect').innerText();
+    assert(
+      /Resource\s+(Grain|Timber|Stone|Ore|Fiber|Tools|Cloth|Fish)/i.test(siteInspect),
+      `site geology has no resource: ${siteInspect}`
+    );
     await town('Riverford').click();
     await page.waitForTimeout(300);
 

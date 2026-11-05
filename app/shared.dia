@@ -709,6 +709,27 @@ fn worldgen_feature_code(seed: Int, x: Int, y: Int) -> Int:
     true => digit_value(text_slice(rows, index, 1))
     false => 0
 
+fn worldgen_economy_at(seed: Int, x: Int, y: Int) -> Int:
+  let rows = worldgen_biome_rows(mod_int(seed, map_count()))
+  let index = y * map_w() + x
+  match index < len(rows):
+    true => digit_value(text_slice(rows, index, 1))
+    false => 4
+
+fn worldgen_temperature_at(seed: Int, x: Int, y: Int) -> Int:
+  let rows = worldgen_temperature_rows(mod_int(seed, map_count()))
+  let index = y * map_w() + x
+  match index < len(rows):
+    true => digit_value(text_slice(rows, index, 1))
+    false => 5
+
+fn worldgen_moisture_at(seed: Int, x: Int, y: Int) -> Int:
+  let rows = worldgen_moisture_rows(mod_int(seed, map_count()))
+  let index = y * map_w() + x
+  match index < len(rows):
+    true => digit_value(text_slice(rows, index, 1))
+    false => 5
+
 export fn terrain_at(seed: Int, x: Int, y: Int) -> Terrain:
   match x < 0 or y < 0 or x >= map_w() or y >= map_h():
     true => Water
@@ -864,10 +885,48 @@ fn zeros(n: Int) -> List<Int>:
 
 fn initial_stock_for(i: Int) -> List<Int>:
   let endow = town_endow(i)
+  initial_stock_from(endow)
+
+fn initial_stock_from(endow: List<Int>) -> List<Int>:
   let doubled = for k in indices(len(endow)):
     nth_int(endow, k) * 2
   let with_food = replace_int(doubled, good_index(Grain), nth_int(doubled, good_index(Grain)) + 8)
   replace_int(with_food, good_index(Fish), nth_int(with_food, good_index(Fish)) + 4)
+
+fn endow_add(endow: List<Int>, g: Good, value: Int) -> List<Int>:
+  replace_int(endow, good_index(g), nth_int(endow, good_index(g)) + value)
+
+# Worldgen economy coupling: the town's primary endowment comes from its
+# biome, with small temperature/moisture modifiers. Cold highlands add stone;
+# wet climates add fiber; dry climates add stone.
+fn town_endow_for(biome: Int, temp: Int, moist: Int) -> List<Int>:
+  let base0 = replace_int(zeros(len(goods())), good_index(Grain), 2)
+  let base = endow_add(endow_add(base0, Timber, 1), Stone, 1)
+  let shaped = match biome == 0:
+    true => endow_add(endow_add(base, Fish, 4), Grain, 1)
+    false => match biome == 1:
+      true => endow_add(endow_add(base, Stone, 2), Ore, 2)
+      false => match biome == 2:
+        true => endow_add(endow_add(base, Timber, 4), Fiber, 1)
+        false => match biome == 3:
+          true => endow_add(endow_add(endow_add(base, Fiber, 3), Timber, 2), Grain, 1)
+          false => match biome == 4:
+            true => endow_add(endow_add(base, Grain, 4), Fiber, 1)
+            false => match biome == 5:
+              true => endow_add(endow_add(base, Grain, 3), Fiber, 2)
+              false => match biome == 6:
+                true => endow_add(endow_add(base, Stone, 3), Ore, 1)
+                false => match biome == 7:
+                  true => endow_add(endow_add(base, Fiber, 3), Grain, 2)
+                  false => match biome == 8:
+                    true => endow_add(endow_add(base, Stone, 3), Ore, 2)
+                    false => endow_add(endow_add(base, Ore, 4), Stone, 1)
+  let cold = match temp <= 2:
+    true => endow_add(shaped, Stone, 1)
+    false => shaped
+  match moist >= 7:
+    true => endow_add(cold, Fiber, 1)
+    false => cold
 
 fn outpost_stock(resource: Good, richness: Int) -> List<Int>:
   let a = replace_int(zeros(len(goods())), good_index(resource), richness * 2)
@@ -961,9 +1020,12 @@ fn nth_point(xs: List<Point>, i: Int) -> Point:
     None => Point(x: 1, y: 1)
 
 fn make_town(seed: Int, i: Int, p: Point) -> Town:
-  let endow = town_endow(i)
+  let biome = worldgen_economy_at(seed, p.x, p.y)
+  let temp = worldgen_temperature_at(seed, p.x, p.y)
+  let moist = worldgen_moisture_at(seed, p.x, p.y)
+  let endow = town_endow_for(biome, temp, moist)
   let terrain = terrain_at(seed, p.x, p.y)
-  Town(id: "t" + int_text(i), name: town_name(i), x: p.x, y: p.y, terrain: terrain, endow: endow, state: TownState(pop: 2, prosperity: 6, research: 0, stock: initial_stock_for(i)))
+  Town(id: "t" + int_text(i), name: town_name(i), x: p.x, y: p.y, terrain: terrain, endow: endow, state: TownState(pop: 2, prosperity: 6, research: 0, stock: initial_stock_from(endow)))
 
 fn site_resource(i: Int) -> Good:
   match i == 0:
@@ -976,10 +1038,46 @@ fn site_resource(i: Int) -> Good:
           true => Fish
           false => Fiber
 
+fn site_resource_for(i: Int, biome: Int, feature: Int) -> Good:
+  match feature == 3:
+    true => Fish
+    false => match feature == 2:
+      true => Grain
+      false => match feature == 1:
+        true => match biome == 9:
+          true => Ore
+          false => Stone
+        false => match biome == 0:
+          true => Fish
+          false => match biome == 1:
+            true => match mod_int(i, 2) == 0:
+              true => Ore
+              false => Stone
+            false => match biome == 2:
+              true => Timber
+              false => match biome == 3:
+                true => Fiber
+                false => match biome == 4:
+                  true => Grain
+                  false => match biome == 5:
+                    true => Grain
+                    false => match biome == 6:
+                      true => Stone
+                      false => match biome == 7:
+                        true => Fiber
+                        false => match biome == 8:
+                          true => match mod_int(i, 2) == 0:
+                            true => Stone
+                            false => Ore
+                          false => Ore
+
 fn make_site(seed: Int, i: Int, p: Point) -> Site:
-  let r = site_resource(i)
+  let biome = worldgen_economy_at(seed, p.x, p.y)
+  let feature = worldgen_feature_code(seed, p.x, p.y)
+  let moist = worldgen_moisture_at(seed, p.x, p.y)
+  let r = site_resource_for(i, biome, feature)
   let terrain = terrain_at(seed, p.x, p.y)
-  Site(id: "s" + int_text(i), name: site_name(i), x: p.x, y: p.y, terrain: terrain, resource: r, richness: 2 + mod_int(hash100(seed, i, 53, 67), 2), founded: false)
+  Site(id: "s" + int_text(i), name: site_name(i), x: p.x, y: p.y, terrain: terrain, resource: r, richness: 2 + mod_int(hash100(seed, i, 53, 67) + moist, 3), founded: false)
 
 # ---------------------------------------------------------------- world creation
 

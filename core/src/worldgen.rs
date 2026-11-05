@@ -571,11 +571,51 @@ fn validate(cells: &[Cell], width: usize, height: usize) -> bool {
     let water = cells.iter().filter(|cell| cell.biome.is_water()).count();
     let land = total - water;
     let fraction = land * 100 / total;
+    let small = total < 100;
+    if small {
+        if !(15..=90).contains(&fraction) {
+            return false;
+        }
+        let small_features = cells
+            .iter()
+            .filter(|cell| cell.feature != Feature::None)
+            .count();
+        let small_kinds = [
+            Biome::Forest,
+            Biome::Plains,
+            Biome::Hills,
+            Biome::Mountain,
+            Biome::Coast,
+            Biome::Marsh,
+            Biome::Savanna,
+        ]
+        .iter()
+        .filter(|biome| cells.iter().any(|cell| cell.biome == **biome))
+        .count();
+        return small_features >= 1 && small_kinds >= 2 && connectivity(cells, width, height, land);
+    }
     if !(25..=85).contains(&fraction) {
         return false;
     }
     let rivers = cells.iter().filter(|cell| cell.river > 0).count();
     if rivers == 0 {
+        return false;
+    }
+    let river_mouths = cells
+        .iter()
+        .enumerate()
+        .filter(|(position, cell)| {
+            cell.river > 0 && {
+                let x = position % width;
+                let y = position / width;
+                neighbours(width, height, x, y)
+                    .into_iter()
+                    .any(|(nx, ny)| cells[index(width, nx, ny)].biome.is_water())
+            }
+        })
+        .count();
+    let lakes = cells.iter().filter(|cell| cell.lake).count();
+    if river_mouths == 0 && lakes == 0 {
         return false;
     }
     let features = cells
@@ -585,19 +625,25 @@ fn validate(cells: &[Cell], width: usize, height: usize) -> bool {
     if features < 2 {
         return false;
     }
-    let biome_kinds = [
+    if !cells
+        .iter()
+        .any(|cell| matches!(cell.feature, Feature::Pass | Feature::Ford))
+    {
+        return false;
+    }
+    let resource_kinds = [
         Biome::Forest,
         Biome::Plains,
         Biome::Hills,
         Biome::Mountain,
+        Biome::Coast,
         Biome::Marsh,
-        Biome::Desert,
-        Biome::Tundra,
+        Biome::Savanna,
     ]
     .iter()
     .filter(|biome| cells.iter().any(|cell| cell.biome == **biome))
     .count();
-    if biome_kinds < 2 {
+    if resource_kinds < 3 {
         return false;
     }
     connectivity(cells, width, height, land)
@@ -642,11 +688,45 @@ fn checksum(cells: &[Cell]) -> i64 {
     sum
 }
 
-/// Flat terrain and feature codes for one seed, row-major.
+/// Compact per-cell tables for one seed, row-major.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorldTables {
+    pub terrain: Vec<i64>,
+    pub features: Vec<i64>,
+    /// Economy class: `0` water/coast through `9` mountain.
+    pub biome: Vec<i64>,
+    /// Temperature bucket `0..=9`.
+    pub temperature: Vec<i64>,
+    /// Moisture bucket `0..=9`.
+    pub moisture: Vec<i64>,
+}
+
+/// One economy class for a biome.
+#[must_use]
+pub const fn economy_class(biome: Biome) -> i64 {
+    match biome {
+        Biome::Water | Biome::Coast => 0,
+        Biome::Ice | Biome::Tundra => 1,
+        Biome::Forest | Biome::Taiga => 2,
+        Biome::Jungle => 3,
+        Biome::Plains => 4,
+        Biome::Savanna => 5,
+        Biome::Desert => 6,
+        Biome::Marsh => 7,
+        Biome::Hills => 8,
+        Biome::Mountain => 9,
+    }
+}
+
+fn bucket(value: i64) -> i64 {
+    (value.saturating_mul(10) / WG_SCALE).clamp(0, 9)
+}
+
+/// Flat terrain, feature, biome, temperature, and moisture tables for one seed.
 ///
 /// # Errors
 /// Rejects dimensions outside the generator bounds.
-pub fn table_for(seed: i64, width: usize, height: usize) -> Result<(Vec<i64>, Vec<i64>), String> {
+pub fn table_for(seed: i64, width: usize, height: usize) -> Result<WorldTables, String> {
     let world = generate(seed, width, height)?;
     let terrain = world
         .cells
@@ -654,7 +734,28 @@ pub fn table_for(seed: i64, width: usize, height: usize) -> Result<(Vec<i64>, Ve
         .map(|cell| cell.biome.terrain().code())
         .collect();
     let features = world.cells.iter().map(|cell| cell.feature.code()).collect();
-    Ok((terrain, features))
+    let biome = world
+        .cells
+        .iter()
+        .map(|cell| economy_class(cell.biome))
+        .collect();
+    let temperature = world
+        .cells
+        .iter()
+        .map(|cell| bucket(cell.temperature))
+        .collect();
+    let moisture = world
+        .cells
+        .iter()
+        .map(|cell| bucket(cell.moisture))
+        .collect();
+    Ok(WorldTables {
+        terrain,
+        features,
+        biome,
+        temperature,
+        moisture,
+    })
 }
 
 /// Asset-pipeline line for one seed: `seed|row;row` using worldgen terrain.
@@ -757,6 +858,36 @@ mod tests {
             assert!(Biome::from_code(chunk[3]).is_some());
             assert!(Feature::from_code(chunk[5]).is_some());
         }
+    }
+
+    #[test]
+    fn ten_by_six_tables_are_valid_and_varied() {
+        let mut valid = 0;
+        let mut features = 0;
+        for seed in 0..16 {
+            let world = generate(seed, 10, 6).expect("world");
+            if world.valid {
+                valid += 1;
+            }
+            features += world
+                .cells
+                .iter()
+                .filter(|cell| cell.feature != Feature::None)
+                .count();
+        }
+        assert!(valid >= 14, "only {valid} of 16 10x6 seeds were valid");
+        assert!(features > 0, "no features across 10x6 seeds");
+    }
+
+    #[test]
+    fn economy_classes_and_buckets_are_stable() {
+        assert_eq!(economy_class(Biome::Water), 0);
+        assert_eq!(economy_class(Biome::Forest), 2);
+        assert_eq!(economy_class(Biome::Plains), 4);
+        assert_eq!(economy_class(Biome::Mountain), 9);
+        assert_eq!(bucket(0), 0);
+        assert_eq!(bucket(WG_SCALE), 9);
+        assert_eq!(bucket(WG_SCALE / 2), 5);
     }
 
     #[test]

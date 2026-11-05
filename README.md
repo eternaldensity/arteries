@@ -69,8 +69,10 @@ seed as well. No map tiles are stored or loaded from disk.
 
 Routes are not fixed links. Click two settlements to survey one:
 
-- the server packs the terrain grid and asks the native `arteries.pathfind`
-  kernel for a deterministic least-cost corridor;
+- the worldgen table supplies the terrain, economy class, climate, and feature
+  grids; settlements and sites take their endowments/resources from those cells;
+- the server packs the terrain and feature grids and asks the native
+  `arteries.pathfind_features` kernel for a deterministic least-cost corridor;
 - the survey drawn in the browser is that corridor, simplified to corner
   points; `arteries.route_cost` rasterizes the same line to count water,
   mountain, and forest cells without double-counting;
