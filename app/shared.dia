@@ -89,6 +89,25 @@ export type PlanetSummary:
   cells: Int
   checksum: Int
 
+export type SurveyOption:
+  index: Int
+  bend: Int
+  label: Text
+  length: Int
+  money: Int
+  water: Int
+
+export type SurveyPreview:
+  capacity: Int
+  upkeep: Int
+  trade: Int
+  found: Text
+  material: Text
+  warning: Text
+
+export fn empty_survey_preview() -> SurveyPreview:
+  SurveyPreview(capacity: 0, upkeep: 0, trade: 0, found: "", material: "", warning: "")
+
 export type ScaleStep:
   phase: Int
   cursor: Text
@@ -1026,11 +1045,18 @@ fn path_length_at(path: List<Point>, i: Int, acc: Int) -> Int:
 # Fast heuristic cost for choosing an auto-shape bend. Uses the drawn
 # polyline's vertex samples (cheap) rather than the full rasterized count;
 # the displayed plan cost is recomputed from the rasterized counts.
+# Rasterized terrain counts for one drawn polyline:
+# [water, mountain, forest], each cell counted once.
+fn crossed_stats(points: List<Point>, seed: Int) -> List<Int>:
+  let packed = count_crossed_all(points, seed, 0, 0)
+  [mod_int(packed, 64), mod_int(packed / 64, 64), mod_int(packed / 4096, 64)]
+
 fn plan_cost_for_offset(seed: Int, ax: Int, ay: Int, bx: Int, by: Int, off: Int) -> Int:
   let points = plan_points_offset(seed, ax, ay, bx, by, off)
   let length = path_length(points)
-  let water = count_water(points, seed, 0)
-  let mountain = count_mountain(points, seed, 0)
+  let stats = crossed_stats(points, seed)
+  let water = nth_int(stats, 0)
+  let mountain = nth_int(stats, 1)
   8 + length + water * 5 + mountain * 8
 
 fn pick_bend(seed: Int, ax: Int, ay: Int, bx: Int, by: Int, i: Int, best: Int, best_cost: Int) -> Int:
@@ -1159,9 +1185,10 @@ export fn plan_route_bend(world: World, a: Text, b: Text, bend: Int) -> RoutePla
 fn plan_with_offset(world: World, ta: Town, tb: Town, off: Int) -> RoutePlan:
   let points = plan_points_offset(world.seed, ta.x, ta.y, tb.x, tb.y, off)
   let length = path_length(points)
-  let water = count_water(points, world.seed, 0)
-  let mountain = count_mountain(points, world.seed, 0)
-  let forest = count_forest(points, world.seed, 0)
+  let stats = crossed_stats(points, world.seed)
+  let water = nth_int(stats, 0)
+  let mountain = nth_int(stats, 1)
+  let forest = nth_int(stats, 2)
   RoutePlan(path: points, bend: off, length: length, water: water, mountain: mountain, forest: forest, money: 8 + length + water * 5 + mountain * 8, timber: 1 + length / 14 + water, stone: 1 + length / 18 + mountain * 2, min_y: min_point_y(points, 0, map_h()), max_y: max_point_y(points, 0, 0))
 
 # Sentinel stored in RoutePlan.bend for a kernel-planned corridor. Manual
@@ -2811,13 +2838,7 @@ fn selection_pick_town(world: World, sel: Selection, id: Text, name: Text) -> Se
       false => match sel.to == "":
         true => match len(world.routes) >= max_routes():
           true => selection_with(sel, id, "", "", empty_plan(), false, false, "Three trunk routes already exist. Dismantle one before surveying another.")
-          false =>
-            let plan = plan_route(world, sel.from, id)
-            let ready = plan.length > 0
-            let notice = match ready:
-              true => "Survey ready: " + int_text(plan.length) + " leagues, " + int_text(plan.money) + " crowns, " + int_text(plan.timber) + " timber, " + int_text(plan.stone) + " stone."
-              false => "That pair cannot be surveyed."
-            selection_with(sel, id, sel.from, id, plan, ready, true, notice)
+          false => selection_with(sel, id, sel.from, id, empty_plan(), false, true, "Surveying route...")
         false => selection_with(sel, id, id, "", empty_plan(), false, true, "Origin moved to " + name + ". Click a destination.")
 
 export fn selection_start(world: World, sel: Selection) -> Selection:
