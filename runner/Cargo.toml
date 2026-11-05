@@ -1,0 +1,10 @@
+[package]
+name = "arteries-runner"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+arteries-core = { path = "../core" }
+diamond = { package = "diamond-lang", path = "/home/yria/dev/Diamond" }
+serde_json = "1"

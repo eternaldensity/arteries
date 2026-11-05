@@ -7,3 +7,6 @@
 
 # Rust core crate build output.
 /core/target/
+
+# Rust runner build output.
+/runner/target/

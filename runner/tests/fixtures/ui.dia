@@ -1,0 +1,5 @@
+export component Root:
+  state label: Text = "probe"
+
+  html:
+    <p>{label}</p>

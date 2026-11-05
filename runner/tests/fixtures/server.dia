@@ -1,0 +1,5 @@
+export fn terrain_region_probe() -> Result<Text, DataError>:
+  host.compute<Text>("arteries", "terrain_region", 0, 1, 0, 0, 0, 4, 3)
+
+export fn main() -> Result<Text, DataError>:
+  terrain_region_probe()

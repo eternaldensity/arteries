@@ -1,0 +1,23 @@
+schema_version = 1
+name = "ArteriesProbe"
+server = "server"
+browser = "ui"
+component = "Root"
+provides = ["Compute<arteries.terrain_region>"]
+
+[modules.server]
+path = "server.dia"
+target = "server"
+provides = ["Compute<arteries.terrain_region>"]
+
+[modules.ui]
+path = "ui.dia"
+target = "browser"
+
+[compute.arteries]
+kind = "host"
+
+[compute.arteries.exports.terrain_region]
+arguments = ["Int", "Int", "Int", "Int", "Int", "Int", "Int"]
+result = "Text"
+deterministic = true

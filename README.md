@@ -178,6 +178,11 @@ core/
   Cargo.toml       arteries-core crate plus the arteries-gen CLI
   src/lib.rs       deterministic terrain, frozen against the Diamond oracle
   src/main.rs      terrain exporter
+runner/
+  Cargo.toml       arteries-runner: serves an Arteries project with compute
+  src/lib.rs       kernel implementations (terrain_region)
+  src/main.rs      serve binary, requires DIAMOND_POSTGRES_URL
+  tests/           validate_compute + end-to-end dispatch against a probe project
 tools/
   gen_terrain_main.dia  Diamond terrain exporter (differential oracle)
   render_maps.py        SVG map renderer
@@ -200,17 +205,19 @@ arbitrary restrictions.
 
 ## Testing
 
-Test the terrain core and regenerate its assets:
+Test the terrain core, the compute runner, and regenerate assets:
 
 ```sh
 cargo test --manifest-path core/Cargo.toml
+cargo test --manifest-path runner/Cargo.toml
 ./tools/check-core.sh        # diff the Rust core against the Diamond generator
 ./tools/gen-maps.sh          # regenerate the SVG assets from the core crate
 ```
 
 `TERRAIN_SOURCE=diamond ./tools/gen-maps.sh` regenerates from the checked
 Diamond code instead; that is how the frozen oracle snapshot in
-`core/tests/terrain-expected.txt` was produced.
+`core/tests/terrain-expected.txt` was produced. The runner needs
+`DIAMOND_POSTGRES_URL` only when serving; its tests run without a database.
 
 Verify the rhombic triacontahedron grid tables (regenerate, diff, and validate
 inside Diamond):
