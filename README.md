@@ -74,6 +74,9 @@ Routes are not fixed links. Click two settlements to survey one:
   mountain, and forest cells without double-counting;
 - the Route desk can bend the interior waypoints left or right, which switches
   to the hand-shaped five-point polyline, or return to the automatic corridor;
+- **Preview details** fetches capacity, upkeep, expected trade, founding
+  targets, material split, and three alternative corridors from compact server
+  RPCs; choosing a corridor replaces the draft without reloading the world;
 - every route and project row stores its full corridor, so a saved route keeps
   its exact geometry even if the pathfinding algorithm changes later;
 - built routes are drawn as exact 2D segments, so diagonals follow their real

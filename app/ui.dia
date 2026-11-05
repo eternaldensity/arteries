@@ -40,6 +40,43 @@ export component MapCanvas(seed: Int, groups: List<RouteNodeGroup>, draft: List<
       </each>
     </div>
 
+export component SurveyPreviewPanel(from: Text, to: Text, plan: RoutePlan, road: Bool, river: Bool, rail: Bool):
+  output choose(value: Int)
+  state options: List<SurveyOption> = []
+  state preview: SurveyPreview = empty_survey_preview()
+  on mount:
+    options = rpc.survey_options(from, to)
+    preview = rpc.survey_preview(from, to, plan.bend)
+  on pick(chosen: Int):
+    emit choose(chosen)
+  html:
+    <div class="survey-preview" id="survey-preview">
+      <div class="plan-grid">
+        <div><span>Capacity</span><strong>{preview.capacity}</strong></div>
+        <div><span>Upkeep/wk</span><strong>{preview.upkeep}</strong></div>
+        <div><span>Trade/cycle</span><strong>{preview.trade}</strong></div>
+        <div><span>Bridges</span><strong>{plan.water}</strong></div>
+        <div><span>Forest</span><strong>{plan.forest}</strong></div>
+      </div>
+      <p class="helper">{preview.found}</p>
+      <p class="helper">{preview.material}</p>
+      <when test={preview.warning != ""}><p class="helper">{preview.warning}</p></when>
+      <when test={len(options) > 0}>
+        <div class="shape-row">
+          <span>Corridors</span>
+          <each items={options} as="o" key={int_text(o.index)}>
+            <button class="tiny" type="button" on-click={pick(o.bend)} title={o.label}>Corridor {o.index + 1}</button>
+          </each>
+        </div>
+      </when>
+      <div class="shape-row">
+        <span>Modes</span>
+        <when test={road}><span class="mono">Road cap {route_capacity(Road, plan)} · {route_upkeep(Road, plan)}/wk</span></when>
+        <when test={river}><span class="mono">River cap {route_capacity(River, plan)} · {route_upkeep(River, plan)}/wk</span></when>
+        <when test={rail}><span class="mono">Rail cap {route_capacity(Rail, plan)} · {route_upkeep(Rail, plan)}/wk</span></when>
+      </div>
+    </div>
+
 export component Root:
   state game: Game = empty_game()
   state signed_in: Text = ""
@@ -53,12 +90,14 @@ export component Root:
   state scale_summary: ScaleSummary = ScaleSummary(seed: 7, tick: 0, money: 0, towns: 0, routes: 0, phase: 0)
   state scale_step: ScaleStep = ScaleStep(phase: 0, cursor: "", tick: 0, money: 0, pop: 0, prosperity: 0, max_research: 0, traffic: 0, finish: 0, status: "Choose Run to start a compact cycle.")
   state planet_summary: PlanetSummary = PlanetSummary(seed: 7, detail: 0, faces: 0, cells: 0, checksum: 0)
+  state show_preview: Bool = false
+  state draft_plan: RoutePlan = empty_plan()
 
   derived world: World = game.world
   derived iv: InspectView = game.inspect
   derived sel: Selection = game.sel
   derived map_markers: List<MarkerInfo> = make_markers(world)
-  derived draft_route_nodes: List<RouteNode> = draft_nodes(sel.draft, sel.ready)
+  derived draft_route_nodes: List<RouteNode> = draft_nodes(draft_plan, sel.ready)
   derived population: Int = total_pop(world)
   derived prosperity: Int = total_prosperity(world)
   derived tech: Text = tech_summary(world)
@@ -68,24 +107,23 @@ export component Root:
   derived routes_count: Int = len(world.routes)
   derived alert_items: List<Text> = alerts(world)
   derived alert_idx: List<Int> = indices(len(alert_items))
-  derived signal_count: Int = signal_count(game)
+  derived upkeep_flag: Int = match upkeep_due(game) > 0:
+    true => 1
+    false => 0
+  derived signal_count: Int = len(alert_items) + upkeep_flag
   derived feed_items: List<Text> = log_feed(world)
   derived feed_idx: List<Int> = indices(len(feed_items))
   derived history_idx: List<Int> = indices(len(world.history))
-  derived can_build: Bool = can_build_route(game)
-  derived blocker: Text = build_blocker(game)
+  derived can_build: Bool = can_build_plan(world, game.projects, sel.from, sel.to, draft_plan, sel.ready)
+  derived blocker: Text = build_blocker_plan(world, game.projects, sel.from, sel.to, draft_plan, sel.ready)
+  derived build_time: Text = construction_preview_plan(world, sel.from, sel.to, draft_plan, sel.ready)
+  derived build_text: Text = build_button_text_plan(world, game.projects, sel.from, sel.to, draft_plan, sel.ready)
   derived origin_name: Text = marker_name(world, sel.from)
   derived destination_name: Text = marker_name(world, sel.to)
   derived pending_route: Route = route_lookup(world, pending_dismantle)
   derived pending_salvage: Text = match pending_dismantle == "":
     true => ""
     false => salvage_text(pending_route)
-  derived alt_plans: List<RoutePlan> = []
-  derived alt_idx: List<Int> = indices(len(alt_plans))
-  derived alt_texts: List<Text> = match sel.ready:
-    true => for i in alt_idx:
-      survey_alt_text(nth_plan(alt_plans, i), i)
-    false => []
   derived scale_button: Text = match scale_active:
     true => "Continue cycle"
     false => "Run 1 day"
@@ -123,6 +161,7 @@ export component Root:
       true => game
       false => server_adopt(rpc.load_game())
     loaded = true
+    draft_plan = game.sel.draft
     scale_active = false
     scale_step = ScaleStep(phase: scale_summary.phase, cursor: "", tick: scale_summary.tick, money: scale_summary.money, pop: 0, prosperity: 0, max_research: 0, traffic: 0, finish: 0, status: "Compact view ready.")
     auth_notice = match scale_mode:
@@ -136,6 +175,7 @@ export component Root:
       true => game
       false => server_adopt(rpc.load_game())
     loaded = true
+    draft_plan = game.sel.draft
     scale_active = false
     scale_step = ScaleStep(phase: scale_summary.phase, cursor: "", tick: scale_summary.tick, money: scale_summary.money, pop: 0, prosperity: 0, max_research: 0, traffic: 0, finish: 0, status: "Compact view ready.")
     auth_notice = match scale_mode:
@@ -148,34 +188,56 @@ export component Root:
     game = empty_game()
     scale_active = false
     scale_summary = ScaleSummary(seed: 7, tick: 0, money: 0, towns: 0, routes: 0, phase: 0)
+    draft_plan = empty_plan()
     scale_step = ScaleStep(phase: 0, cursor: "", tick: 0, money: 0, pop: 0, prosperity: 0, max_research: 0, traffic: 0, finish: 0, status: "Choose Run to start a compact cycle.")
     auth_notice = "Signed out."
 
   on pick(id: Text):
     game = game_pick(game, id)
+    show_preview = false
     game = match game.sel.to != "" and not game.inspect.is_site:
-      true => server_adopt(rpc.survey_path(game.sel.from, game.sel.to))
+      true => game_with_plan(game, game.sel.from, game.sel.to, rpc.survey_path_plan(game.sel.from, game.sel.to))
       false => game
+    draft_plan = game.sel.draft
 
   on start_route:
     game = game_start_route(game)
+    draft_plan = game.sel.draft
+    show_preview = false
+
+  on preview_details:
+    show_preview = true
+
+  on use_corridor(bend: Int):
+    draft_plan = rpc.survey_corridor_plan(sel.from, sel.to, bend)
+    show_preview = false
 
   on bend_left:
     game = game_bend(game, -1)
+    draft_plan = game.sel.draft
+    show_preview = false
 
   on bend_right:
     game = game_bend(game, 1)
+    draft_plan = game.sel.draft
+    show_preview = false
 
   on shape_auto:
     game = match sel.ready and not game.inspect.is_site:
-      true => server_adopt(rpc.survey_path(sel.from, sel.to))
+      true => game_with_plan(game, sel.from, sel.to, rpc.survey_path_plan(sel.from, sel.to))
       false => game
+    draft_plan = game.sel.draft
+    show_preview = false
 
   on cancel_route:
     game = game_cancel(game)
+    draft_plan = empty_plan()
+    show_preview = false
 
   on build_route:
-    game = server_adopt(rpc.start_route(sel.from, sel.to, sel.draft.bend))
+    show_preview = false
+    game = server_adopt(rpc.start_route(sel.from, sel.to, draft_plan.bend))
+    draft_plan = game.sel.draft
 
   on request_dismantle(id: Text):
     pending_dismantle = id
@@ -189,9 +251,6 @@ export component Root:
 
   on cancel_project(id: Text):
     game = server_apply(game, rpc.cancel_project(id))
-
-  on use_alt(idx: Int):
-    game = game_use_alt(game, idx)
 
   on step_hour:
     game = server_apply(game, rpc.advance_market(1, "daily"))
@@ -219,6 +278,7 @@ export component Root:
 
   on new_seed:
     game = server_adopt(rpc.new_seed())
+    draft_plan = game.sel.draft
 
   on upgrade(id: Text):
     game = server_apply(game, rpc.order_upgrade(id))
@@ -465,24 +525,28 @@ export component Root:
                 </div>
                 <when test={sel.ready}>
                   <div class="plan-grid">
-                    <div><span>Length</span><strong>{sel.draft.length}</strong></div>
-                    <div><span>Crowns</span><strong>{sel.draft.money}</strong></div>
-                    <div><span>Timber</span><strong>{sel.draft.timber}</strong></div>
-                    <div><span>Stone</span><strong>{sel.draft.stone}</strong></div>
-                    <div><span>Bridges</span><strong>{sel.draft.water}</strong></div>
-                    <div><span>Forest</span><strong>{sel.draft.forest}</strong></div>
-                    <div><span>Build time</span><strong>{construction_preview(game)}</strong></div>
+                    <div><span>Length</span><strong>{draft_plan.length}</strong></div>
+                    <div><span>Crowns</span><strong>{draft_plan.money}</strong></div>
+                    <div><span>Timber</span><strong>{draft_plan.timber}</strong></div>
+                    <div><span>Stone</span><strong>{draft_plan.stone}</strong></div>
+                    <div><span>Bridges</span><strong>{draft_plan.water}</strong></div>
+                    <div><span>Forest</span><strong>{draft_plan.forest}</strong></div>
+                    <div><span>Build time</span><strong>{build_time}</strong></div>
                   </div>
                   <div class="shape-row">
-                    <span>Waypoint bend <strong>{sel.draft.bend}</strong></span>
+                    <span>Waypoint bend <strong>{draft_plan.bend}</strong></span>
                     <button class="tiny" type="button" on-click={bend_left} aria-label="Bend route left">←</button>
                     <button class="tiny" type="button" on-click={bend_right} aria-label="Bend route right">→</button>
                     <button class="ghost tiny" type="button" on-click={shape_auto}>Auto shape</button>
+                    <button class="ghost tiny" type="button" on-click={preview_details}>Preview details</button>
                   </div>
                   <p class="helper">Water crossings become bridges; they add cost, lower capacity, and lengthen construction.</p>
+                  <when test={show_preview}>
+                    <use component="SurveyPreviewPanel" from={sel.from} to={sel.to} plan={draft_plan} road={world.tech_road} river={world.tech_river} rail={world.tech_rail} on-choose={use_corridor}></use>
+                  </when>
                   <p class="blocker">{blocker}</p>
                   <div class="actions">
-                    <button class="primary" type="button" on-click={build_route} disabled={not can_build}>{build_button_text(game)}</button>
+                    <button class="primary" type="button" on-click={build_route} disabled={not can_build}>{build_text}</button>
                     <button class="ghost" type="button" on-click={cancel_route}>Cancel</button>
                   </div>
                 </when>

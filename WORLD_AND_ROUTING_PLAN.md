@@ -385,7 +385,7 @@ milestone order below maximizes player-visible payoff and defers schema risk.
 | Milestone | Content | Exit criteria |
 | --- | --- | --- |
 | **M0 — RT geometry foundation** ✅ | `tools/gen_rt_grid.py` generates the baked tables; invariant tests; drift check; optional face/anchor debug overlay | `diamond check` passes; invariants green; regenerating tables is a no-op — **landed**: generator, `app/rt_tables.dia`, `tools/check-rt-tables.sh`, module wired into `app/diamond.toml` |
-| **M1 — Planner truth & preview** 🟡 backend landed | Phase A: rasterized costs, capacity/upkeep/income preview, founding preview, mode comparison, upgrade/demolition clarity, cancellation, alternates. Rasterized `crossed_stats` and the `survey_options`/`survey_corridor`/`survey_preview` RPCs are in place; the compact preview screen is deferred because the inline overlay exceeded the browser budget at three routes | Full-map smoke test passes with drawn == charged costs; preview numbers and alternates still need a dedicated compact screen and its acceptance test |
+| **M1 — Planner truth & preview** ✅ | Phase A: rasterized costs, capacity/upkeep/income preview, founding preview, mode comparison, upgrade/demolition clarity, cancellation, alternates. Rasterized `crossed_stats`, the `survey_options`/`survey_corridor_plan`/`survey_preview` RPCs, and a compact `SurveyPreviewPanel` inside the route desk are in place; the panel fetches on mount so the full-map render stays inside the browser budget | Full-map smoke test covers preview numbers, founding/material preview, corridor selection, drawn == charged costs, cancellation, and the 3-route acceptance flow |
 | **M2 — Terrain depth & routing** | Phase E core (noise, elevation, climate, hydrology, geology, validation) + Phase B1/B3 (least-cost survey, mode–terrain identity) | Property tests over many seeds; a pass/ford/harbor appears on the map and changes route choice |
 | **M3 — Waypoints & founding** | Phase B2/B4 + waypoint persistence and RPC update | Saved routes reload identically from waypoints; site-directed founding works in the smoke test |
 | **M4 — Network flow** | Phase C1–C4 + link rules UI | A three-route spanning tree carries multi-hop flow; rules and per-good tolls demonstrably change destinations |
@@ -397,15 +397,15 @@ First steps (as agreed): write this document, then **M0** — the RT table
 generator and invariant tests — before touching the route planner. **M0 is now
 implemented** (`tools/gen_rt_grid.py`, `app/rt_tables.dia`,
 `tools/check-rt-tables.sh`, and the `rt_tables` module wired into
-`app/diamond.toml`). Run `./tools/check-rt-tables.sh` to verify. **M1 backend
-is landed**: survey helpers, `cancel_project`, and the dismantle confirmation
+`app/diamond.toml`). Run `./tools/check-rt-tables.sh` to verify. **M1 is
+landed**: survey helpers, `cancel_project`, and the dismantle confirmation
 landed in `8f1756d`; plan costs are now rasterized so the drawn cells equal the
-charged cells, and the server exposes `survey_path`, `survey_options`,
-`survey_corridor`, and `survey_preview` for a preview screen. The inline
-preview/alternates overlay was deferred: rendering it on the full three-town map
-exceeded Diamond's browser managed-value and evaluation budgets at three routes.
-The RPCs are the backend for a dedicated compact preview screen, and the
-existing full-map smoke test still passes.
+charged cells, and the route desk has a compact `SurveyPreviewPanel` for
+capacity/upkeep/trade, founding/material preview, mode comparison, and corridor
+selection. The panel keeps its options and preview in its own component state
+and fetches them on mount, so the full-map render and later survey events stay
+inside Diamond's browser managed-value and evaluation budgets. The full-map
+smoke test covers the preview and corridor flow at three routes.
 
 **Scale path.** Phases A–G are designed to run inside Diamond's budgets. At
 the design document's target scale (100–300 settlements, large maps), the

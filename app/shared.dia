@@ -2878,42 +2878,51 @@ fn has_project_for(projects: List<Project>, id: Text) -> Bool:
     bool_int(p.route_id == id or p.id == id)
   total(flags) > 0
 
-export fn can_build_route(game: Game) -> Bool:
-  let sel = game.sel
-  let slots = len(game.world.routes) + route_project_count(game.projects)
-  sel.ready and slots < max_routes() and len(game.projects) < max_projects() and not has_project_for(game.projects, sel.from + "-" + sel.to) and game.world.money >= sel.draft.money and combined_stock(game.world, sel.from, sel.to, Timber) >= sel.draft.timber and combined_stock(game.world, sel.from, sel.to, Stone) >= sel.draft.stone and not route_exists(game.world.routes, sel.from, sel.to, 0)
+export fn can_build_plan(world: World, projects: List<Project>, from: Text, to: Text, plan: RoutePlan, ready: Bool) -> Bool:
+  let slots = len(world.routes) + route_project_count(projects)
+  ready and slots < max_routes() and len(projects) < max_projects() and not has_project_for(projects, from + "-" + to) and world.money >= plan.money and combined_stock(world, from, to, Timber) >= plan.timber and combined_stock(world, from, to, Stone) >= plan.stone and not route_exists(world.routes, from, to, 0)
 
-export fn build_blocker(game: Game) -> Text:
-  let sel = game.sel
-  let world = game.world
-  let slots = len(world.routes) + route_project_count(game.projects)
-  match sel.ready:
+export fn can_build_route(game: Game) -> Bool:
+  can_build_plan(game.world, game.projects, game.sel.from, game.sel.to, game.sel.draft, game.sel.ready)
+
+export fn build_blocker_plan(world: World, projects: List<Project>, from: Text, to: Text, plan: RoutePlan, ready: Bool) -> Text:
+  let slots = len(world.routes) + route_project_count(projects)
+  match ready:
     false => "Survey a route first."
-    true => match len(game.projects) >= max_projects():
+    true => match len(projects) >= max_projects():
       true => "Two construction projects are already active. Wait for one to finish."
-      false => match has_project_for(game.projects, sel.from + "-" + sel.to):
+      false => match has_project_for(projects, from + "-" + to):
         true => "A route between these settlements is already under construction."
         false => match slots >= max_routes():
           true => "Three trunk routes are already built or under construction."
-          false => match route_exists(world.routes, sel.from, sel.to, 0):
+          false => match route_exists(world.routes, from, to, 0):
             true => "A route already connects these settlements."
-            false => match world.money < sel.draft.money:
-              true => "Need " + int_text(sel.draft.money) + " crowns; treasury has " + int_text(world.money) + "."
-              false => match combined_stock(world, sel.from, sel.to, Timber) < sel.draft.timber:
-                true => "Need " + int_text(sel.draft.timber) + " timber at the endpoints."
-                false => match combined_stock(world, sel.from, sel.to, Stone) < sel.draft.stone:
-                  true => "Need " + int_text(sel.draft.stone) + " stone at the endpoints."
+            false => match world.money < plan.money:
+              true => "Need " + int_text(plan.money) + " crowns; treasury has " + int_text(world.money) + "."
+              false => match combined_stock(world, from, to, Timber) < plan.timber:
+                true => "Need " + int_text(plan.timber) + " timber at the endpoints."
+                false => match combined_stock(world, from, to, Stone) < plan.stone:
+                  true => "Need " + int_text(plan.stone) + " stone at the endpoints."
                   false => "Ready to start construction."
 
-export fn construction_preview(game: Game) -> Text:
-  match game.sel.ready:
-    true => duration_text(construction_time(game.world, game.sel.from, game.sel.to, game.sel.draft, Path))
+export fn build_blocker(game: Game) -> Text:
+  build_blocker_plan(game.world, game.projects, game.sel.from, game.sel.to, game.sel.draft, game.sel.ready)
+
+export fn construction_preview_plan(world: World, from: Text, to: Text, plan: RoutePlan, ready: Bool) -> Text:
+  match ready:
+    true => duration_text(construction_time(world, from, to, plan, Path))
     false => "-"
 
-export fn build_button_text(game: Game) -> Text:
-  match game.sel.ready:
-    true => "Start construction · " + construction_preview(game)
+export fn construction_preview(game: Game) -> Text:
+  construction_preview_plan(game.world, game.sel.from, game.sel.to, game.sel.draft, game.sel.ready)
+
+export fn build_button_text_plan(world: World, projects: List<Project>, from: Text, to: Text, plan: RoutePlan, ready: Bool) -> Text:
+  match ready:
+    true => "Start construction · " + construction_preview_plan(world, from, to, plan, ready)
     false => "Start construction"
+
+export fn build_button_text(game: Game) -> Text:
+  build_button_text_plan(game.world, game.projects, game.sel.from, game.sel.to, game.sel.draft, game.sel.ready)
 
 export fn can_start_upgrade(game: Game, route: Route) -> Bool:
   len(game.projects) < max_projects() and not has_project_for(game.projects, route.id) and can_upgrade(game.world, route)
@@ -3197,6 +3206,12 @@ export fn server_apply(base: Game, fresh: Game) -> Game:
 
 export fn server_adopt(fresh: Game) -> Game:
   Game(world: fresh.world, sel: fresh.sel, notice: fresh.notice, last_ok: fresh.last_ok, route_groups: route_groups(fresh.world.routes), auto_upkeep: fresh.auto_upkeep, last_paid_tick: fresh.last_paid_tick, upkeep_per_cycle: fresh.upkeep_per_cycle, projects: fresh.projects, inspect: inspect_view(fresh.world, fresh.sel.selected))
+
+# Replace only the survey draft, keeping the loaded world. The preview RPC
+# returns a compact RoutePlan instead of a whole Game, which keeps the browser
+# event inside its managed-value budget.
+export fn game_with_plan(game: Game, from: Text, to: Text, plan: RoutePlan) -> Game:
+  Game(world: game.world, sel: survey_selection_plan(from, to, plan), notice: "", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
 
 export fn empty_game() -> Game:
   let world = World(seed: 7, tick: 0, money: 0, towns: [], sites: [], routes: [], log: [], history: [], tech_road: false, tech_river: false, tech_rail: false)

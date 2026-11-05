@@ -948,3 +948,10 @@ button.tiny { padding: 2px 8px; font-size: 13px; border-radius: 6px; }
   border-top: 1px solid var(--line-soft);
   padding-top: 18px;
 }
+
+
+.survey-preview {
+  margin: 8px 0 10px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 8px;
+}

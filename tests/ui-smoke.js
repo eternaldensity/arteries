@@ -93,6 +93,32 @@ function assert(condition, message) {
       (await page.locator('.shape-row').count()) > 0,
       `no waypoint shaping controls for ${a}-${b}`
     );
+    await page.getByRole('button', { name: 'Preview details' }).click();
+    await page.waitForSelector('#survey-preview', { state: 'visible', timeout: 10000 });
+    await page.waitForFunction(
+      () => (document.querySelector('#survey-preview')?.innerText || '').includes('Founds'),
+      null,
+      { timeout: 10000 }
+    );
+    const preview = (await page.locator('#survey-preview').innerText()).toLowerCase();
+    for (const label of ['capacity', 'upkeep/wk', 'trade/cycle', 'founds', 'corridors']) {
+      assert(preview.includes(label), `survey preview missing ${label} for ${a}-${b}`);
+    }
+    const corridors = page.getByRole('button', { name: /^Corridor \d+$/ });
+    assert((await corridors.count()) > 0, `no survey corridors for ${a}-${b}`);
+    await corridors.first().click();
+    await page.waitForTimeout(500);
+    await page.getByRole('button', { name: 'Preview details' }).click();
+    await page.waitForSelector('#survey-preview', { state: 'visible', timeout: 10000 });
+    await page.waitForFunction(
+      () => (document.querySelector('#survey-preview')?.innerText || '').includes('Founds'),
+      null,
+      { timeout: 10000 }
+    );
+    assert(
+      await page.locator('#survey-preview').isVisible(),
+      `corridor choice did not leave a refreshable preview for ${a}-${b}`
+    );
     await page.getByRole('button', { name: 'Bend route right' }).click();
     await page.waitForTimeout(450);
     await page.getByRole('button', { name: 'Auto shape' }).click();

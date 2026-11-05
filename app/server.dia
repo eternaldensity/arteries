@@ -1262,37 +1262,48 @@ export fn advance_finish() -> Result<Game, DataError>:
       let game = game_finish_period(current, state.settle_days, state.settle_from)
       save_game_window(game, 0, state.epoch, 0, 0)
 
+# Survey reads only need the seed, the town rows, and the site rows. Building a
+# compact World avoids materialising route groups, projects, logs, and history
+# on every keystroke-sized preview request.
+fn survey_world(seed: Int, town_rows: List<TownRow>, site_rows: List<SiteRow>) -> World:
+  let towns = for r in town_rows:
+    town_from_row(r)
+  let sites = for r in site_rows:
+    site_from_row(r)
+  World(seed: seed, tick: 0, money: 0, towns: towns, sites: sites, routes: [], log: [], history: [], tech_road: false, tech_river: false, tech_rail: false)
+
+fn survey_context() -> Result<World, DataError>:
+  let rows = worlds.select(limit: 1)?
+  match list_get(rows, 0):
+    None => Err("No world.")
+    Some(row) =>
+      let town_rows = towns.page(world: row.id, order: "ord", after: "", limit: 100)?
+      let site_rows = sites.page(world: row.id, order: "ord", after: "", limit: 100)?
+      Ok(survey_world(row.seed, town_rows, site_rows))
+
 export fn survey_options(from: Text, to: Text) -> Result<List<SurveyOption>, DataError>:
-  let state = load_state()?
-  let current = state_game(state, "")
-  let plans = survey_alternatives(current.world, from, to)
+  let world = survey_context()?
+  let plans = survey_alternatives(world, from, to)
   let options = for i in indices(len(plans)):
     let plan = nth_plan(plans, i)
     SurveyOption(index: i, bend: plan.bend, label: survey_alt_text(plan, i), length: plan.length, money: plan.money, water: plan.water)
   Ok(options)
 
-export fn survey_corridor(from: Text, to: Text, bend: Int) -> Result<Game, DataError>:
-  let state = load_state()?
-  let current = state_game(state, "")
-  let plan = plan_route_bend(current.world, from, to, bend)
-  let sel = survey_selection_plan(from, to, plan)
-  Ok(server_game(current.world, current.projects, current.auto_upkeep, current.last_paid_tick, current.upkeep_per_cycle, sel, "", true))
+export fn survey_corridor_plan(from: Text, to: Text, bend: Int) -> Result<RoutePlan, DataError>:
+  let world = survey_context()?
+  Ok(plan_route_bend(world, from, to, bend))
 
 export fn survey_preview(from: Text, to: Text, bend: Int) -> Result<SurveyPreview, DataError>:
-  let state = load_state()?
-  let current = state_game(state, "")
+  let world = survey_context()?
   let plan = match bend == auto_bend():
-    true => auto_plan(current.world, from, to)
-    false => plan_route_bend(current.world, from, to, bend)
-  Ok(SurveyPreview(capacity: route_capacity(Path, plan), upkeep: route_upkeep(Path, plan), trade: survey_trade_volume(current.world, from, to, plan), found: survey_found_text(current.world, plan), material: material_split_text(current.world, from, to, plan), warning: material_warning(current.world, from, to, plan)))
+    true => auto_plan(world, from, to)
+    false => plan_route_bend(world, from, to, bend)
+  Ok(SurveyPreview(capacity: route_capacity(Path, plan), upkeep: route_upkeep(Path, plan), trade: survey_trade_volume(world, from, to, plan), found: survey_found_text(world, plan), material: material_split_text(world, from, to, plan), warning: material_warning(world, from, to, plan)))
 
 # Fill the survey draft from the native pathfinding kernel.
-export fn survey_path(from: Text, to: Text) -> Result<Game, DataError>:
-  let state = load_state()?
-  let current = state_game(state, "")
-  let plan = auto_plan(current.world, from, to)
-  let sel = survey_selection_plan(from, to, plan)
-  Ok(server_game(current.world, current.projects, current.auto_upkeep, current.last_paid_tick, current.upkeep_per_cycle, sel, "", true))
+export fn survey_path_plan(from: Text, to: Text) -> Result<RoutePlan, DataError>:
+  let world = survey_context()?
+  Ok(auto_plan(world, from, to))
 
 export fn start_route(from: Text, to: Text, bend: Int) -> Result<Game, DataError>:
   let state = load_state()?
