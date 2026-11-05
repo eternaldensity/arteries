@@ -638,6 +638,114 @@ fn save_children(world: WorldId, game: Game) -> Result<Bool, DataError>:
   save_projects(game.projects, world, project_rows, 0)?
   Ok(true)
 
+# ---------------------------------------------------------------- compact tick
+
+fn town_row_index_small(rows: List<TownRow>, key: Text, start: Int, count: Int) -> Int:
+  match count <= 0:
+    true => -1
+    false => match list_get(rows, start):
+      None => -1
+      Some(row) => match row.key == key:
+        true => start
+        false => town_row_index_small(rows, key, start + 1, count - 1)
+
+fn town_row_index_range(rows: List<TownRow>, key: Text, start: Int, count: Int) -> Int:
+  match count <= 0:
+    true => -1
+    false => match count <= 8:
+      true => town_row_index_small(rows, key, start, count)
+      false =>
+        let half = count / 2
+        let left = town_row_index_range(rows, key, start, half)
+        match left >= 0:
+          true => left
+          false => town_row_index_range(rows, key, start + half, count - half)
+
+fn town_row_index(rows: List<TownRow>, key: Text) -> Int:
+  town_row_index_range(rows, key, 0, len(rows))
+
+fn town_state_row(row: TownRow) -> List<Int>:
+  [row.pop, row.prosperity, row.research, row.endow0, row.endow1, row.endow2, row.endow3, row.endow4, row.endow5, row.endow6, row.endow7, row.stock0, row.stock1, row.stock2, row.stock3, row.stock4, row.stock5, row.stock6, row.stock7]
+
+fn route_state_row(row: RouteRow, a: Int, b: Int) -> List<Int>:
+  [a, b, row.fee, row.traffic, row.capacity, row.upkeep]
+
+fn compact_town_edit(row: TownRow, values: List<Int>) -> EditTownRow:
+  EditTownRow(ord: row.ord, key: row.key, name: row.name, x: row.x, y: row.y, terrain: row.terrain, pop: nth_int(values, 0), prosperity: nth_int(values, 1), research: nth_int(values, 2), endow0: row.endow0, endow1: row.endow1, endow2: row.endow2, endow3: row.endow3, endow4: row.endow4, endow5: row.endow5, endow6: row.endow6, endow7: row.endow7, stock0: nth_int(values, 3), stock1: nth_int(values, 4), stock2: nth_int(values, 5), stock3: nth_int(values, 6), stock4: nth_int(values, 7), stock5: nth_int(values, 8), stock6: nth_int(values, 9), stock7: nth_int(values, 10))
+
+fn compact_route_edit(row: RouteRow, values: List<Int>) -> EditRouteRow:
+  EditRouteRow(ord: row.ord, key: row.key, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, bend: row.bend, fee: row.fee, traffic: nth_int(values, 0), capacity: row.capacity, upkeep: row.upkeep, waypoints: row.waypoints)
+
+fn save_compact_towns_small(rows: List<TownRow>, values: List<List<Int>>, start: Int, end: Int) -> Result<Bool, DataError>:
+  match start >= end:
+    true => Ok(true)
+    false => match list_get(rows, start):
+      None => Ok(true)
+      Some(row) => match list_get(values, start):
+        Some(row_values) =>
+          let updated = towns.update(row.id, compact_town_edit(row, row_values))?
+          save_compact_towns_small(rows, values, start + 1, end)
+        None => Ok(true)
+
+fn save_compact_towns(rows: List<TownRow>, values: List<List<Int>>, start: Int, end: Int) -> Result<Bool, DataError>:
+  match end <= start:
+    true => Ok(true)
+    false => match end - start <= 8:
+      true => save_compact_towns_small(rows, values, start, end)
+      false =>
+        let half = (end - start) / 2
+        save_compact_towns(rows, values, start, start + half)?
+        save_compact_towns(rows, values, start + half, end)
+
+fn save_compact_routes_small(rows: List<RouteRow>, values: List<List<Int>>, start: Int, end: Int) -> Result<Bool, DataError>:
+  match start >= end:
+    true => Ok(true)
+    false => match list_get(rows, start):
+      None => Ok(true)
+      Some(row) => match list_get(values, start):
+        Some(row_values) =>
+          let updated = routes.update(row.id, compact_route_edit(row, row_values))?
+          save_compact_routes_small(rows, values, start + 1, end)
+        None => Ok(true)
+
+fn save_compact_routes(rows: List<RouteRow>, values: List<List<Int>>, start: Int, end: Int) -> Result<Bool, DataError>:
+  match end <= start:
+    true => Ok(true)
+    false => match end - start <= 8:
+      true => save_compact_routes_small(rows, values, start, end)
+      false =>
+        let half = (end - start) / 2
+        save_compact_routes(rows, values, start, start + half)?
+        save_compact_routes(rows, values, start + half, end)
+
+fn compact_scale_at(row: WorldRow, tick: Int) -> Int:
+  match row.auto_upkeep:
+    true => 100
+    false => match tick / hours_per_week() - row.last_paid_tick / hours_per_week() >= 2:
+      true => 50
+      false => 100
+
+fn compact_scale(row: WorldRow) -> Int:
+  compact_scale_at(row, row.tick)
+
+fn town_cursor(rows: List<TownRow>) -> Result<Text, DataError>:
+  match list_get(rows, len(rows) - 1):
+    Some(row) => towns.cursor(row: row, order: "ord")
+    None => Ok("")
+
+fn has_routes(world: WorldId) -> Result<Bool, DataError>:
+  let rows = routes.page(world: world, order: "ord", after: "", limit: 1)?
+  Ok(len(rows) > 0)
+
+fn compact_summary(row: WorldRow, town_rows: List<TownRow>, route_rows: List<RouteRow>) -> List<Int>:
+  let pops = for t in town_rows:
+    t.pop
+  let props = for t in town_rows:
+    t.prosperity
+  let traffic = for r in route_rows:
+    r.traffic
+  [row.tick, row.money, total(pops), total(props), total(traffic)]
+
 fn with_streams(world: World, entries: List<Text>, values: List<Int>) -> World:
   World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: entries, history: values, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
 
@@ -695,12 +803,117 @@ fn bounded_hours(hours: Int) -> Int:
       true => 672
       false => hours
 
+fn bounded_limit(limit: Int) -> Int:
+  match limit < 1:
+    true => 1
+    false => match limit > 100:
+      true => 100
+      false => limit
+
 fn settlement_days(start: Int, target: Int, cadence: Text) -> Int:
   match cadence == "weekly":
     true => (target / hours_per_week() - start / hours_per_week()) * days_per_week()
     false => match cadence == "monthly":
       true => (target / hours_per_month() - start / hours_per_month()) * days_per_month()
       false => target / hours_per_day() - start / hours_per_day()
+
+fn compact_with_row(row: WorldRow, hours: Int, cadence: Text) -> Result<List<Int>, DataError>:
+  let town_rows = towns.page(world: row.id, order: "ord", after: "", limit: 100)?
+  let route_rows = routes.page(world: row.id, order: "ord", after: "", limit: 100)?
+  let start = row.tick
+  let target = start + bounded_hours(hours)
+  let days = settlement_days(start, target, cadence)
+  match row.phase == 1 or days <= 0:
+    true => Ok(compact_summary(row, town_rows, route_rows))
+    false =>
+      let town_values = for t in town_rows:
+        town_state_row(t)
+      let route_values = for r in route_rows:
+        route_state_row(r, town_row_index(town_rows, r.a), town_row_index(town_rows, r.b))
+      let result = host.compute<List<List<Int>>>("arteries", "market", row.money, town_values, route_values, days, compact_scale(row))?
+      let money_row = match list_get(result, 0):
+        Some(values) => values
+        None => []
+      let money = nth_int(money_row, 0)
+      let updated_towns = list_slice(result, 1, len(town_rows))
+      let updated_routes = list_slice(result, 1 + len(town_rows), len(route_rows))
+      save_compact_towns(town_rows, updated_towns, 0, len(town_rows))?
+      save_compact_routes(route_rows, updated_routes, 0, len(route_rows))?
+      let updated = worlds.update(row.id, EditWorldRow(seed: row.seed, tick: target, money: money, tech_road: row.tech_road, tech_river: row.tech_river, tech_rail: row.tech_rail, auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: 1, epoch: row.epoch, settle_days: days, settle_from: start))?
+      let pops = for values in updated_towns:
+        nth_int(values, 0)
+      let props = for values in updated_towns:
+        nth_int(values, 1)
+      let traffic = for values in updated_routes:
+        nth_int(values, 0)
+      let summary = [target, money, total(pops), total(props), total(traffic)]
+      Ok(summary)
+
+# Market phase for large frontiers: rows go to the Rust kernel and back without
+# constructing a World. Returns [tick, money, total_pop, total_prosperity,
+# total_traffic]. The existing advance_finish can finish the staged phase.
+export fn advance_compact(hours: Int, cadence: Text) -> Result<List<Int>, DataError>:
+  let rows = worlds.select(limit: 1)?
+  match list_get(rows, 0):
+    Some(row) => compact_with_row(row, hours, cadence)
+    None =>
+      let loaded = load_state()?
+      match list_get(worlds.select(limit: 1)?, 0):
+        Some(row) => compact_with_row(row, hours, cadence)
+        None => Ok([loaded.world.tick, loaded.world.money, total_pop(loaded.world), total_prosperity(loaded.world), 0])
+
+fn compact_edit_world(row: WorldRow, tick: Int, money: Int, phase: Int, settle_days: Int, settle_from: Int) -> EditWorldRow:
+  EditWorldRow(seed: row.seed, tick: tick, money: money, tech_road: row.tech_road, tech_river: row.tech_river, tech_rail: row.tech_rail, auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: phase, epoch: row.epoch, settle_days: settle_days, settle_from: settle_from)
+
+fn compact_start(row: WorldRow, hours: Int, cadence: Text) -> Result<WorldRow, DataError>:
+  let start = row.tick
+  let target = start + bounded_hours(hours)
+  let days = settlement_days(start, target, cadence)
+  worlds.update(row.id, compact_edit_world(row, target, row.money, 2, days, start))
+
+fn compact_chunk_page(row: WorldRow, after: Text, limit: Int) -> Result<List<Text>, DataError>:
+  let town_rows = towns.page(world: row.id, order: "ord", after: after, limit: limit)?
+  match len(town_rows) == 0:
+    true => match has_routes(row.id)?:
+      true => Ok(["", "3", int_text(row.tick), int_text(row.money), "0", "0"])
+      false =>
+        let done = worlds.update(row.id, compact_edit_world(row, row.tick, row.money, 1, row.settle_days, row.settle_from))?
+        Ok(["", "1", int_text(done.tick), int_text(done.money), "0", "0"])
+    false =>
+      let town_values = for t in town_rows:
+        town_state_row(t)
+      let no_routes = []
+      let result = host.compute<List<List<Int>>>("arteries", "market", row.money, town_values, no_routes, row.settle_days, compact_scale_at(row, row.settle_from))?
+      let money_row = match list_get(result, 0):
+        Some(values) => values
+        None => []
+      let money = nth_int(money_row, 0)
+      let updated_towns = list_slice(result, 1, len(town_rows))
+      save_compact_towns(town_rows, updated_towns, 0, len(town_rows))?
+      let pops = for values in updated_towns:
+        nth_int(values, 0)
+      let props = for values in updated_towns:
+        nth_int(values, 1)
+      let cursor = town_cursor(town_rows)?
+      Ok([cursor, "2", int_text(row.tick), int_text(money), int_text(total(pops)), int_text(total(props))])
+
+# One bounded production page for a large frontier. The client calls this with
+# after="" and then with each returned cursor until phase=1. Market trade and
+# finish remain on the staged path until their chunked slices land.
+export fn advance_compact_chunk(hours: Int, cadence: Text, after: Text, limit: Int) -> Result<List<Text>, DataError>:
+  let rows = worlds.select(limit: 1)?
+  match list_get(rows, 0):
+    None => Ok(["", "1", "0", "0", "0", "0"])
+    Some(row) =>
+      let page_limit = bounded_limit(limit)
+      let start_row = match row.phase == 0:
+        true => compact_start(row, hours, cadence)?
+        false => row
+      match start_row.phase == 1:
+        true => Ok(["", "1", int_text(start_row.tick), int_text(start_row.money), "0", "0"])
+        false => match start_row.phase == 3:
+          true => Ok(["", "3", int_text(start_row.tick), int_text(start_row.money), "0", "0"])
+          false => compact_chunk_page(start_row, after, page_limit)
 
 export fn advance_market(hours: Int, cadence: Text) -> Result<Game, DataError>:
   let state = load_state()?

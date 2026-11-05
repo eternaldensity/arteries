@@ -10,10 +10,15 @@
 //! snapshot of the Diamond output for the default seed range.
 
 mod path;
+mod tick;
 
 pub use path::{
     pathfind, route_cost, Grid, GridPoint, RouteStats, TravelMode, MAX_GRID_CELLS, MAX_GRID_SIDE,
     MAX_PATH_POINTS,
+};
+pub use tick::{
+    market, TickRoute, TickState, TickTown, CLOTH, FIBER, FISH, GOOD_COUNT, GRAIN, ORE, STONE,
+    TIMBER, TOOLS,
 };
 
 /// Map width in cells.

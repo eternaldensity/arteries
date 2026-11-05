@@ -188,10 +188,11 @@ core/
   Cargo.toml       arteries-core crate plus the arteries-gen CLI
   src/lib.rs       deterministic terrain, frozen against the Diamond oracle
   src/path.rs      A* pathfinding and rasterized route accounting
+  src/tick.rs      deterministic market tick for large frontiers
   src/main.rs      terrain exporter
 runner/
   Cargo.toml       arteries-runner: serves an Arteries project with compute
-  src/lib.rs       kernel implementations (terrain_region, pathfind, route_cost)
+  src/lib.rs       kernels (terrain_region, pathfind, route_cost, market)
   src/main.rs      serve binary, requires DIAMOND_POSTGRES_URL
   tests/           validate_compute + end-to-end dispatch against probe projects
 tools/
@@ -203,6 +204,8 @@ tools/
   plan_codec_main.dia   standalone codec check appended by that script
   check-tick-scale.sh   probe the staged tick at a chosen settlement count
   tick_scale_main.dia   synthetic frontier tick appended by that script
+  check-tick-market.sh  diff the Rust market kernel against shared.dia
+  tick_market_main.dia  fixed two-town market fixture for that diff
 tests/
   ui-smoke.js      real-browser acceptance and exploration driver
 ```
@@ -245,6 +248,12 @@ Verify the persisted route-plan codec against the real shared module:
 
 ```sh
 ./tools/check-plan-codec.sh
+```
+
+Check the Rust market kernel against the Diamond market on a fixed frontier:
+
+```sh
+./tools/check-tick-market.sh
 ```
 
 Probe the staged tick's scale limit (default 5 settlements; raise `SETTLEMENTS`

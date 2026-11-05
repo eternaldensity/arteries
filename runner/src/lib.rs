@@ -7,7 +7,8 @@
 //! this binary instead.
 
 use arteries_core::{
-    pathfind, region_text, route_cost, Grid, GridPoint, TravelMode, MAP_H, MAP_W, MAX_SEED,
+    market, pathfind, region_text, route_cost, Grid, GridPoint, TickRoute, TickState, TickTown,
+    TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED,
 };
 use diamond::{Compute, ComputeContext, ComputeError, RuntimeGrants};
 use serde_json::Value as Json;
@@ -176,6 +177,103 @@ impl Compute for RouteCost {
     }
 }
 
+/// Pure-compute export `arteries.market`.
+///
+/// Arguments: `(money, towns, routes, days, scale)`.
+///
+/// Each town row is `[pop, prosperity, research, 8 endowments, 8 stocks]`.
+/// Each route row is `[a_index, b_index, fee, traffic, capacity, upkeep]`.
+///
+/// Reply: `[money]`, one `[pop, prosperity, research, 8 stocks]` row per town,
+/// then one `[traffic]` row per route.
+pub struct Market;
+
+impl Market {
+    /// Validate wire arguments and run one market phase.
+    ///
+    /// # Errors
+    /// Returns [`ComputeError::InvalidInput`] for malformed rows or out-of-range
+    /// town indices.
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 5 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let money = int_arg(arguments, 0)?;
+        let town_rows = nested_int_list_arg(arguments, 1)?;
+        let route_rows = nested_int_list_arg(arguments, 2)?;
+        let days = int_arg(arguments, 3)?;
+        let scale = int_arg(arguments, 4)?;
+
+        let mut towns = Vec::with_capacity(town_rows.len());
+        for row in &town_rows {
+            if row.len() != 3 + GOOD_COUNT * 2 {
+                return Err(ComputeError::InvalidInput);
+            }
+            let mut endow = [0_i64; GOOD_COUNT];
+            let mut stock = [0_i64; GOOD_COUNT];
+            endow.copy_from_slice(&row[3..3 + GOOD_COUNT]);
+            stock.copy_from_slice(&row[3 + GOOD_COUNT..]);
+            towns.push(TickTown {
+                pop: row[0],
+                prosperity: row[1],
+                research: row[2],
+                endow,
+                stock,
+            });
+        }
+
+        let mut routes = Vec::with_capacity(route_rows.len());
+        for row in &route_rows {
+            if row.len() != 6 {
+                return Err(ComputeError::InvalidInput);
+            }
+            let a = usize::try_from(row[0]).map_err(|_| ComputeError::InvalidInput)?;
+            let b = usize::try_from(row[1]).map_err(|_| ComputeError::InvalidInput)?;
+            if a >= towns.len() || b >= towns.len() {
+                return Err(ComputeError::InvalidInput);
+            }
+            routes.push(TickRoute {
+                a,
+                b,
+                fee: row[2],
+                traffic: row[3],
+                capacity: row[4],
+                upkeep: row[5],
+            });
+        }
+
+        let mut state = TickState {
+            money,
+            towns,
+            routes,
+        };
+        market(&mut state, days, scale);
+
+        let mut result = Vec::with_capacity(1 + state.towns.len() + state.routes.len());
+        result.push(vec![state.money]);
+        for town in &state.towns {
+            let mut row = Vec::with_capacity(3 + GOOD_COUNT);
+            row.extend([town.pop, town.prosperity, town.research]);
+            row.extend(town.stock);
+            result.push(row);
+        }
+        for route in &state.routes {
+            result.push(vec![route.traffic]);
+        }
+        Ok(nested_int_list_json(result))
+    }
+}
+
+impl Compute for Market {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
 fn int_arg(arguments: &[Json], index: usize) -> Result<i64, ComputeError> {
     arguments
         .get(index)
@@ -215,6 +313,31 @@ fn int_list_json(values: impl IntoIterator<Item = i64>) -> Json {
     )
 }
 
+fn nested_int_list_arg(arguments: &[Json], index: usize) -> Result<Vec<Vec<i64>>, ComputeError> {
+    arguments
+        .get(index)
+        .and_then(Json::as_array)
+        .ok_or(ComputeError::InvalidInput)?
+        .iter()
+        .map(|row| {
+            row.as_array()
+                .ok_or(ComputeError::InvalidInput)?
+                .iter()
+                .map(|value| {
+                    value
+                        .as_str()
+                        .and_then(|text| text.parse().ok())
+                        .ok_or(ComputeError::InvalidInput)
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn nested_int_list_json(rows: impl IntoIterator<Item = Vec<i64>>) -> Json {
+    Json::Array(rows.into_iter().map(int_list_json).collect())
+}
+
 fn parse_point(text: &str) -> Result<GridPoint, ComputeError> {
     let (x, y) = text.split_once(',').ok_or(ComputeError::InvalidInput)?;
     let x = x.parse().map_err(|_| ComputeError::InvalidInput)?;
@@ -244,6 +367,13 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
         &["Text", "List<Int>", "Text"],
         "List<Int>",
         RouteCost,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "market",
+        &["Int", "List<List<Int>>", "List<List<Int>>", "Int", "Int"],
+        "List<List<Int>>",
+        Market,
     )?;
     Ok(())
 }

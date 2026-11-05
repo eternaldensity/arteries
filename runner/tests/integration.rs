@@ -1,5 +1,5 @@
 use arteries_core::{MAP_H, MAP_W, MAX_SEED};
-use arteries_runner::{Pathfind, RouteCost, TerrainRegion};
+use arteries_runner::{Market, Pathfind, RouteCost, TerrainRegion};
 use serde_json::{json, Value as Json};
 use std::path::Path;
 
@@ -172,6 +172,104 @@ fn pathfind_runs_on_a_64_by_64_grid_through_the_abi() {
     assert_eq!(points.get(1), Some(&json!("0")));
     assert_eq!(points.get(points.len() - 2), Some(&json!("63")));
     assert_eq!(points.last(), Some(&json!("63")));
+}
+
+#[test]
+fn market_kernel_matches_the_diamond_market_period() {
+    let towns = json!([
+        [
+            "4", "6", "0", "4", "0", "0", "0", "1", "0", "0", "0", "16", "4", "4", "4", "2", "0",
+            "0", "4"
+        ],
+        [
+            "4", "6", "0", "0", "3", "1", "0", "0", "0", "0", "0", "8", "6", "2", "0", "0", "0",
+            "0", "0"
+        ]
+    ]);
+    let routes = json!([["0", "1", "1", "0", "20", "1"]]);
+    let reply =
+        Market::evaluate(&[json!("160"), towns, routes, json!("7"), json!("100")]).expect("market");
+    assert_eq!(
+        reply,
+        json!([
+            ["163"],
+            ["5", "26", "98", "11", "3", "3", "4", "2", "0", "0", "0"],
+            ["3", "0", "42", "3", "27", "9", "0", "0", "0", "0", "0"],
+            ["3"]
+        ])
+    );
+}
+
+#[test]
+fn market_kernel_handles_a_hundred_towns_through_the_abi() {
+    let mut towns = Vec::with_capacity(100);
+    for i in 0..100 {
+        let mut row = vec![
+            (3 + i % 5).to_string(),
+            (4 + i % 7).to_string(),
+            i.to_string(),
+        ];
+        row.extend(["4", "1", "1", "1", "1", "0", "0", "1"].map(String::from));
+        row.extend(["12", "4", "4", "4", "2", "0", "0", "3"].map(String::from));
+        towns.push(Json::Array(row.into_iter().map(Json::String).collect()));
+    }
+    let mut routes = Vec::with_capacity(50);
+    for i in 0..50 {
+        routes.push(json!([
+            i.to_string(),
+            (i + 1).to_string(),
+            "1",
+            "0",
+            "20",
+            "1"
+        ]));
+    }
+    let reply = Market::evaluate(&[
+        json!("10000"),
+        Json::Array(towns),
+        Json::Array(routes),
+        json!("28"),
+        json!("100"),
+    ])
+    .expect("market");
+    let rows = reply.as_array().expect("nested list");
+    assert_eq!(rows.len(), 1 + 100 + 50);
+    assert_eq!(
+        rows[0].as_array().map(Vec::len),
+        Some(1),
+        "money row must be scalar"
+    );
+    assert!(rows[1..=100]
+        .iter()
+        .all(|row| row.as_array().is_some_and(|values| values.len() == 11)));
+    assert!(rows[101..]
+        .iter()
+        .all(|row| row.as_array().is_some_and(|values| values.len() == 1)));
+}
+
+#[test]
+fn market_kernel_rejects_malformed_rows() {
+    let good_town = json!([
+        "4", "6", "0", "4", "0", "0", "0", "1", "0", "0", "0", "16", "4", "4", "4", "2", "0", "0",
+        "4"
+    ]);
+    for (towns, routes) in [
+        (json!([["4"]]), json!([])),
+        (json!([good_town.clone()]), json!([["0", "0", "1"]])),
+        (
+            json!([good_town.clone()]),
+            json!([["0", "2", "1", "0", "20", "1"]]),
+        ),
+        (
+            json!([good_town.clone()]),
+            json!([["-1", "0", "1", "0", "20", "1"]]),
+        ),
+    ] {
+        assert_eq!(
+            Market::evaluate(&[json!("0"), towns, routes, json!("1"), json!("100")]),
+            Err(diamond::ComputeError::InvalidInput)
+        );
+    }
 }
 
 #[test]

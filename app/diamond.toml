@@ -4,7 +4,7 @@ name = "ArteriesWeb"
 server = "server"
 browser = "ui"
 component = "Root"
-provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>"]
 styles = ["app.css"]
 
 [modules.shared]
@@ -20,7 +20,7 @@ target = "shared"
 path = "server.dia"
 target = "server"
 imports = ["shared"]
-provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>"]
 
 [modules.ui]
 path = "ui.dia"
@@ -30,6 +30,8 @@ imports = ["shared"]
 [rpc]
 load_game = "server.load_game"
 advance_market = "server.advance_market"
+advance_compact = "server.advance_compact"
+advance_compact_chunk = "server.advance_compact_chunk"
 advance_finish = "server.advance_finish"
 start_route = "server.start_route"
 order_upgrade = "server.order_upgrade"
@@ -123,4 +125,12 @@ result = "List<Int>"
 deterministic = true
 max_input_bytes = 131072
 max_output_bytes = 4096
+max_duration_ms = 2000
+
+[compute.arteries.exports.market]
+arguments = ["Int", "List<List<Int>>", "List<List<Int>>", "Int", "Int"]
+result = "List<List<Int>>"
+deterministic = true
+max_input_bytes = 262144
+max_output_bytes = 131072
 max_duration_ms = 2000
