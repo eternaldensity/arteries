@@ -4,7 +4,7 @@ name = "ArteriesWeb"
 server = "server"
 browser = "ui"
 component = "Root"
-provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>"]
 styles = ["app.css"]
 
 [modules.shared]
@@ -20,7 +20,7 @@ target = "shared"
 path = "server.dia"
 target = "server"
 imports = ["shared"]
-provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>"]
 
 [modules.ui]
 path = "ui.dia"
@@ -35,6 +35,7 @@ start_route = "server.start_route"
 order_upgrade = "server.order_upgrade"
 dismantle = "server.dismantle"
 cancel_project = "server.cancel_project"
+terrain_region = "server.terrain_region"
 set_fee = "server.set_fee"
 pay_upkeep = "server.pay_upkeep"
 toggle_auto = "server.toggle_auto"
@@ -98,3 +99,11 @@ fields = { world = "id" }
 [identity]
 profile = "accounts-v1"
 enrollment = "invite"
+
+[compute.arteries]
+kind = "host"
+
+[compute.arteries.exports.terrain_region]
+arguments = ["Int", "Int", "Int", "Int", "Int", "Int", "Int"]
+result = "Text"
+deterministic = true

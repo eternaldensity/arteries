@@ -4,7 +4,8 @@
  *
  * Requires:
  *   - a server for the current build, e.g.
- *       diamond serve .diamond/app-build --listen 127.0.0.1:3010
+ *       arteries-runner app/diamond.toml --listen 127.0.0.1:3010
+ *   (or, without compute, `diamond serve .diamond/app-build --listen ...`)
  *   - a freshly initialized PostgreSQL database and provisioned account
  *   - playwright-core and a Chromium executable
  *

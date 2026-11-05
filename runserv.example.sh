@@ -13,9 +13,10 @@
 #
 # Optional:
 #   UI_USER                Account name (default: player)
-#   MAILBOX                Private identity mail directory (default: .diamond/mail)
+#   MAILBOX                Private identity mail directory (default: .diamond/mailbox)
 #   PORT                   Loopback HTTP port (default: 3032)
 #   DIAMOND                Path to the Diamond executable (default: PATH lookup)
+#   RUNNER                 Path to the arteries-runner executable (default: PATH lookup)
 #
 # Example:
 #   DIAMOND_POSTGRES_URL='host=/path/to/socket dbname=arteries user=me' \
@@ -30,11 +31,17 @@ if [ -z "$DIAMOND" ]; then
   exit 1
 fi
 
+RUNNER=${RUNNER:-$(command -v arteries-runner || true)}
+if [ -z "$RUNNER" ]; then
+  echo "arteries-runner not found; build runner/ or set RUNNER=/path/to/arteries-runner" >&2
+  exit 1
+fi
+
 : "${DIAMOND_POSTGRES_URL:?set DIAMOND_POSTGRES_URL to the app database connection string}"
 : "${UI_PASSWORD:?set UI_PASSWORD for the development account}"
 
 UI_USER=${UI_USER:-player}
-MAILBOX=${MAILBOX:-.diamond/mail}
+MAILBOX=${MAILBOX:-.diamond/mailbox}
 PORT=${PORT:-3032}
 
 case "$UI_USER" in
@@ -63,7 +70,5 @@ else
 fi
 
 echo "Serving http://127.0.0.1:${PORT}/"
-exec "$DIAMOND" serve build --listen "127.0.0.1:${PORT}" \
-  --postgres-env DIAMOND_POSTGRES_URL \
-  --identity-mailbox "$MAILBOX" \
-  --origin "http://127.0.0.1:${PORT}"
+exec "$RUNNER" app/diamond.toml "127.0.0.1:${PORT}" "http://127.0.0.1:${PORT}" \
+  --mailbox "$MAILBOX"
