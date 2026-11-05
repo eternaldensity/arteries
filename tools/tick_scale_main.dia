@@ -1,0 +1,24 @@
+# Appended by tools/check-tick-scale.sh after stripping `export` from
+# app/shared.dia. Builds a synthetic frontier and runs one staged tick.
+
+fn scale_towns(base: List<Town>, count: Int) -> List<Town>:
+  for i in indices(count):
+    let b = nth_town(base, mod_int(i, len(base)))
+    Town(id: "n" + int_text(i), name: b.name, x: b.x, y: b.y, terrain: b.terrain, endow: b.endow, state: b.state)
+
+fn scale_routes(towns: List<Town>, count: Int) -> List<Route>:
+  for i in indices(count):
+    let a = nth_town(towns, i)
+    let b = nth_town(towns, i + 1)
+    Route(id: "r" + int_text(i), a: a.id, b: b.id, a_name: a.name, b_name: b.name, mode: Road, plan: empty_plan(), fee: 1, traffic: 0, capacity: 20, upkeep: 1)
+
+fn scale_world(seed: Int, towns: Int, routes: Int) -> World:
+  let base = new_world(seed)
+  let made = scale_towns(base.towns, towns)
+  World(seed: seed, tick: 0, money: 160, towns: made, sites: [], routes: scale_routes(made, routes), log: [], history: [], tech_road: false, tech_river: false, tech_rail: false)
+
+fn main() -> Text:
+  let world = scale_world(7, __SETTLEMENTS__, 3)
+  let market = market_period(world, 28, 100)
+  let finished = finish_period(market, 28, 0)
+  "ok|" + int_text(finished.tick) + "|" + int_text(finished.money) + "|" + int_text(total_pop(finished))

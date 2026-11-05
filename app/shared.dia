@@ -397,18 +397,39 @@ fn replace_text(xs: List<Text>, i: Int, v: Text) -> List<Text>:
       true => v
       false => nth_text(xs, x)
 
-export fn indices(n: Int) -> List<Int>:
-  match n <= 0:
-    true => []
-    false => list_append(indices(n - 1), n - 1)
+fn append_index_chunk(acc: List<Int>, start: Int, count: Int) -> List<Int>:
+  match count <= 0:
+    true => acc
+    false => append_index_chunk(list_append(acc, start), start + 1, count - 1)
 
-fn sum_ints(xs: List<Int>, i: Int) -> Int:
-  match list_get(xs, i):
-    None => 0
-    Some(v) => v + sum_ints(xs, i + 1)
+fn indices_from(start: Int, remaining: Int, acc: List<Int>) -> List<Int>:
+  match remaining <= 0:
+    true => acc
+    false =>
+      let take = min_int(remaining, 16)
+      indices_from(start + take, remaining - take, append_index_chunk(acc, start, take))
+
+export fn indices(n: Int) -> List<Int>:
+  indices_from(0, n, [])
+
+# Balanced list folds keep call depth logarithmic, so 100+ settlements stay
+# inside Diamond's depth-64 limit. Each leaf walks at most eight items.
+fn sum_small(xs: List<Int>, start: Int, count: Int) -> Int:
+  match count <= 0:
+    true => 0
+    false => nth_int(xs, start) + sum_small(xs, start + 1, count - 1)
+
+fn sum_range(xs: List<Int>, start: Int, count: Int) -> Int:
+  match count <= 0:
+    true => 0
+    false => match count <= 8:
+      true => sum_small(xs, start, count)
+      false =>
+        let half = count / 2
+        sum_range(xs, start, half) + sum_range(xs, start + half, count - half)
 
 export fn total(xs: List<Int>) -> Int:
-  sum_ints(xs, 0)
+  sum_range(xs, 0, len(xs))
 
 fn concat_lists(xs: List<Text>, ys: List<Text>) -> List<Text>:
   match len(xs) == 0:
@@ -847,30 +868,58 @@ export fn seed_world(world: World, seed: Int) -> World:
 
 # ---------------------------------------------------------------- town lookup
 
-export fn find_town(towns: List<Town>, id: Text) -> Town:
-  find_town_at(towns, id, 0)
+fn find_town_small(towns: List<Town>, id: Text, start: Int, count: Int) -> Town:
+  match count <= 0:
+    true => empty_town()
+    false => match list_get(towns, start):
+      None => empty_town()
+      Some(t) => match t.id == id:
+        true => t
+        false => find_town_small(towns, id, start + 1, count - 1)
 
-fn find_town_at(towns: List<Town>, id: Text, i: Int) -> Town:
-  match list_get(towns, i):
-    None => empty_town()
-    Some(t) => match t.id == id:
-      true => t
-      false => find_town_at(towns, id, i + 1)
+fn find_town_range(towns: List<Town>, id: Text, start: Int, count: Int) -> Town:
+  match count <= 0:
+    true => empty_town()
+    false => match count <= 8:
+      true => find_town_small(towns, id, start, count)
+      false =>
+        let half = count / 2
+        let left = find_town_range(towns, id, start, half)
+        match left.id == "":
+          true => find_town_range(towns, id, start + half, count - half)
+          false => left
+
+export fn find_town(towns: List<Town>, id: Text) -> Town:
+  find_town_range(towns, id, 0, len(towns))
 
 export fn town_exists(world: World, id: Text) -> Bool:
   match id == "":
     true => false
     false => find_town(world.towns, id).id != ""
 
-export fn find_site(sites: List<Site>, id: Text) -> Site:
-  find_site_at(sites, id, 0)
+fn find_site_small(sites: List<Site>, id: Text, start: Int, count: Int) -> Site:
+  match count <= 0:
+    true => Site(id: "", name: "", x: 0, y: 0, terrain: Plains, resource: Grain, richness: 0, founded: false)
+    false => match list_get(sites, start):
+      None => Site(id: "", name: "", x: 0, y: 0, terrain: Plains, resource: Grain, richness: 0, founded: false)
+      Some(s) => match s.id == id:
+        true => s
+        false => find_site_small(sites, id, start + 1, count - 1)
 
-fn find_site_at(sites: List<Site>, id: Text, i: Int) -> Site:
-  match list_get(sites, i):
-    None => Site(id: "", name: "", x: 0, y: 0, terrain: Plains, resource: Grain, richness: 0, founded: false)
-    Some(s) => match s.id == id:
-      true => s
-      false => find_site_at(sites, id, i + 1)
+fn find_site_range(sites: List<Site>, id: Text, start: Int, count: Int) -> Site:
+  match count <= 0:
+    true => Site(id: "", name: "", x: 0, y: 0, terrain: Plains, resource: Grain, richness: 0, founded: false)
+    false => match count <= 8:
+      true => find_site_small(sites, id, start, count)
+      false =>
+        let half = count / 2
+        let left = find_site_range(sites, id, start, half)
+        match left.id == "":
+          true => find_site_range(sites, id, start + half, count - half)
+          false => left
+
+export fn find_site(sites: List<Site>, id: Text) -> Site:
+  find_site_range(sites, id, 0, len(sites))
 
 export fn replace_town(towns: List<Town>, t: Town) -> List<Town>:
   for x in towns:
@@ -1236,7 +1285,7 @@ export fn marker_kind(world: World, id: Text) -> Text:
     false => "site"
 
 fn marker_terrain(world: World, x: Int, y: Int) -> Terrain:
-  let t = find_town_at(world.towns, cell_marker(world, x, y), 0)
+  let t = find_town(world.towns, cell_marker(world, x, y))
   match t.id != "":
     true => t.terrain
     false => terrain_at(world.seed, x, y)
@@ -1850,12 +1899,32 @@ export fn build_route(world: World, a: Text, b: Text, plan: RoutePlan) -> BuildR
               let w = World(seed: world.seed, tick: world.tick, money: world.money - plan.money, towns: found.towns, sites: found.sites, routes: list_append(world.routes, route), log: found.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
               BuildResult(world: w, ok: true, message: "Route built. " + route.a_name + " and " + route.b_name + " are connected.", from: "", to: "")
 
+fn empty_route() -> Route:
+  Route(id: "", a: "", b: "", a_name: "", b_name: "", mode: NoRoute, plan: empty_plan(), fee: 0, traffic: 0, capacity: 0, upkeep: 0)
+
+fn route_by_id_small(routes: List<Route>, id: Text, start: Int, count: Int) -> Route:
+  match count <= 0:
+    true => empty_route()
+    false => match list_get(routes, start):
+      None => empty_route()
+      Some(r) => match r.id == id:
+        true => r
+        false => route_by_id_small(routes, id, start + 1, count - 1)
+
+fn route_by_id_range(routes: List<Route>, id: Text, start: Int, count: Int) -> Route:
+  match count <= 0:
+    true => empty_route()
+    false => match count <= 8:
+      true => route_by_id_small(routes, id, start, count)
+      false =>
+        let half = count / 2
+        let left = route_by_id_range(routes, id, start, half)
+        match left.id == "":
+          true => route_by_id_range(routes, id, start + half, count - half)
+          false => left
+
 fn route_by_id(routes: List<Route>, id: Text, i: Int) -> Route:
-  match list_get(routes, i):
-    None => Route(id: "", a: "", b: "", a_name: "", b_name: "", mode: NoRoute, plan: empty_plan(), fee: 0, traffic: 0, capacity: 0, upkeep: 0)
-    Some(r) => match r.id == id:
-      true => r
-      false => route_by_id(routes, id, i + 1)
+  route_by_id_range(routes, id, i, len(routes) - i)
 
 export fn route_lookup(world: World, id: Text) -> Route:
   route_by_id(world.routes, id, 0)
@@ -2370,10 +2439,22 @@ fn trade_pass(net: NetState, i: Int, scale: Int) -> NetState:
     None => net
     Some(r) => trade_pass(trade_net(net, r, scale), i + 1, scale)
 
+fn max_research_small(towns: List<Town>, start: Int, count: Int) -> Int:
+  match count <= 0:
+    true => 0
+    false => max_int(nth_town(towns, start).state.research, max_research_small(towns, start + 1, count - 1))
+
+fn max_research_range(towns: List<Town>, start: Int, count: Int) -> Int:
+  match count <= 0:
+    true => 0
+    false => match count <= 8:
+      true => max_research_small(towns, start, count)
+      false =>
+        let half = count / 2
+        max_int(max_research_range(towns, start, half), max_research_range(towns, start + half, count - half))
+
 fn max_research(towns: List<Town>, i: Int) -> Int:
-  match list_get(towns, i):
-    None => 0
-    Some(t) => max_int(t.state.research, max_research(towns, i + 1))
+  max_research_range(towns, i, len(towns) - i)
 
 fn unlock_text(world: World) -> Text:
   match world.tech_rail:
@@ -2404,10 +2485,10 @@ fn nth_town(towns: List<Town>, i: Int) -> Town:
     None => empty_town()
     Some(t) => t
 
-fn harvest(towns: List<Town>, i: Int) -> EventOutcome:
-  match list_get(towns, i):
-    None => EventOutcome(towns: towns, messages: ["A generous harvest adds grain across the frontier."])
-    Some(t) => harvest(replace_town(towns, add_stock(t, Grain, 3)), i + 1)
+fn harvest(towns: List<Town>) -> EventOutcome:
+  let next = for t in towns:
+    add_stock(t, Grain, 3)
+  EventOutcome(towns: next, messages: ["A generous harvest adds grain across the frontier."])
 
 fn storm(towns: List<Town>, tick: Int, seed: Int) -> EventOutcome:
   let idx = mod_int(tick + seed, len(towns))
@@ -2457,7 +2538,7 @@ export fn tick_scaled(world: World, scale: Int) -> World:
     r.traffic * r.fee
   let money2 = world.money + total(income)
   let ev1 = match mod_int(world.tick, 6) == 0:
-    true => harvest(net2.towns, 0)
+    true => harvest(net2.towns)
     false => EventOutcome(towns: net2.towns, messages: [])
   let ev2 = match mod_int(world.tick, 9) == 0:
     true => storm(ev1.towns, world.tick, world.seed)
@@ -3209,7 +3290,7 @@ export fn finish_period(world: World, days: Int, from: Int) -> World:
       let rail = world.tech_rail or best >= rail_research()
       let start_day = from / hours_per_day()
       let ev1 = match boundary_in_period(start_day, days, 6):
-        true => harvest(world.towns, 0)
+        true => harvest(world.towns)
         false => EventOutcome(towns: world.towns, messages: [])
       let ev2 = match boundary_in_period(start_day, days, 9):
         true => storm(ev1.towns, start_day, world.seed)
@@ -3256,7 +3337,7 @@ export fn finish_stage(world: World) -> World:
   let river = world.tech_river or best >= river_research()
   let rail = world.tech_rail or best >= rail_research()
   let ev1 = match mod_int(world.tick, 6) == 0:
-    true => harvest(world.towns, 0)
+    true => harvest(world.towns)
     false => EventOutcome(towns: world.towns, messages: [])
   let ev2 = match mod_int(world.tick, 9) == 0:
     true => storm(ev1.towns, world.tick, world.seed)

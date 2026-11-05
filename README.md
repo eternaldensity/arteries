@@ -201,6 +201,8 @@ tools/
   check-core.sh         diff the Rust core against the Diamond generator
   check-plan-codec.sh   round-trip stored route plans against shared.dia
   plan_codec_main.dia   standalone codec check appended by that script
+  check-tick-scale.sh   probe the staged tick at a chosen settlement count
+  tick_scale_main.dia   synthetic frontier tick appended by that script
 tests/
   ui-smoke.js      real-browser acceptance and exploration driver
 ```
@@ -243,6 +245,14 @@ Verify the persisted route-plan codec against the real shared module:
 
 ```sh
 ./tools/check-plan-codec.sh
+```
+
+Probe the staged tick's scale limit (default 5 settlements; raise `SETTLEMENTS`
+to find the managed-value ceiling):
+
+```sh
+./tools/check-tick-scale.sh
+SETTLEMENTS=10 ./tools/check-tick-scale.sh
 ```
 
 Static checks and build:

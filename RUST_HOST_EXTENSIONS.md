@@ -379,6 +379,17 @@ limit and is wasteful even when it fits. Recommendation:
   and pass only a handle plus a digest; never pass the full state through
   Diamond.
 
+**Measured H3 limit (prototype).** The depth-64 problems in the tick's list
+folds, endpoint search, and `indices` are fixed, but the pure-Diamond tick still
+hits the 64 MiB managed-value budget: a synthetic 28-day market+finish phase is
+comfortable at 5 settlements and fails at 10; finish alone reaches about 10.
+`tools/check-tick-scale.sh` records the probe. At 100 settlements the next slice
+is a Rust tick kernel fed a compact row-based `List<List<Int>>` state (one row
+per town/route), plus a compact view response; full-state Text is a last resort.
+The staged RPC protocol is already replay-safe: a repeated `advance_market`
+while `phase = 1` and a repeated `advance_finish` while `phase = 0` are no-ops,
+which was verified against a live runner.
+
 ---
 
 ## 7. Data contracts and serialization
@@ -664,7 +675,7 @@ transport only when H3's chunked staged RPCs actually hit their limit.
 | **H0 — `arteries-core` + exporter** ✅ terrain slice | `core/` crate (`arteries-core`) plus the `arteries-gen` CLI; `tools/gen-maps.sh` consumes it, `tools/check-core.sh` diffs it against the Diamond generator, and `core/tests/terrain-expected.txt` freezes seeds 0–15. Noise and hydrology join the crate with M2 | Outputs match on fixed seeds; renderer consumes the crate — **landed for terrain** |
 | **H1 — First compute export** ✅ landed | `runner/` crate (`arteries-runner`) registers `arteries.terrain_region` and serves with grants; the real app now declares `[compute.arteries]` with `terrain_region` in `app/diamond.toml` and calls it from `server.terrain_region`; `runner/tests` proves `validate_compute`, exact packed regions, and the app manifest/registration match | `diamond check`/`build` pass; packed region round-trips and matches the CLI map; `tests/ui-smoke.js` does not yet call the compute export — **landed** |
 | **H2 — Pathfinding** ✅ landed | `core/src/path.rs` implements deterministic 4-neighbour A* and rasterized route accounting; `arteries-runner` registers `pathfind` + `route_cost`; the app packs terrain through `terrain_region`, requests an A* corridor from `survey_path`, and persists the full plan in the row's fixed-width `waypoints` text (`storage.version = 2`); the sentinel `bend = 100` still marks an auto corridor, and manual bend switches back to the hand-shaped polyline; legacy rows with empty waypoints recompute once | 64×64 A* completes in milliseconds; built surveys reload byte-for-byte from stored waypoints even when the stored path is changed out-of-band; `route_cost` stats match the drawn line — **landed** |
-| **H3 — Stateful tick** | **Not a compute export.** Move the tick out of Diamond via the §8 options: staged Diamond RPCs (current), an HTTP service, or a fork with transactional host ops | 100-settlement tick runs in bounded chunks within the request deadline; replay/rollback verified |
+| **H3 — Stateful tick** 🟡 in progress | **Not a compute export today.** The staged market/finish RPCs remain replay-safe, and list folds/search/`indices` are now depth-hardened. A synthetic probe shows the pure-Diamond tick still hits the managed-value budget above ~5 settlements per 28-day phase (finish alone reaches ~10), so 100 settlements needs a Rust tick kernel with a row-based ABI plus a compact view, a stateful host op, or a separate service (§8) | Depth hardening landed; replay no-op verified; 100-settlement phase blocked on the Rust tick/compact view |
 | **H4 — Planet generation** | Declare `generate_planet` and register the kernel; chunk the call or run it as a durable job | A planet generates in bounded chunks within the request deadline; generation validation passes |
 
 **Precondition for H1+:** a Diamond build containing PR #2 (§14). H0–H2 have
@@ -685,6 +696,7 @@ with the target region size. Otherwise complete the gameplay phases first, as
 | PR #1/#2 declined or reshaped by review | The RFC is explicitly a draft; §5/§6/§10 are the mapping tables to re-verify. Fallbacks are the HTTP service and a tracked fork (§14) |
 | Running an unmerged Diamond build | Pin the exact revision next to the binary; re-run `verification/examples.py` and the Arteries smoke test on upgrade |
 | Deadline overruns | `ComputeContext::checkpoint` inside kernel loops + chunking; `max_duration_ms` is a post-call check; do not add nested blocking; check the admission class |
+| Pure-Diamond tick hits managed-value work at scale | Measured: ~5 settlements per 28-day market+finish phase, ~10 for finish alone. The H3 path is a Rust tick kernel with a compact row ABI and a compact view response, not more micro-optimisation of `shared.dia`. `tools/check-tick-scale.sh` records the probe |
 | Nondeterminism | Integer/fixed-point, sorted iteration, no f64, digest assertions; `deterministic = true` is declared but not proven |
 | Algorithm drift on saved routes | H2 now persists the full plan (`waypoints`, storage version 2), so new routes are immune to pathfinder changes. Only legacy rows with empty waypoints still recompute; bump `generation_version` before changing the cost model, and re-save or migrate legacy rows |
 | Payload limits | Binary encoding, chunking, handle-based state for the tick |

@@ -97,6 +97,13 @@ contains the economy; saves become natural.
 logic, and a view-fetch API. Server rendering still has its own render budget.
 **Effort:** high, but it is the only route that preserves the target complexity.
 
+**Measured warning:** staging alone is not enough at 100 settlements.
+`tools/check-tick-scale.sh` runs a synthetic 28-day market+finish tick. It passes
+at 5 settlements and hits Diamond's managed-value work budget at 10; finish
+alone reaches about 10. Moving the tick into a Rust kernel with a compact,
+row-based state and a compact view response is the next requirement, not a
+micro-optimisation of `shared.dia`.
+
 ### 2. Server-rendered forms/pages instead of a reactive SPA
 
 Make each action a form POST or link that returns a fresh page. Every request
