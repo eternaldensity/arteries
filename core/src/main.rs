@@ -1,6 +1,6 @@
 //! `arteries-gen`: emit deterministic Arteries world data for build tooling.
 
-use arteries_core::{manifest_line, MAP_COUNT};
+use arteries_core::{manifest_line, MAP_COUNT, MAX_SEED};
 use std::io::Write;
 use std::process::ExitCode;
 
@@ -8,7 +8,8 @@ const USAGE: &str = "\
 usage: arteries-gen terrain [--seed N | --count N] [--out PATH]
 
 Emit map data in the asset pipeline format (`seed|row;row`), one line per seed.
-Without `--seed`, emits seeds `0..count` (default: the built-in map count).";
+Without `--seed`, emits seeds `0..count` (default: the built-in map count).
+`--seed` must be within `0..=MAX_SEED`.";
 
 fn main() -> ExitCode {
     match run() {
@@ -30,13 +31,13 @@ fn run() -> Result<(), String> {
     }
 
     let mut seed: Option<i64> = None;
-    let mut count = MAP_COUNT;
+    let mut count: Option<i64> = None;
     let mut out: Option<std::path::PathBuf> = None;
 
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--seed" => seed = Some(parse_number("--seed", arguments.next())?),
-            "--count" => count = parse_number("--count", arguments.next())?,
+            "--count" => count = Some(parse_number("--count", arguments.next())?),
             "--out" => {
                 let path = arguments
                     .next()
@@ -52,8 +53,14 @@ fn run() -> Result<(), String> {
     }
 
     let seeds = match seed {
-        Some(seed) => vec![seed],
+        Some(seed) => {
+            if count.is_some() {
+                return Err("--seed and --count are mutually exclusive".into());
+            }
+            vec![seed]
+        }
         None => {
+            let count = count.unwrap_or(MAP_COUNT);
             if !(1..=4096).contains(&count) {
                 return Err("--count must be within 1..=4096".into());
             }
@@ -63,8 +70,8 @@ fn run() -> Result<(), String> {
 
     let mut output = String::new();
     for seed in seeds {
-        if seed < 0 {
-            return Err("--seed must be non-negative".into());
+        if !(0..=MAX_SEED).contains(&seed) {
+            return Err(format!("--seed must be within 0..={MAX_SEED}"));
         }
         output.push_str(&manifest_line(seed));
         output.push('\n');

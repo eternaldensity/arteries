@@ -8,6 +8,13 @@
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 TXT="$ROOT/.diamond/terrain.txt"
+COUNT=$(sed -n 's/^pub const MAP_COUNT: i64 = \([0-9][0-9]*\);$/\1/p' "$ROOT/core/src/lib.rs")
+case "$COUNT" in
+  '' | *[!0-9]*)
+    echo "cannot read MAP_COUNT from core/src/lib.rs" >&2
+    exit 1
+    ;;
+esac
 mkdir -p "$ROOT/.diamond" "$ROOT/app/assets"
 
 case "${TERRAIN_SOURCE:-core}" in
@@ -23,7 +30,8 @@ case "${TERRAIN_SOURCE:-core}" in
     fi
     GEN="$ROOT/.diamond/gen_terrain.dia"
     : > "$TXT"
-    for seed in $(seq 0 15); do
+    seed=0
+    while [ "$seed" -lt "$COUNT" ]; do
       # Inline the module imports and strip `export` so the result checks and
       # runs as a standalone file.
       sed 's/^export //' "$ROOT/app/rt_tables.dia" > "$GEN"
@@ -32,6 +40,7 @@ case "${TERRAIN_SOURCE:-core}" in
       "$DIAMOND" check "$GEN" >/dev/null
       "$DIAMOND" run "$GEN" >> "$TXT"
       printf '\n' >> "$TXT"
+      seed=$((seed + 1))
     done
     ;;
   *)

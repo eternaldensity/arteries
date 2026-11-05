@@ -6,15 +6,43 @@
 //! project that declares `[compute.arteries]` exports must be served through
 //! this binary instead.
 
+use arteries_core::{region_text, MAP_H, MAP_W, MAX_SEED};
 use diamond::{Compute, ComputeContext, ComputeError, RuntimeGrants};
 use serde_json::Value as Json;
 
 /// Pure-compute export `arteries.terrain_region`.
 ///
 /// Arguments (wire form, all `Int`): `(seed, version, face, u0, v0, w, h)`.
+/// `version` must be `1` and `face` must be `0`; other values are rejected
+/// rather than silently returning flat-map data.
+///
 /// Reply: a packed `Text` blob, `w` codes per row joined by `,`, rows joined
-/// by `;` — the same layout `tools/render_maps.py` consumes.
+/// by `;` — the row portion of the format `tools/render_maps.py` consumes.
 pub struct TerrainRegion;
+
+impl TerrainRegion {
+    /// Validate wire arguments and evaluate one region.
+    ///
+    /// This is separate from the [`Compute`] trait so the ABI checks can be
+    /// exercised without constructing a Diamond [`ComputeContext`].
+    ///
+    /// # Errors
+    /// Returns [`ComputeError::InvalidInput`] for the wrong arity, a malformed
+    /// `Int`, or any value outside the export's documented bounds.
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 7 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let seed = int_arg(arguments, 0)?;
+        let version = int_arg(arguments, 1)?;
+        let face = int_arg(arguments, 2)?;
+        let u0 = int_arg(arguments, 3)?;
+        let v0 = int_arg(arguments, 4)?;
+        let w = int_arg(arguments, 5)?;
+        let h = int_arg(arguments, 6)?;
+        terrain_region(seed, version, face, u0, v0, w, h).map(Json::String)
+    }
+}
 
 impl Compute for TerrainRegion {
     fn call(
@@ -22,33 +50,36 @@ impl Compute for TerrainRegion {
         _context: &ComputeContext<'_>,
         arguments: &[Json],
     ) -> Result<Json, ComputeError> {
-        if arguments.len() != 7 {
-            return Err(ComputeError::InvalidInput);
-        }
-        let seed = int_arg(arguments, 0)?;
-        let _version = int_arg(arguments, 1)?;
-        let _face = int_arg(arguments, 2)?;
-        let u0 = int_arg(arguments, 3)?;
-        let v0 = int_arg(arguments, 4)?;
-        let w = int_arg(arguments, 5)?;
-        let h = int_arg(arguments, 6)?;
-        if !(1..=10).contains(&w) || !(1..=6).contains(&h) {
-            return Err(ComputeError::InvalidInput);
-        }
-        let mut rows = Vec::with_capacity(h as usize);
-        for y in 0..h {
-            let mut cells = String::with_capacity((w as usize) * 2);
-            for x in 0..w {
-                if x > 0 {
-                    cells.push(',');
-                }
-                let code = arteries_core::terrain_at(seed, u0 + x, v0 + y).code();
-                cells.push_str(&code.to_string());
-            }
-            rows.push(cells);
-        }
-        Ok(Json::String(rows.join(";")))
+        Self::evaluate(arguments)
     }
+}
+
+/// Validate kernel arguments and pack the requested region.
+///
+/// Cells outside the map are water. Width and height are capped at the full
+/// map size so one call stays inside the declared output budget.
+///
+/// # Errors
+/// Returns [`ComputeError::InvalidInput`] when the seed, version, face, or
+/// region size is outside its supported range.
+pub fn terrain_region(
+    seed: i64,
+    version: i64,
+    face: i64,
+    u0: i64,
+    v0: i64,
+    w: i64,
+    h: i64,
+) -> Result<String, ComputeError> {
+    if !(0..=MAX_SEED).contains(&seed)
+        || version != 1
+        || face != 0
+        || !(1..=MAP_W).contains(&w)
+        || !(1..=MAP_H).contains(&h)
+    {
+        return Err(ComputeError::InvalidInput);
+    }
+    Ok(region_text(seed, u0, v0, w, h))
 }
 
 fn int_arg(arguments: &[Json], index: usize) -> Result<i64, ComputeError> {

@@ -6,5 +6,5 @@ publish = false
 
 [dependencies]
 arteries-core = { path = "../core" }
-diamond = { package = "diamond-lang", path = "/home/yria/dev/Diamond" }
+diamond = { package = "diamond-lang", path = "../../Diamond" }
 serde_json = "1"

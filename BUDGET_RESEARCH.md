@@ -272,9 +272,10 @@ diamond build app/diamond.toml --out build
 diamond project-init build --postgres-env DIAMOND_POSTGRES_URL
 printf 'a disposable development password\n' | \
   diamond project-user-add build --postgres-env DIAMOND_POSTGRES_URL --user alice --password-stdin
-diamond serve build --listen 127.0.0.1:3032 \
-  --postgres-env DIAMOND_POSTGRES_URL \
-  --identity-mailbox /path/to/mail --origin http://127.0.0.1:3032
+mkdir -p /tmp/arteries-mail && chmod 700 /tmp/arteries-mail
+# `diamond serve` cannot register compute kernels; serve through the runner.
+./runner/target/debug/arteries-runner app/diamond.toml 127.0.0.1:3032 http://127.0.0.1:3032 \
+  --mailbox /tmp/arteries-mail
 UI_URL=http://127.0.0.1:3032/ UI_USER=alice UI_PASSWORD='...' node tests/ui-smoke.js
 ```
 

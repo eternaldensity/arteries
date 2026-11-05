@@ -44,6 +44,8 @@ fn terrain_rejects_empty_and_unknown_requests() {
         vec!["terrain", "--count", "0"],
         vec!["terrain", "--count", "4097"],
         vec!["terrain", "--seed", "-1"],
+        vec!["terrain", "--seed", "1000000001"],
+        vec!["terrain", "--seed", "1", "--count", "2"],
         vec!["terrain", "--bogus"],
         vec!["nope"],
     ] {

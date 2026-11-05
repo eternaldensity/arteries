@@ -1,0 +1,4 @@
+*.sh text eol=lf
+core/tests/terrain-expected.txt text eol=lf
+runner/tests/fixtures/*.dia text eol=lf
+runner/tests/fixtures/*.toml text eol=lf

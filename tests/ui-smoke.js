@@ -3,9 +3,12 @@
  * Real-browser acceptance test for the Arteries prototype.
  *
  * Requires:
- *   - a server for the current build, e.g.
- *       arteries-runner app/diamond.toml --listen 127.0.0.1:3010
- *   (or, without compute, `diamond serve .diamond/app-build --listen ...`)
+ *   - the runner serving the project, e.g. from the project root:
+ *       DIAMOND_POSTGRES_URL=... mkdir -p .diamond/mailbox
+ *       chmod 700 .diamond/mailbox
+ *       arteries-runner app/diamond.toml 127.0.0.1:3010 http://127.0.0.1:3010 \
+ *         --mailbox .diamond/mailbox
+ *     (`diamond serve` cannot register the project's compute kernels.)
  *   - a freshly initialized PostgreSQL database and provisioned account
  *   - playwright-core and a Chromium executable
  *

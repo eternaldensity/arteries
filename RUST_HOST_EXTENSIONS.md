@@ -324,7 +324,7 @@ names; the call site is `host.compute<Reply>("arteries", "<name>", args...)`.
 | Export | Signature | Notes |
 | --- | --- | --- |
 | `noise` | `(Int, Int, Int, Int) -> Int` | `(seed, x, y, octaves)`; fixed-point fBm/ridged noise; one source of truth |
-| `terrain_region` | `(Int, Int, Int, Int, Int, Int, Int) -> Text` | `(seed, version, face, u0, v0, w, h)`; batched terrain codes; kernel bounds `w*h` (e.g. 1000–4096) |
+| `terrain_region` | `(Int, Int, Int, Int, Int, Int, Int) -> Text` | `(seed, version, face, u0, v0, w, h)`; batched terrain codes; `w` is capped at 10 and `h` at 6 (the full prototype map), with out-of-map cells returned as water; larger maps require chunking |
 | `hydrology` | `(Int, Int, Int, Int, Int) -> Text` | `(seed, version, face, w, h)`; flow accumulation, river carving |
 | `climate` | `(Int, Int, Int, Int, Int) -> Text` | `(seed, version, face, w, h)`; temperature/moisture from latitude and elevation |
 | `validate_world` | `(Int, Int) -> Bool` | `(seed, version)`; playability checks |
@@ -653,14 +653,15 @@ transport only when H3's chunked staged RPCs actually hit their limit.
 | Phase | Content | Go/no-go signal |
 | --- | --- | --- |
 | **H0 — `arteries-core` + exporter** ✅ terrain slice | `core/` crate (`arteries-core`) plus the `arteries-gen` CLI; `tools/gen-maps.sh` consumes it, `tools/check-core.sh` diffs it against the Diamond generator, and `core/tests/terrain-expected.txt` freezes seeds 0–15. Noise and hydrology join the crate with M2 | Outputs match on fixed seeds; renderer consumes the crate — **landed for terrain** |
-| **H1 — First compute export** ✅ landed | `runner/` crate (`arteries-runner`) registers `arteries.terrain_region` and serves with grants; the real app now declares `[compute.arteries]` with `terrain_region` in `app/diamond.toml` and calls it from `server.terrain_region`; `runner/tests` proves `validate_compute` and end-to-end dispatch | `diamond check`/`build` pass; packed region round-trips; smoke test still runs through the runner — **landed** |
+| **H1 — First compute export** ✅ landed | `runner/` crate (`arteries-runner`) registers `arteries.terrain_region` and serves with grants; the real app now declares `[compute.arteries]` with `terrain_region` in `app/diamond.toml` and calls it from `server.terrain_region`; `runner/tests` proves `validate_compute`, exact packed regions, and the app manifest/registration match | `diamond check`/`build` pass; packed region round-trips and matches the CLI map; `tests/ui-smoke.js` does not yet call the compute export — **landed** |
 | **H2 — Pathfinding** | Declare `pathfind` + `route_cost` exports and register the kernels; use them for the survey | A* on a 64×64 grid well under the request deadline |
 | **H3 — Stateful tick** | **Not a compute export.** Move the tick out of Diamond via the §8 options: staged Diamond RPCs (current), an HTTP service, or a fork with transactional host ops | 100-settlement tick runs in bounded chunks within the request deadline; replay/rollback verified |
 | **H4 — Planet generation** | Declare `generate_planet` and register the kernel; chunk the call or run it as a durable job | A planet generates in bounded chunks within the request deadline; generation validation passes |
 
-**Precondition for H1+:** a Diamond build containing PR #2 (§14). Until then,
-H0 — `arteries-core` plus the CLI exporter — is the only phase that can start,
-and it has no Diamond dependency anyway.
+**Precondition for H1+:** a Diamond build containing PR #2 (§14). H0 and H1
+have landed against the local `feat/compute-host-tier` build; pin that revision
+until PR #2 merges, then re-run `tools/check-core.sh` and the runner tests
+against upstream `main`.
 
 Trigger H0/H1 early only if M2 (terrain depth) cannot fit Diamond's budgets
 with the target region size. Otherwise complete the gameplay phases first, as

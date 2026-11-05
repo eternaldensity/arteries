@@ -18,6 +18,12 @@ pub const MAP_H: i64 = 6;
 /// Number of built-in maps (seeds `0..MAP_COUNT`).
 pub const MAP_COUNT: i64 = 16;
 
+/// Largest seed accepted by `arteries-gen` and the compute kernel.
+///
+/// This is far larger than the built-in map range while keeping every
+/// intermediate product in [`terrain_of`] inside `i64`.
+pub const MAX_SEED: i64 = 1_000_000_000;
+
 /// One map cell, with the numeric code used by the asset pipeline.
 ///
 /// The codes are part of the terrain format: `tools/render_maps.py` and the
@@ -84,14 +90,24 @@ pub fn terrain_at(seed: i64, x: i64, y: i64) -> Terrain {
 }
 
 // Integer division truncates toward zero in both languages, so Rust's `%`
-// matches Diamond's `mod_int(a, b) = a - (a / b) * b` exactly.
+// matches Diamond's `mod_int(a, b) = a - (a / b) * b` exactly. Wrapping
+// arithmetic keeps this function total in debug and release even when a caller
+// bypasses the supported seed range; supported inputs never wrap.
 fn terrain_of(seed: i64, x: i64, y: i64) -> Terrain {
-    let block = ((x / 2) * 7 + (y / 2) * 11 + seed) % 17;
-    let fine = (x * 5 + y * 9 + seed * 3) % 23;
+    let block = (x / 2)
+        .wrapping_mul(7)
+        .wrapping_add((y / 2).wrapping_mul(11))
+        .wrapping_add(seed)
+        % 17;
+    let fine = x
+        .wrapping_mul(5)
+        .wrapping_add(y.wrapping_mul(9))
+        .wrapping_add(seed.wrapping_mul(3))
+        % 23;
     let elev = block * 3 + fine + (MAP_W - x) * 3 + (MAP_H - y) * 2;
-    let river = 3 + ((y / 3 + seed) % 3);
-    let lake_x = 4 + (seed % 2);
-    let lake_y = 2 + ((seed / 7) % 2);
+    let river = 3 + ((y / 3).wrapping_add(seed) % 3);
+    let lake_x = 4 + seed % 2;
+    let lake_y = 2 + (seed / 7) % 2;
     let pond = x == lake_x && y == lake_y && x != river;
     if x >= MAP_W - 1 || x == river || pond {
         Terrain::Water
@@ -116,17 +132,32 @@ pub fn map_row(seed: i64, y: i64) -> Vec<Terrain> {
     (0..MAP_W).map(|x| terrain_at(seed, x, y)).collect()
 }
 
+/// One rectangular region in the compute export's packed `row;row` format.
+///
+/// Each row contains `w` comma-separated terrain codes; rows are joined by
+/// `;`. Cells outside the map are water, and wrapping offsets keep the
+/// function total for any `u0`/`v0`. Callers validate `w`/`h`.
+#[must_use]
+pub fn region_text(seed: i64, u0: i64, v0: i64, w: i64, h: i64) -> String {
+    let mut rows = Vec::new();
+    for y in 0..h {
+        let mut cells = String::new();
+        for x in 0..w {
+            if x > 0 {
+                cells.push(',');
+            }
+            let code = terrain_at(seed, u0.wrapping_add(x), v0.wrapping_add(y)).code();
+            cells.push_str(&code.to_string());
+        }
+        rows.push(cells);
+    }
+    rows.join(";")
+}
+
 /// One map row in the asset pipeline's comma-separated code format.
 #[must_use]
 pub fn map_row_text(seed: i64, y: i64) -> String {
-    let mut text = String::with_capacity(usize::try_from(MAP_W * 2).unwrap_or(0));
-    for x in 0..MAP_W {
-        if x > 0 {
-            text.push(',');
-        }
-        text.push_str(&terrain_at(seed, x, y).code().to_string());
-    }
-    text
+    region_text(seed, 0, y, MAP_W, 1)
 }
 
 /// A whole map in the asset pipeline's `seed|row;row` format.
@@ -193,6 +224,40 @@ mod tests {
     }
 
     #[test]
+    fn regions_match_the_full_manifest() {
+        let line = manifest_line(7);
+        let rows_text = line.split_once('|').map_or("", |(_, rows)| rows);
+        let rows = rows_text.split(';').collect::<Vec<_>>();
+        for (u0, v0, w, h) in [
+            (0, 0, MAP_W, MAP_H),
+            (2, 1, 4, 3),
+            (8, 4, 2, 2),
+            (9, 5, 1, 1),
+        ] {
+            let expected = (v0..v0 + h)
+                .map(|y| {
+                    let cells = rows[usize::try_from(y).expect("row")]
+                        .split(',')
+                        .collect::<Vec<_>>();
+                    let start = usize::try_from(u0).expect("start");
+                    let end = usize::try_from(u0 + w).expect("end");
+                    cells[start..end].join(",")
+                })
+                .collect::<Vec<_>>()
+                .join(";");
+            assert_eq!(region_text(7, u0, v0, w, h), expected);
+        }
+    }
+
+    #[test]
+    fn arithmetic_is_total_for_extreme_seeds() {
+        for seed in [i64::MIN, -1, MAX_SEED, i64::MAX] {
+            let text = region_text(seed, 0, 0, MAP_W, MAP_H);
+            assert_eq!(text.split(';').count(), usize::try_from(MAP_H).unwrap_or(0));
+        }
+    }
+
+    #[test]
     fn output_is_deterministic_across_calls() {
         for seed in 0..MAP_COUNT {
             assert_eq!(manifest_line(seed), manifest_line(seed));
@@ -201,8 +266,8 @@ mod tests {
 
     /// Frozen Diamond output for seeds `0..MAP_COUNT`.
     ///
-    /// Regenerate with `tools/check-core.sh` after an intentional terrain
-    /// change, never by copying this implementation's own output.
+    /// Regenerate with `tools/check-core.sh --update` after an intentional
+    /// terrain change, never by copying this implementation's own output.
     #[test]
     fn matches_the_diamond_oracle() {
         let expected = include_str!("../tests/terrain-expected.txt");

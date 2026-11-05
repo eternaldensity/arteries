@@ -13,14 +13,20 @@ unlock a better mode → upgrade → maintain.**
 
 ```sh
 cd /home/yria/dev/arteries
-/home/yria/dev/Diamond/target/debug/diamond check app/diamond.toml
-rm -rf .diamond/app-build
-/home/yria/dev/Diamond/target/debug/diamond build app/diamond.toml --out .diamond/app-build
-/home/yria/dev/Diamond/target/debug/diamond serve .diamond/app-build --listen 127.0.0.1:3010
+cargo build --manifest-path runner/Cargo.toml
+DIAMOND=/home/yria/dev/Diamond/target/debug/diamond \
+RUNNER=./runner/target/debug/arteries-runner \
+DIAMOND_POSTGRES_URL='host=/tmp/opencode/arteries-pg port=55432 dbname=arteries user=yria' \
+UI_PASSWORD='a local development password' \
+sh runserv.example.sh
 ```
 
-Open <http://127.0.0.1:3010/>. Use plain HTTP; the development server does not
-provide TLS.
+Open <http://127.0.0.1:3032/> (or set `PORT`). Use plain HTTP; the development
+server does not provide TLS. The database must already exist. Arteries declares
+a compute export, so it must be served by `arteries-runner`: `diamond serve` has
+no way to register compute kernels. `runserv.example.sh` builds the project,
+initializes the database, creates the development account, and starts the
+runner.
 
 ## What is in the prototype
 
@@ -238,12 +244,16 @@ Chromium build):
 
 ```sh
 # terminal 1, from the project root
-/home/yria/dev/Diamond/target/debug/diamond serve .diamond/app-build --listen 127.0.0.1:3010
+DIAMOND=/home/yria/dev/Diamond/target/debug/diamond \
+RUNNER=./runner/target/debug/arteries-runner \
+DIAMOND_POSTGRES_URL='host=/tmp/opencode/arteries-pg port=55432 dbname=arteries user=yria' \
+UI_PASSWORD='a local development password' \
+sh runserv.example.sh
 
 # terminal 2, from the project root
 PLAYWRIGHT_CORE=/path/to/node_modules/playwright-core \
 CHROMIUM_PATH=/path/to/chrome \
-UI_URL=http://127.0.0.1:3010/ \
+UI_URL=http://127.0.0.1:3032/ \
 node tests/ui-smoke.js
 ```
 
