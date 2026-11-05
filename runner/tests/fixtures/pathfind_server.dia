@@ -1,0 +1,12 @@
+fn nth(xs: List<Int>, i: Int) -> Int:
+  match list_get(xs, i):
+    Some(value) => value
+    None => 0
+
+export fn main() -> Result<Int, DataError>:
+  let grid = "3,1|1,5,1"
+  match host.compute<List<Int>>("arteries", "pathfind", grid, "0,0", "2,0", "road"):
+    Err(error) => Err(error)
+    Ok(path) => match host.compute<List<Int>>("arteries", "route_cost", grid, path, "road"):
+      Err(error) => Err(error)
+      Ok(stats) => Ok(nth(stats, 0))

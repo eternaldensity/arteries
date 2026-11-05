@@ -403,11 +403,41 @@ fn town_from_row(row: TownRow) -> Town:
 fn site_from_row(row: SiteRow) -> Site:
   Site(id: row.key, name: row.name, x: row.x, y: row.y, terrain: row.terrain, resource: row.resource, richness: row.richness, founded: row.founded)
 
+# Packed terrain for the pathfinding kernel. The terrain body comes from the
+# registered kernel, so generation stays single-sourced in `arteries-core`.
+fn packed_terrain(world: World) -> Result<Text, DataError>:
+  let rows = host.compute<Text>("arteries", "terrain_region", world.seed, 1, 0, 0, 0, map_w(), map_h())?
+  Ok(int_text(map_w()) + "," + int_text(map_h()) + "|" + rows)
+
+# A kernel-planned corridor is a pure function of the world and endpoints, so
+# persisted rows only need the sentinel bend; loading recomputes the same path.
+fn auto_plan(world: World, from: Text, to: Text) -> RoutePlan:
+  let ta = find_town(world.towns, from)
+  let tb = find_town(world.towns, to)
+  match ta.id == "" or tb.id == "" or ta.id == tb.id:
+    true => empty_plan()
+    false => match packed_terrain(world):
+      Err(_) => plan_route_bend(world, from, to, 0)
+      Ok(grid) =>
+        let start = int_text(ta.x) + "," + int_text(ta.y)
+        let goal = int_text(tb.x) + "," + int_text(tb.y)
+        match host.compute<List<Int>>("arteries", "pathfind", grid, start, goal, "road"):
+          Err(_) => plan_route_bend(world, from, to, 0)
+          Ok(flat) =>
+            match host.compute<List<Int>>("arteries", "route_cost", grid, flat, "road"):
+              Err(_) => plan_route_bend(world, from, to, 0)
+              Ok(stats) => plan_from_path(flat, stats)
+
+fn route_plan(world: World, from: Text, to: Text, bend: Int) -> RoutePlan:
+  match bend == auto_bend():
+    true => auto_plan(world, from, to)
+    false => plan_route_bend(world, from, to, bend)
+
 fn route_from_row(world: World, row: RouteRow) -> Route:
-  Route(id: row.key, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, plan: plan_route_bend(world, row.a, row.b, row.bend), fee: row.fee, traffic: row.traffic, capacity: row.capacity, upkeep: row.upkeep)
+  Route(id: row.key, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, plan: route_plan(world, row.a, row.b, row.bend), fee: row.fee, traffic: row.traffic, capacity: row.capacity, upkeep: row.upkeep)
 
 fn project_from_row(world: World, row: ProjectRow) -> Project:
-  Project(id: row.key, kind: row.kind, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, route_id: row.route_id, plan: plan_route_bend(world, row.a, row.b, row.bend), start_tick: row.start_tick, ready_tick: row.ready_tick)
+  Project(id: row.key, kind: row.kind, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, route_id: row.route_id, plan: route_plan(world, row.a, row.b, row.bend), start_tick: row.start_tick, ready_tick: row.ready_tick)
 
 # ---------------------------------------------------------------- loading
 
@@ -701,10 +731,19 @@ export fn advance_finish() -> Result<Game, DataError>:
       let game = game_finish_period(current, state.settle_days, state.settle_from)
       save_game_window(game, 0, state.epoch, 0, 0)
 
+# Fill the survey draft from the native pathfinding kernel.
+export fn survey_path(from: Text, to: Text) -> Result<Game, DataError>:
+  let state = load_state()?
+  let current = state_game(state, "")
+  let plan = auto_plan(current.world, from, to)
+  let sel = survey_selection_plan(from, to, plan)
+  Ok(server_game(current.world, current.projects, current.auto_upkeep, current.last_paid_tick, current.upkeep_per_cycle, sel, "", true))
+
 export fn start_route(from: Text, to: Text, bend: Int) -> Result<Game, DataError>:
   let state = load_state()?
   let current = state_game(state, "")
-  let sel = survey_selection(current.world, from, to, bend)
+  let plan = route_plan(current.world, from, to, bend)
+  let sel = survey_selection_plan(from, to, plan)
   let prepared = raw_game(current.world, current.projects, current.auto_upkeep, current.last_paid_tick, current.upkeep_per_cycle, sel, "", true)
   match can_build_route(prepared):
     false =>

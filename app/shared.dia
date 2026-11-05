@@ -1064,6 +1064,25 @@ fn plan_with_offset(world: World, ta: Town, tb: Town, off: Int) -> RoutePlan:
   let forest = count_forest(points, world.seed, 0)
   RoutePlan(path: points, bend: off, length: length, water: water, mountain: mountain, forest: forest, money: 8 + length + water * 5 + mountain * 8, timber: 1 + length / 14 + water, stone: 1 + length / 18 + mountain * 2, min_y: min_point_y(points, 0, map_h()), max_y: max_point_y(points, 0, 0))
 
+# Sentinel stored in RoutePlan.bend for a kernel-planned corridor. Manual
+# shaping replaces it with a normal -5..5 bend.
+export fn auto_bend() -> Int:
+  100
+
+fn path_points(flat: List<Int>) -> List<Point>:
+  for i in indices(len(flat) / 2):
+    Point(x: nth_int(flat, i * 2), y: nth_int(flat, i * 2 + 1))
+
+# Build a RoutePlan from the kernel's flat path and rasterized stats
+# [cost, length, water, mountain, forest].
+export fn plan_from_path(flat: List<Int>, stats: List<Int>) -> RoutePlan:
+  let points = path_points(flat)
+  let length = nth_int(stats, 1)
+  let water = nth_int(stats, 2)
+  let mountain = nth_int(stats, 3)
+  let forest = nth_int(stats, 4)
+  RoutePlan(path: points, bend: auto_bend(), length: length, water: water, mountain: mountain, forest: forest, money: 8 + length + water * 5 + mountain * 8, timber: 1 + length / 14 + water, stone: 1 + length / 18 + mountain * 2, min_y: min_point_y(points, 0, map_h()), max_y: max_point_y(points, 0, 0))
+
 fn near_segment(px: Int, py: Int, a: Point, b: Point) -> Bool:
   let vx = b.x - a.x
   let vy = b.y - a.y
@@ -2609,7 +2628,10 @@ export fn selection_bend(world: World, sel: Selection, delta: Int) -> Selection:
   match sel.ready:
     false => sel
     true =>
-      let bend = clamp(sel.draft.bend + delta, -5, 5)
+      let base = match sel.draft.bend >= auto_bend():
+        true => 0
+        false => sel.draft.bend
+      let bend = clamp(base + delta, -5, 5)
       let plan = plan_route_bend(world, sel.from, sel.to, bend)
       selection_with(sel, sel.selected, sel.from, sel.to, plan, plan.length > 0, true, "Route shape: bend " + int_text(bend) + ". " + int_text(plan.length) + " leagues, " + int_text(plan.money) + " crowns.")
 
@@ -2942,6 +2964,9 @@ export fn raw_game(world: World, projects: List<Project>, auto_upkeep: Bool, las
 
 export fn survey_selection(world: World, from: Text, to: Text, bend: Int) -> Selection:
   let plan = plan_route_bend(world, from, to, bend)
+  Selection(selected: to, from: from, to: to, draft: plan, ready: plan.length > 0, routing: true, notice: "")
+
+export fn survey_selection_plan(from: Text, to: Text, plan: RoutePlan) -> Selection:
   Selection(selected: to, from: from, to: to, draft: plan, ready: plan.length > 0, routing: true, notice: "")
 
 export fn server_apply(base: Game, fresh: Game) -> Game:

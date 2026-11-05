@@ -1,0 +1,28 @@
+schema_version = 1
+name = "PathfindProbe"
+server = "pathfind_server"
+browser = "ui"
+component = "Root"
+provides = ["Compute<arteries.pathfind>", "Compute<arteries.route_cost>"]
+
+[modules.pathfind_server]
+path = "pathfind_server.dia"
+target = "server"
+provides = ["Compute<arteries.pathfind>", "Compute<arteries.route_cost>"]
+
+[modules.ui]
+path = "ui.dia"
+target = "browser"
+
+[compute.arteries]
+kind = "host"
+
+[compute.arteries.exports.pathfind]
+arguments = ["Text", "Text", "Text", "Text"]
+result = "List<Int>"
+deterministic = true
+
+[compute.arteries.exports.route_cost]
+arguments = ["Text", "List<Int>", "Text"]
+result = "List<Int>"
+deterministic = true

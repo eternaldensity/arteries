@@ -4,7 +4,7 @@ name = "ArteriesWeb"
 server = "server"
 browser = "ui"
 component = "Root"
-provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>"]
 styles = ["app.css"]
 
 [modules.shared]
@@ -20,7 +20,7 @@ target = "shared"
 path = "server.dia"
 target = "server"
 imports = ["shared"]
-provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>"]
 
 [modules.ui]
 path = "ui.dia"
@@ -36,6 +36,7 @@ order_upgrade = "server.order_upgrade"
 dismantle = "server.dismantle"
 cancel_project = "server.cancel_project"
 terrain_region = "server.terrain_region"
+survey_path = "server.survey_path"
 set_fee = "server.set_fee"
 pay_upkeep = "server.pay_upkeep"
 toggle_auto = "server.toggle_auto"
@@ -107,3 +108,19 @@ kind = "host"
 arguments = ["Int", "Int", "Int", "Int", "Int", "Int", "Int"]
 result = "Text"
 deterministic = true
+
+[compute.arteries.exports.pathfind]
+arguments = ["Text", "Text", "Text", "Text"]
+result = "List<Int>"
+deterministic = true
+max_input_bytes = 131072
+max_output_bytes = 65536
+max_duration_ms = 2000
+
+[compute.arteries.exports.route_cost]
+arguments = ["Text", "List<Int>", "Text"]
+result = "List<Int>"
+deterministic = true
+max_input_bytes = 131072
+max_output_bytes = 4096
+max_duration_ms = 2000

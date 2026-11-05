@@ -1,5 +1,5 @@
 use arteries_core::{MAP_H, MAP_W, MAX_SEED};
-use arteries_runner::TerrainRegion;
+use arteries_runner::{Pathfind, RouteCost, TerrainRegion};
 use serde_json::{json, Value as Json};
 use std::path::Path;
 
@@ -119,6 +119,100 @@ fn real_app_manifest_matches_the_registered_kernels() {
     project
         .validate_compute(&grants)
         .expect("app manifest and runner registrations must agree");
+}
+
+#[test]
+fn validate_and_dispatch_pathfinding_through_diamond() {
+    let project = diamond::compile_project(Path::new("tests/fixtures/pathfind.diamond.toml"))
+        .expect("pathfind probe must compile");
+    let mut grants = diamond::RuntimeGrants::default();
+    arteries_runner::register(&mut grants).expect("registration must succeed");
+    project
+        .validate_compute(&grants)
+        .expect("declared exports must be registered");
+    let value = project
+        .evaluate_with(&grants)
+        .expect("evaluation must succeed")
+        .into_result()
+        .expect("probe must return Ok");
+    assert_eq!(value.display_text().expect("Int reply"), "7");
+}
+
+#[test]
+fn pathfind_and_route_cost_round_trip() {
+    let grid = "5,3|1,1,1,1,1;1,5,1,1,1;1,1,1,1,1";
+    let reply = Pathfind::evaluate(&[json!(grid), json!("0,0"), json!("4,0"), json!("road")])
+        .expect("path");
+    assert_eq!(reply, json!(["0", "0", "4", "0"]));
+
+    let stats = RouteCost::evaluate(&[json!(grid), reply, json!("road")]).expect("cost");
+    assert_eq!(stats, json!(["4", "4", "0", "0", "0"]));
+}
+
+#[test]
+fn route_cost_counts_water_on_the_drawn_line() {
+    let grid = "3,1|1,5,1";
+    let reply = Pathfind::evaluate(&[json!(grid), json!("0,0"), json!("2,0"), json!("road")])
+        .expect("path");
+    assert_eq!(reply, json!(["0", "0", "2", "0"]));
+
+    let stats = RouteCost::evaluate(&[json!(grid), reply, json!("road")]).expect("cost");
+    assert_eq!(stats, json!(["7", "2", "1", "0", "0"]));
+}
+
+#[test]
+fn pathfind_runs_on_a_64_by_64_grid_through_the_abi() {
+    let row = vec!["1"; 64].join(",");
+    let grid = format!("64,64|{}", vec![row; 64].join(";"));
+    let reply = Pathfind::evaluate(&[json!(grid), json!("0,0"), json!("63,63"), json!("road")])
+        .expect("path");
+    let points = reply.as_array().expect("List<Int> reply");
+    assert!(points.len() <= 1000);
+    assert_eq!(points.first(), Some(&json!("0")));
+    assert_eq!(points.get(1), Some(&json!("0")));
+    assert_eq!(points.get(points.len() - 2), Some(&json!("63")));
+    assert_eq!(points.last(), Some(&json!("63")));
+}
+
+#[test]
+fn pathfinding_kernels_reject_malformed_wire_arguments() {
+    for arguments in [
+        vec![],
+        vec![json!("5,1|1,1,1,1,1"), json!("0,0"), json!("4,0")],
+        vec![json!("bad"), json!("0,0"), json!("4,0"), json!("road")],
+        vec![
+            json!("5,1|1,1,1,1,1"),
+            json!("zero"),
+            json!("4,0"),
+            json!("road"),
+        ],
+        vec![
+            json!("5,1|1,1,1,1,1"),
+            json!("0,0"),
+            json!("4,0"),
+            json!("swim"),
+        ],
+    ] {
+        assert_eq!(
+            Pathfind::evaluate(&arguments),
+            Err(diamond::ComputeError::InvalidInput)
+        );
+    }
+    let grid = json!("3,1|1,0,1");
+    for path in [json!([]), json!(["0", "0", "2"]), json!([0, 0, 2, 0])] {
+        assert_eq!(
+            RouteCost::evaluate(&[grid.clone(), path, json!("road")]),
+            Err(diamond::ComputeError::InvalidInput)
+        );
+    }
+    assert_eq!(
+        RouteCost::evaluate(&[
+            json!("3,1|1,0,1"),
+            json!(["0", "0", "1", "0"]),
+            json!("road"),
+        ]),
+        Err(diamond::ComputeError::InvalidInput)
+    );
 }
 
 #[test]

@@ -105,6 +105,9 @@ export component Root:
 
   on pick(id: Text):
     game = game_pick(game, id)
+    game = match game.sel.ready and not game.inspect.is_site:
+      true => server_adopt(rpc.survey_path(game.sel.from, game.sel.to))
+      false => game
 
   on start_route:
     game = game_start_route(game)
@@ -116,7 +119,9 @@ export component Root:
     game = game_bend(game, 1)
 
   on shape_auto:
-    game = game_auto_shape(game)
+    game = match sel.ready and not game.inspect.is_site:
+      true => server_adopt(rpc.survey_path(sel.from, sel.to))
+      false => game
 
   on cancel_route:
     game = game_cancel(game)

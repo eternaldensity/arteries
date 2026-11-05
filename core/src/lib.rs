@@ -9,6 +9,13 @@
 //! regenerates both and compares, and `tests/terrain-expected.txt` is a frozen
 //! snapshot of the Diamond output for the default seed range.
 
+mod path;
+
+pub use path::{
+    pathfind, route_cost, Grid, GridPoint, RouteStats, TravelMode, MAX_GRID_CELLS, MAX_GRID_SIDE,
+    MAX_PATH_POINTS,
+};
+
 /// Map width in cells.
 pub const MAP_W: i64 = 10;
 

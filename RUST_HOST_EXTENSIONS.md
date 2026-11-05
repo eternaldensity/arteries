@@ -279,8 +279,8 @@ Dispatch looks like this from the embedder's side *(PR #2)*:
 ```rust
 let project = diamond::compile_project(Path::new("app/diamond.toml"))?;
 let mut grants = diamond::RuntimeGrants::default();
-grants.register_compute("arteries", "pathfind", &["Text", "Text", "Text", "Text"], "Text", Pathfind)?;
-grants.register_compute("arteries", "noise", &["Int", "Int", "Int", "Int"], "Int", Noise)?;
+grants.register_compute("arteries", "pathfind", &["Text", "Text", "Text", "Text"], "List<Int>", Pathfind)?;
+grants.register_compute("arteries", "route_cost", &["Text", "List<Int>", "Text"], "List<Int>", RouteCost)?;
 project.validate_compute(&grants)?;
 project.serve_with_runtime(address, origin, configuration, mailbox, grants)?;
 ```
@@ -288,8 +288,9 @@ project.serve_with_runtime(address, origin, configuration, mailbox, grants)?;
 and from Diamond's side, in a server module:
 
 ```diamond
-export fn survey(grid: Text, from: Text, to: Text) -> Result<Text, DataError>:
-  host.compute<Text>("arteries", "pathfind", grid, from, to, "road")
+export fn survey(grid: Text, from: Text, to: Text) -> Result<List<Int>, DataError>:
+  let path = host.compute<List<Int>>("arteries", "pathfind", grid, from, to, "road")?
+  host.compute<List<Int>>("arteries", "route_cost", grid, path, "road")
 ```
 
 Reachability, as implemented:
@@ -328,8 +329,8 @@ names; the call site is `host.compute<Reply>("arteries", "<name>", args...)`.
 | `hydrology` | `(Int, Int, Int, Int, Int) -> Text` | `(seed, version, face, w, h)`; flow accumulation, river carving |
 | `climate` | `(Int, Int, Int, Int, Int) -> Text` | `(seed, version, face, w, h)`; temperature/moisture from latitude and elevation |
 | `validate_world` | `(Int, Int) -> Bool` | `(seed, version)`; playability checks |
-| `pathfind` | `(Text, Text, Text, Text) -> Text` | packed grid, from, to, mode; A*; kernel bounds grid size |
-| `route_cost` | `(Text, Text) -> Int` | rasterized cost (drawn == charged) |
+| `pathfind` | `(Text, Text, Text, Text) -> List<Int>` | packed terrain `width,height|rows`, `x,y` endpoints, mode; deterministic 4-neighbour A*, simplified corner points; grids up to 64×64 |
+| `route_cost` | `(Text, List<Int>, Text) -> List<Int>` | `[surcharge, length, water, mountain, forest]` rasterized from the drawn polyline; `surcharge = length + water*5 + mountain*8`, exactly the survey's charge above its 8-crown base (drawn == charged) |
 | `plan_many` | `(Text, Text, Text, Int) -> Text` | alternates in one call |
 | `digest` | `(Text) -> Text` | stable hash for determinism checks and save integrity |
 | `generate_planet` | `(Int, Int) -> Text` | coarse planet topology; likely chunked or background |
@@ -491,28 +492,32 @@ ones):
 provides = [
   "DbRead<Worlds>", "DbWrite<Worlds>",
   # ... existing capabilities ...
+  "Compute<arteries.terrain_region>",
   "Compute<arteries.pathfind>",
-  "Compute<arteries.noise>",
+  "Compute<arteries.route_cost>",
 ]
 
 [modules.server]
-provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "...", "Compute<arteries.pathfind>", "Compute<arteries.noise>"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "...", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>"]
 
 [compute.arteries]
 kind = "host"
 
 [compute.arteries.exports.pathfind]
 arguments = ["Text", "Text", "Text", "Text"]
-result = "Text"
+result = "List<Int>"
 deterministic = true
-max_input_bytes = 262144
+max_input_bytes = 131072
 max_output_bytes = 65536
-max_duration_ms = 1500
+max_duration_ms = 2000
 
-[compute.arteries.exports.noise]
-arguments = ["Int", "Int", "Int", "Int"]
-result = "Int"
+[compute.arteries.exports.route_cost]
+arguments = ["Text", "List<Int>", "Text"]
+result = "List<Int>"
 deterministic = true
+max_input_bytes = 131072
+max_output_bytes = 4096
+max_duration_ms = 2000
 ```
 
 - **Kill switch:** there is no deployment switch yet — the RFC defers it to the
@@ -654,12 +659,12 @@ transport only when H3's chunked staged RPCs actually hit their limit.
 | --- | --- | --- |
 | **H0 — `arteries-core` + exporter** ✅ terrain slice | `core/` crate (`arteries-core`) plus the `arteries-gen` CLI; `tools/gen-maps.sh` consumes it, `tools/check-core.sh` diffs it against the Diamond generator, and `core/tests/terrain-expected.txt` freezes seeds 0–15. Noise and hydrology join the crate with M2 | Outputs match on fixed seeds; renderer consumes the crate — **landed for terrain** |
 | **H1 — First compute export** ✅ landed | `runner/` crate (`arteries-runner`) registers `arteries.terrain_region` and serves with grants; the real app now declares `[compute.arteries]` with `terrain_region` in `app/diamond.toml` and calls it from `server.terrain_region`; `runner/tests` proves `validate_compute`, exact packed regions, and the app manifest/registration match | `diamond check`/`build` pass; packed region round-trips and matches the CLI map; `tests/ui-smoke.js` does not yet call the compute export — **landed** |
-| **H2 — Pathfinding** | Declare `pathfind` + `route_cost` exports and register the kernels; use them for the survey | A* on a 64×64 grid well under the request deadline |
+| **H2 — Pathfinding** ✅ landed | `core/src/path.rs` implements deterministic 4-neighbour A* and rasterized route accounting; `arteries-runner` registers `pathfind` + `route_cost`; the app packs terrain through `terrain_region`, requests an A* corridor from `survey_path`, and stores the sentinel `bend = 100` so loading recomputes the same path; manual bend switches back to the hand-shaped polyline | 64×64 A* completes in milliseconds; the packed survey round-trips through build/reload and matches the rasterized `route_cost` stats — **landed** |
 | **H3 — Stateful tick** | **Not a compute export.** Move the tick out of Diamond via the §8 options: staged Diamond RPCs (current), an HTTP service, or a fork with transactional host ops | 100-settlement tick runs in bounded chunks within the request deadline; replay/rollback verified |
 | **H4 — Planet generation** | Declare `generate_planet` and register the kernel; chunk the call or run it as a durable job | A planet generates in bounded chunks within the request deadline; generation validation passes |
 
-**Precondition for H1+:** a Diamond build containing PR #2 (§14). H0 and H1
-have landed against the local `feat/compute-host-tier` build; pin that revision
+**Precondition for H1+:** a Diamond build containing PR #2 (§14). H0–H2 have
+landed against the local `feat/compute-host-tier` build; pin that revision
 until PR #2 merges, then re-run `tools/check-core.sh` and the runner tests
 against upstream `main`.
 
@@ -677,6 +682,7 @@ with the target region size. Otherwise complete the gameplay phases first, as
 | Running an unmerged Diamond build | Pin the exact revision next to the binary; re-run `verification/examples.py` and the Arteries smoke test on upgrade |
 | Deadline overruns | `ComputeContext::checkpoint` inside kernel loops + chunking; `max_duration_ms` is a post-call check; do not add nested blocking; check the admission class |
 | Nondeterminism | Integer/fixed-point, sorted iteration, no f64, digest assertions; `deterministic = true` is declared but not proven |
+| Algorithm drift on recomputed A* routes | H2 stores only the sentinel bend and recomputes the path on load, so a kernel change alters historical routes. Bump `generation_version` before changing the cost model/pathfinder, and persist waypoints at D4 |
 | Payload limits | Binary encoding, chunking, handle-based state for the tick |
 | Schema coupling (stateful op) | One versioned data-access module; contract tests |
 | Security/resource abuse | Declared input/output/duration caps, `catch_unwind`, bounded pool; **no upstream kill switch yet** — disable by removing the manifest declaration (§10) |

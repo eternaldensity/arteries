@@ -59,11 +59,13 @@ seed as well. No map tiles are stored or loaded from disk.
 
 Routes are not fixed links. Click two settlements to survey one:
 
-- the survey proposes a five-point polyline;
-- each waypoint bends toward cheaper terrain, so routes visibly avoid water,
-  mountains, and bad ground where they can;
-- the Route desk can bend the interior waypoints left or right before building,
-  or return to the automatic terrain survey;
+- the server packs the terrain grid and asks the native `arteries.pathfind`
+  kernel for a deterministic least-cost corridor;
+- the survey drawn in the browser is that corridor, simplified to corner
+  points; `arteries.route_cost` rasterizes the same line to count water,
+  mountain, and forest cells without double-counting;
+- the Route desk can bend the interior waypoints left or right, which switches
+  to the hand-shaped five-point polyline, or return to the automatic corridor;
 - built routes are drawn as exact 2D segments, so diagonals follow their real
   angle and length;
 - length, river crossings, mountain crossings, construction cost, material
@@ -178,17 +180,18 @@ app/
   shared.dia       types, procedural terrain, route geometry, economy, game state
   ui.dia           Root + MapCanvas reactive components
   app.css          map, dashboard, cards, responsive layout
-  server.dia       minimal server entry
+  server.dia       authoritative RPC handlers, route planning, persistence
   assets/map-*.svg generated terrain assets
 core/
   Cargo.toml       arteries-core crate plus the arteries-gen CLI
   src/lib.rs       deterministic terrain, frozen against the Diamond oracle
+  src/path.rs      A* pathfinding and rasterized route accounting
   src/main.rs      terrain exporter
 runner/
   Cargo.toml       arteries-runner: serves an Arteries project with compute
-  src/lib.rs       kernel implementations (terrain_region)
+  src/lib.rs       kernel implementations (terrain_region, pathfind, route_cost)
   src/main.rs      serve binary, requires DIAMOND_POSTGRES_URL
-  tests/           validate_compute + end-to-end dispatch against a probe project
+  tests/           validate_compute + end-to-end dispatch against probe projects
 tools/
   gen_terrain_main.dia  Diamond terrain exporter (differential oracle)
   render_maps.py        SVG map renderer
