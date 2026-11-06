@@ -290,12 +290,6 @@ export type TradeMoves:
   ba: List<Int>
   moved: Int
 
-export type NetState:
-  seed: Int
-  towns: List<Town>
-  routes: List<Route>
-  income: Int
-
 export type EventOutcome:
   towns: List<Town>
   messages: List<Text>
@@ -2511,10 +2505,33 @@ fn any_shortage(towns: List<Town>, i: Int) -> Bool:
       true => true
       false => any_shortage(towns, i + 1)
 
+# A settlement is a hub when links of two different modes meet there. The flow
+# kernel makes transfers through a hub free; the inspector says so.
+fn town_hub_at(routes: List<Route>, id: Text, i: Int, first: Int, seen: Int) -> Bool:
+  match list_get(routes, i):
+    None => false
+    Some(r) => match r.a == id or r.b == id:
+      false => town_hub_at(routes, id, i + 1, first, seen)
+      true => match seen == 0:
+        true => town_hub_at(routes, id, i + 1, route_mode_code(r.mode), 1)
+        false => match route_mode_code(r.mode) != first:
+          true => true
+          false => town_hub_at(routes, id, i + 1, first, seen + 1)
+
+export fn town_is_hub(routes: List<Route>, id: Text) -> Bool:
+  town_hub_at(routes, id, 0, 0, 0)
+
+export fn town_hub_text(world: World, id: Text) -> Text:
+  match town_is_hub(world.routes, id):
+    true => "Hub: transfers between modes are free."
+    false => ""
+
+# A link is congested once it passes three quarters of its capacity: beyond that
+# point consignments start losing cargo in transit (see the flow kernel).
 fn any_congested(routes: List<Route>, i: Int) -> Bool:
   match list_get(routes, i):
     None => false
-    Some(r) => match r.traffic >= r.capacity and r.capacity > 0:
+    Some(r) => match r.capacity > 0 and r.traffic * 4 > r.capacity * 3:
       true => true
       false => any_congested(routes, i + 1)
 
@@ -3215,242 +3232,6 @@ export fn flow_apply_routes(routes: List<Route>, result: List<List<Int>>, town_c
       None => [0]
     Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: r.fee, traffic: nth_int(traffic_values, 0), capacity: r.capacity, upkeep: r.upkeep, rules: r.rules)
 
-# Multi-hop network flow (design doc 5.4). Goods move from a surplus town to a
-# deficit town along the cheapest path whose links allow that good and still
-# have capacity. Every link charges its base fee plus the good's surcharge, and
-# every intermediate settlement costs one transfer penalty. Capacity is shared
-# per directed link across goods, and all iteration is in a fixed order, so the
-# result is deterministic and integer-only.
-type FlowSource:
-  found: Bool
-  sender: Int
-  path: List<Int>
-  toll: Int
-
-type FlowNet:
-  seed: Int
-  towns: List<Town>
-  routes: List<Route>
-  remaining: List<Int>
-  climates: List<Int>
-  income: Int
-
-type FlowDist:
-  dist: List<Int>
-  prev: List<Int>
-
-fn flow_big() -> Int:
-  1000000000
-
-fn flow_transfer_penalty() -> Int:
-  2
-
-fn flow_hop_cost(mode: RouteMode) -> Int:
-  match mode:
-    NoRoute => 3
-    Path => 2
-    Road => 3
-    River => 2
-    Rail => 1
-
-fn flow_no_source() -> FlowSource:
-  FlowSource(found: false, sender: -1, path: [], toll: 0)
-
-fn flow_remaining_init(routes: List<Route>, scale: Int, days: Int) -> List<Int>:
-  let pairs = for r in routes:
-    let cap = max_int(2, r.capacity * scale / 100 * days)
-    [cap, cap]
-  flatten_ints(pairs, 0, [])
-
-fn flow_town_id(net: FlowNet, i: Int) -> Text:
-  nth_town(net.towns, i).id
-
-# Climates are sampled once per pass into `net.climates`: `town_climate` is a
-# worldgen lookup and repeating it inside every surplus and deficit test is what
-# makes a naive flow pass blow Diamond's managed-value budget.
-fn flow_surplus(net: FlowNet, i: Int, g: Good) -> Int:
-  let t = nth_town(net.towns, i)
-  max_int(stock(t, g) - need_of_at(t, nth_int(net.climates, i), g) - 1, 0)
-
-fn flow_deficit(net: FlowNet, i: Int, g: Good) -> Int:
-  let t = nth_town(net.towns, i)
-  max_int(need_of_at(t, nth_int(net.climates, i), g) - stock(t, g), 0)
-
-# Capacity slot for a directed link: 2 * route index, plus 1 when travelling
-# b -> a. Returns -1 when no link joins the two towns.
-fn flow_slot(net: FlowNet, from: Int, to: Int) -> Int:
-  flow_slot_at(net.routes, flow_town_id(net, from), flow_town_id(net, to), 0)
-
-fn flow_slot_at(routes: List<Route>, from_id: Text, to_id: Text, i: Int) -> Int:
-  match list_get(routes, i):
-    None => -1
-    Some(r) => match r.a == from_id and r.b == to_id:
-      true => i * 2
-      false => match r.a == to_id and r.b == from_id:
-        true => i * 2 + 1
-        false => flow_slot_at(routes, from_id, to_id, i + 1)
-
-fn flow_pick(dist: List<Int>, visited: List<Int>, i: Int, best: Int) -> Int:
-  match i >= len(dist):
-    true => best
-    false => match nth_int(visited, i) > 0:
-      true => flow_pick(dist, visited, i + 1, best)
-      false =>
-        let closer = match best < 0:
-          true => true
-          false => nth_int(dist, i) < nth_int(dist, best)
-        let pick = match closer:
-          true => i
-          false => best
-        flow_pick(dist, visited, i + 1, pick)
-
-# Relax every usable link out of node u. Entering a node costs the link toll,
-# its mode friction, and one transfer penalty; the sender therefore carries one
-# extra penalty, a constant shared by every candidate, so it cannot change which
-# source is cheapest.
-fn flow_relax(net: FlowNet, g: Good, u: Int, dist: List<Int>, prev: List<Int>, i: Int) -> FlowDist:
-  match list_get(net.routes, i):
-    None => FlowDist(dist: dist, prev: prev)
-    Some(r) =>
-      let uid = flow_town_id(net, u)
-      let forward = r.a == uid and r.b != uid
-      let backward = r.b == uid and r.a != uid
-      match forward or backward:
-        false => flow_relax(net, g, u, dist, prev, i + 1)
-        true =>
-          let v = match forward:
-            true => town_position(net.towns, r.b)
-            false => town_position(net.towns, r.a)
-          let slot = match forward:
-            true => i * 2
-            false => i * 2 + 1
-          let usable = v >= 0 and rule_allows(r.rules, g) and nth_int(net.remaining, slot) > 0
-          match usable:
-            false => flow_relax(net, g, u, dist, prev, i + 1)
-            true =>
-              let step = link_fee_for(r, g) * 4 + flow_hop_cost(r.mode) + flow_transfer_penalty()
-              let candidate = nth_int(dist, u) + step
-              match candidate < nth_int(dist, v):
-                false => flow_relax(net, g, u, dist, prev, i + 1)
-                true => flow_relax(net, g, u, replace_int(dist, v, candidate), replace_int(prev, v, u), i + 1)
-
-fn flow_build_path(prev: List<Int>, node: Int, acc: List<Int>) -> List<Int>:
-  match node < 0:
-    true => acc
-    false => flow_build_path(prev, nth_int(prev, node), list_append(acc, node))
-
-fn flow_path_toll(net: FlowNet, g: Good, path: List<Int>, i: Int) -> Int:
-  match list_get(path, i):
-    None => 0
-    Some(a) => match list_get(path, i + 1):
-      None => 0
-      Some(b) =>
-        let slot = flow_slot(net, a, b)
-        let fee = match slot < 0:
-          true => 0
-          false => link_fee_for(nth_route(net.routes, slot / 2), g)
-        fee + flow_path_toll(net, g, path, i + 1)
-
-fn flow_path_capacity(net: FlowNet, path: List<Int>, i: Int, acc: Int) -> Int:
-  match list_get(path, i):
-    None => acc
-    Some(a) => match list_get(path, i + 1):
-      None => acc
-      Some(b) =>
-        let slot = flow_slot(net, a, b)
-        let next = match slot < 0:
-          true => acc
-          false => min_int(acc, nth_int(net.remaining, slot))
-        flow_path_capacity(net, path, i + 1, next)
-
-fn flow_search(net: FlowNet, g: Good, receiver: Int, dist: List<Int>, prev: List<Int>, visited: List<Int>, step: Int) -> FlowSource:
-  match step >= len(net.towns):
-    true => flow_no_source()
-    false =>
-      let u = flow_pick(dist, visited, 0, -1)
-      match u < 0:
-        true => flow_no_source()
-        false => match nth_int(dist, u) >= flow_big():
-          true => flow_no_source()
-          false => match u != receiver and flow_surplus(net, u, g) > 0:
-            true =>
-              let path = flow_build_path(prev, u, [])
-              FlowSource(found: true, sender: u, path: path, toll: flow_path_toll(net, g, path, 0))
-            false =>
-              let relaxed = flow_relax(net, g, u, dist, prev, 0)
-              flow_search(net, g, receiver, relaxed.dist, relaxed.prev, replace_int(visited, u, 1), step + 1)
-
-fn flow_find(net: FlowNet, g: Good, receiver: Int) -> FlowSource:
-  let n = len(net.towns)
-  let dist0 = for i in indices(n):
-    flow_big()
-  let prev0 = for i in indices(n):
-    -1
-  let visited0 = for i in indices(n):
-    0
-  flow_search(net, g, receiver, replace_int(dist0, receiver, 0), prev0, visited0, 0)
-
-fn flow_apply_links(net: FlowNet, g: Good, path: List<Int>, i: Int, units: Int) -> FlowNet:
-  match list_get(path, i):
-    None => net
-    Some(a) => match list_get(path, i + 1):
-      None => net
-      Some(b) =>
-        let slot = flow_slot(net, a, b)
-        match slot < 0:
-          true => flow_apply_links(net, g, path, i + 1, units)
-          false =>
-            let ri = slot / 2
-            let r = nth_route(net.routes, ri)
-            let changed = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: r.fee, traffic: r.traffic + units, capacity: r.capacity, upkeep: r.upkeep, rules: r.rules)
-            let next = FlowNet(seed: net.seed, towns: net.towns, routes: replace_route(net.routes, changed), remaining: replace_int(net.remaining, slot, max_int(nth_int(net.remaining, slot) - units, 0)), climates: net.climates, income: net.income + units * link_fee_for(r, g))
-            flow_apply_links(next, g, path, i + 1, units)
-
-fn flow_apply_stock(net: FlowNet, g: Good, sender: Int, receiver: Int, units: Int) -> FlowNet:
-  let s = nth_town(net.towns, sender)
-  let towns1 = replace_town(net.towns, with_stock(s, g, stock(s, g) - units))
-  let r = nth_town(towns1, receiver)
-  let towns2 = replace_town(towns1, with_stock(r, g, stock(r, g) + units))
-  FlowNet(seed: net.seed, towns: towns2, routes: net.routes, remaining: net.remaining, climates: net.climates, income: net.income)
-
-fn flow_one(net: FlowNet, g: Good, receiver: Int, iter: Int) -> FlowNet:
-  match iter >= 8:
-    true => net
-    false =>
-      let deficit = flow_deficit(net, receiver, g)
-      match deficit <= 0:
-        true => net
-        false =>
-          let src = flow_find(net, g, receiver)
-          match src.found:
-            false => net
-            true =>
-              let usable = min_int(flow_surplus(net, src.sender, g), deficit - src.toll)
-              let units = min_int(usable, flow_path_capacity(net, src.path, 0, flow_big()))
-              match units <= 0:
-                true => net
-                false =>
-                  let moved = flow_apply_links(net, g, src.path, 0, units)
-                  let with_stock_done = flow_apply_stock(moved, g, src.sender, receiver, units)
-                  flow_one(with_stock_done, g, receiver, iter + 1)
-
-fn flow_receivers(net: FlowNet, g: Good, i: Int) -> FlowNet:
-  match i >= len(net.towns):
-    true => net
-    false => flow_receivers(flow_one(net, g, i, 0), g, i + 1)
-
-fn flow_goods(net: FlowNet, gi: Int) -> FlowNet:
-  match gi >= len(goods()):
-    true => net
-    false => flow_goods(flow_receivers(net, nth_good(gi), 0), gi + 1)
-
-fn flow_pass(net: NetState, scale: Int, days: Int) -> NetState:
-  let climates = for t in net.towns:
-    town_climate(net.seed, t.x, t.y)
-  let start = FlowNet(seed: net.seed, towns: net.towns, routes: net.routes, remaining: flow_remaining_init(net.routes, scale, days), climates: climates, income: net.income)
-  let done = flow_goods(start, 0)
-  NetState(seed: net.seed, towns: done.towns, routes: done.routes, income: done.income)
-
 fn max_research_small(towns: List<Town>, start: Int, count: Int) -> Int:
   match count <= 0:
     true => 0
@@ -3532,44 +3313,6 @@ fn append_history_values(history: List<Int>, towns: List<Town>) -> List<Int>:
   match len(next) > max_history():
     true => list_slice(next, len(next) - max_history(), max_history())
     false => next
-
-fn reset_traffic(routes: List<Route>) -> List<Route>:
-  for r in routes:
-    Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: r.fee, traffic: 0, capacity: r.capacity, upkeep: r.upkeep, rules: r.rules)
-
-export fn tick_scaled(world: World, scale: Int) -> World:
-  let towns0 = for t in world.towns:
-    advance_town(t)
-  let net2 = flow_pass(NetState(seed: world.seed, towns: towns0, routes: reset_traffic(world.routes), income: 0), scale, 1)
-  let best = max_research(net2.towns, 0)
-  let msgs_tech = tech_messages(world, best)
-  let road = world.tech_road or best >= road_research()
-  let river = world.tech_river or best >= river_research()
-  let rail = world.tech_rail or best >= rail_research()
-  let money2 = world.money + net2.income
-  let ev1 = match mod_int(world.tick, 6) == 0:
-    true => harvest(net2.towns)
-    false => EventOutcome(towns: net2.towns, messages: [])
-  let ev2 = match mod_int(world.tick, 9) == 0:
-    true => storm(ev1.towns, world.tick, world.seed)
-    false => EventOutcome(towns: ev1.towns, messages: [])
-  let ev3 = match mod_int(world.tick, 11) == 0:
-    true => caravan(ev2.towns, world.tick, world.seed)
-    false => EventOutcome(towns: ev2.towns, messages: [])
-  let log1 = append_messages(append_messages(append_messages(world.log, ev1.messages, 0), ev2.messages, 0), ev3.messages, 0)
-  let log2 = append_messages(log1, msgs_tech, 0)
-  World(seed: world.seed, tick: world.tick + 1, money: money2, towns: ev3.towns, sites: world.sites, routes: net2.routes, log: log2, history: append_history_values(world.history, ev3.towns), tech_road: road, tech_river: river, tech_rail: rail)
-
-export fn tick(world: World) -> World:
-  tick_scaled(world, 100)
-
-export fn run_ticks_scaled(world: World, n: Int, scale: Int) -> World:
-  match n <= 0:
-    true => world
-    false => run_ticks_scaled(tick_scaled(world, scale), n - 1, scale)
-
-export fn run_ticks(world: World, n: Int) -> World:
-  run_ticks_scaled(world, n, 100)
 
 export fn position_class(x: Int, y: Int) -> Text:
   "p-" + int_text(x) + "-" + int_text(y)
@@ -4075,43 +3818,6 @@ fn refresh_inspect_light(world: World, id: Text, iv: InspectView) -> InspectView
         stock(t, g)
       InspectView(ready: true, is_site: false, name: t.name, status: status_text(t), tone: status_tone(t), resource: "", richness: 0, founded: false, pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, terrain: terrain_name(t.terrain), climate: iv.climate, value: market_value(t), insight: iv.insight, shortages: iv.shortages, connected: connected_routes(world, t.id), goods: goods_now, needs: iv.needs, endows: iv.endows)
 
-export fn game_tick(game: Game, n: Int) -> Game:
-  let before = game.world.tick
-  let unpaid = neglect_ticks(game)
-  let scale = match game.auto_upkeep:
-    true => 100
-    false => match unpaid >= 2:
-      true => 50
-      false => 100
-  let ticked = run_ticks_scaled(game.world, n, scale)
-  let outcome = match len(game.projects) == 0:
-    true => ProjectOutcome(world: ticked, projects: [], messages: [])
-    false => advance_projects(ticked, game.projects, 0, [], [])
-  let world_after = outcome.world
-  let completed = len(outcome.messages) > 0
-  let groups = match completed:
-    true => route_groups(world_after.routes)
-    false => game.route_groups
-  let upkeep = match completed:
-    true => total_upkeep(world_after.routes)
-    false => game.upkeep_per_cycle
-  let money2 = match game.auto_upkeep:
-    true => world_after.money - game.upkeep_per_cycle * n
-    false => world_after.money
-  let world2 = match game.auto_upkeep:
-    true => set_money(world_after, money2)
-    false => world_after
-  let paid_tick = match completed:
-    true => world2.tick
-    false => match game.auto_upkeep:
-      true => world2.tick
-      false => game.last_paid_tick
-  let base = "Advanced " + duration_text(world_after.tick - before) + ". " + calendar_text(world_after) + "."
-  let extra = match completed:
-    true => " " + join_nonempty(outcome.messages, 0, "")
-    false => ""
-  Game(world: world2, sel: game.sel, notice: base + extra, last_ok: true, route_groups: groups, auto_upkeep: game.auto_upkeep, last_paid_tick: paid_tick, upkeep_per_cycle: upkeep, projects: outcome.projects, inspect: game.inspect)
-
 export fn game_pay_upkeep(game: Game) -> Game:
   let due = upkeep_due(game)
   match due <= 0:
@@ -4317,15 +4023,6 @@ fn advance_town_days(t: Town, days: Int) -> Town:
           true => period_shrink(t, after, prosperity, research)
           false => period_keep(t, after, prosperity, research)
 
-export fn market_period(world: World, days: Int, scale: Int) -> World:
-  match days <= 0:
-    true => world
-    false =>
-      let towns0 = for t in world.towns:
-        advance_town_days(t, days)
-      let net2 = flow_pass(NetState(seed: world.seed, towns: towns0, routes: reset_traffic(world.routes), income: 0), scale, days)
-      World(seed: world.seed, tick: world.tick, money: world.money + net2.income, towns: net2.towns, sites: world.sites, routes: net2.routes, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
-
 fn boundary_in_period(start: Int, days: Int, cadence: Int) -> Bool:
   let offset = mod_int(cadence - mod_int(start, cadence), cadence)
   offset < days
@@ -4376,12 +4073,6 @@ export fn game_finish_period(game: Game, days: Int, from: Int) -> Game:
 
 # ---------------------------------------------------------------- staged server tick
 
-export fn market_stage(world: World, scale: Int) -> World:
-  let towns0 = for t in world.towns:
-    advance_town(t)
-  let net2 = flow_pass(NetState(seed: world.seed, towns: towns0, routes: reset_traffic(world.routes), income: 0), scale, 1)
-  World(seed: world.seed, tick: world.tick, money: world.money + net2.income, towns: net2.towns, sites: world.sites, routes: net2.routes, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
-
 export fn finish_stage(world: World) -> World:
   let best = max_research(world.towns, 0)
   let msgs_tech = tech_messages(world, best)
@@ -4404,16 +4095,6 @@ export fn finish_stage(world: World) -> World:
   let log1 = append_messages(append_messages(append_messages(append_messages(world.log, ev1.messages, 0), ev2.messages, 0), ev3.messages, 0), ev4.messages, 0)
   let log2 = append_messages(log1, msgs_tech, 0)
   World(seed: world.seed, tick: world.tick + 1, money: world.money, towns: ev4.towns, sites: world.sites, routes: world.routes, log: log2, history: append_history_values(world.history, ev4.towns), tech_road: road, tech_river: river, tech_rail: rail)
-
-export fn game_market(game: Game) -> Game:
-  let unpaid = neglect_ticks(game)
-  let scale = match game.auto_upkeep:
-    true => 100
-    false => match unpaid >= 2:
-      true => 50
-      false => 100
-  let world = market_stage(game.world, scale)
-  Game(world: world, sel: game.sel, notice: "Market cleared at " + calendar_text(world) + ". Treasury " + int_text(world.money) + ".", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
 
 export fn game_finish(game: Game) -> Game:
   let before = game.world.tick

@@ -106,6 +106,7 @@ pub fn trade(state: &mut TickState, days: i64, scale: i64) {
         remaining.push(cap);
         remaining.push(cap);
     }
+    let caps = remaining.clone();
     let mut income = 0_i64;
     for good in 0..GOOD_COUNT {
         for receiver in 0..state.towns.len() {
@@ -141,10 +142,14 @@ pub fn trade(state: &mut TickState, days: i64, scale: i64) {
                         income = income.saturating_add(units.saturating_mul(fee));
                     }
                 }
+                let last = flow_slot(state, source.path[source.path.len() - 2], receiver);
+                let lost = last
+                    .map(|slot| flow_congestion_loss(&caps, &remaining, slot, units))
+                    .unwrap_or(0);
                 state.towns[source.sender].stock[good] =
                     (state.towns[source.sender].stock[good] - units).max(0);
                 state.towns[receiver].stock[good] =
-                    state.towns[receiver].stock[good].saturating_add(units);
+                    state.towns[receiver].stock[good].saturating_add(units - lost);
             }
         }
     }
@@ -171,6 +176,42 @@ fn flow_hop_cost(mode: i64) -> i64 {
 
 fn flow_fee(route: &TickRoute, good: usize) -> i64 {
     route.fee.saturating_add(route.good_fee[good])
+}
+
+/// A settlement is a hub when links of two different modes meet there.
+fn is_hub(state: &TickState, town: usize) -> bool {
+    let mut first: Option<i64> = None;
+    for route in &state.routes {
+        if route.a != town && route.b != town {
+            continue;
+        }
+        match first {
+            None => first = Some(route.mode),
+            Some(mode) if mode != route.mode => return true,
+            Some(_) => {}
+        }
+    }
+    false
+}
+
+fn transfer_cost(state: &TickState, town: usize) -> i64 {
+    if is_hub(state, town) {
+        0
+    } else {
+        FLOW_TRANSFER_PENALTY
+    }
+}
+
+/// Reliability: once a directed link passes three quarters of its capacity, a
+/// deterministic slice of each further consignment is lost in transit.
+fn flow_congestion_loss(caps: &[i64], remaining: &[i64], slot: usize, units: i64) -> i64 {
+    let cap = caps[slot];
+    let used = cap - remaining[slot];
+    if cap > 0 && used + units > cap * 3 / 4 {
+        units / 8
+    } else {
+        0
+    }
 }
 
 fn flow_surplus(state: &TickState, town: usize, good: usize) -> i64 {
@@ -265,7 +306,7 @@ fn flow_find(
                 continue;
             }
             let step =
-                flow_fee(route, good) * 4 + flow_hop_cost(route.mode) + FLOW_TRANSFER_PENALTY;
+                flow_fee(route, good) * 4 + flow_hop_cost(route.mode) + transfer_cost(state, next);
             let candidate = dist[pick].saturating_add(step);
             if candidate < dist[next] {
                 dist[next] = candidate;
@@ -621,7 +662,7 @@ mod tests {
     }
 
     #[test]
-    fn matches_the_diamond_market_period() {
+    fn matches_the_frozen_market_fixture() {
         let mut state = TickState {
             money: 160,
             towns: vec![
@@ -804,6 +845,54 @@ mod tests {
         trade(&mut state, 7, 100);
         assert_eq!(state.towns[2].stock[GRAIN], 2);
         assert!(state.routes[0].traffic >= 2);
+    }
+
+    #[test]
+    fn a_mode_interchange_is_a_hub() {
+        let towns = vec![town(2, [1; GOOD_COUNT]); 3];
+        let mixed = TickState {
+            money: 0,
+            towns: towns.clone(),
+            routes: vec![
+                TickRoute {
+                    mode: 2,
+                    ..route(0, 1)
+                },
+                TickRoute {
+                    mode: 3,
+                    ..route(1, 2)
+                },
+            ],
+        };
+        assert!(is_hub(&mixed, 1), "road + river interchange is a hub");
+        assert!(!is_hub(&mixed, 0));
+
+        let same = TickState {
+            money: 0,
+            towns,
+            routes: vec![route(0, 1), route(1, 2)],
+        };
+        assert!(!is_hub(&same, 1), "two roads are not a hub");
+    }
+
+    #[test]
+    fn congested_links_lose_a_slice_of_the_cargo() {
+        let mut state = TickState {
+            money: 0,
+            towns: vec![
+                town(4, [20, 4, 4, 4, 2, 0, 0, 4]),
+                town(40, [0; GOOD_COUNT]),
+            ],
+            routes: vec![TickRoute {
+                capacity: 16,
+                ..route(0, 1)
+            }],
+        };
+        trade(&mut state, 1, 100);
+        // 15 grain loaded onto a 16-unit link (above the 12-unit safe limit), so
+        // one unit is lost in transit and 14 arrive.
+        assert_eq!(state.routes[0].traffic, 16);
+        assert_eq!(state.towns[1].stock[GRAIN], 14);
     }
 
     #[test]

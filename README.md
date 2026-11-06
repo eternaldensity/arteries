@@ -111,6 +111,11 @@ Routes are not fixed links. Click two settlements to survey one:
   the link, and a surcharge high enough to cover the deficit sends the flow
   down a different path; both are persisted with the route and applied by the
   same Rust kernel that runs the staged tick;
+- settlements where links of two different modes meet are **hubs**: transfers
+  through them are free, while any other intermediate stop costs a penalty. A
+  link that passes three quarters of its capacity is congested and loses an
+  eighth of each further consignment in transit, and the Signals panel warns
+  about it;
 - the built route and project rows persist the surveyed polyline, so a reloaded
   route keeps the same geometry even if generation or pathfinding changes;
 - **Preview details** fetches capacity, upkeep, expected trade, founding
@@ -265,8 +270,7 @@ tools/
   plan_codec_main.dia   standalone codec check appended by that script
   check-tick-scale.sh   probe the staged tick at a chosen settlement count
   tick_scale_main.dia   synthetic frontier tick appended by that script
-  check-tick-market.sh  diff the Rust market kernel against shared.dia
-  tick_market_main.dia  fixed two-town market fixture for that diff
+  check-tick-market.sh  run the frozen Rust market fixture
   check-tick-finish.sh  diff the Rust finish kernel against shared.dia
   tick_finish_main.dia  fixed two-town finish fixture for that diff
 tests/

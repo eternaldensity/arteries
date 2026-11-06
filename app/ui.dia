@@ -811,6 +811,9 @@ export component Root:
               </div>
             </div>
             <p class="insight">{iv.insight}</p>
+            <when test={not iv.is_site and town_hub_text(world, sel.selected) != ""}>
+              <p class="helper">{town_hub_text(world, sel.selected)}</p>
+            </when>
             <when test={not iv.is_site}>
               <p class="endow-line">Natural production per day: <strong>{inspect_endow_text(iv)}</strong></p>
             </when>
