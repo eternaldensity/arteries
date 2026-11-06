@@ -77,59 +77,127 @@ export component SurveyPreviewPanel(from: Text, to: Text, plan: RoutePlan, road:
       </div>
     </div>
 
-export component WaypointDesk(from: Text, to: Text, markers: List<MarkerInfo>):
+export component WaypointDesk(from: Text, to: Text, markers: List<MarkerInfo>, plan: RoutePlan):
+  # Every edit sends the whole staged list and replies with the snapped result
+  # plus the surveyed corridor, so the desk and the map can never disagree about
+  # what construction will charge.
+  output planned(value: RoutePlan)
+  state reply: WaypointState = empty_waypoint_state()
   state step: Int = -1
-  state staged: Bool = false
+  state mode: Int = waypoint_mode_add()
+  state cell: Text = ""
+  state notice: Text = ""
+
+  # `plan` is the corridor Root draws. It matches what this desk surveyed until
+  # something else replaces it (a manual re-shape abandons staged waypoints
+  # server-side), so a mismatch means the staged list describes a corridor that
+  # will never be built: read the rows as empty until the player stages again.
+  # Doing this here keeps the epoch out of Root, whose per-step environment is
+  # the browser budget's scarcest resource.
+  derived synced: Bool = same_plan(reply.plan, plan)
+  derived via: List<Int> = match synced:
+    true => reply.via
+    false => []
 
   on add_mode:
+    mode = waypoint_mode_add()
     step = 0
+    notice = ""
 
   on next_marker:
-    step = match step < len(markers):
-      true => match step + 1 >= len(markers):
-        true => 0
-        false => step + 1
-      false => match step + 1 >= len(markers) * 2:
-        true => len(markers)
-        false => step + 1
+    step = match step + 1 >= len(markers):
+      true => 0
+      false => step + 1
 
   on place:
-    staged = match step >= 0 and len(markers) > 0:
-      true => rpc.survey_waypoint_stage(from, to, waypoint_stage_mode(step, len(markers)), waypoint_marker_x(markers, step), waypoint_marker_y(markers, step)).count > 0
-      false => staged
+    reply = match step >= 0 and len(markers) > 0:
+      true => rpc.survey_waypoint_edit(from, to, waypoint_edit(via, mode, waypoint_marker_x(markers, step), waypoint_marker_y(markers, step)))
+      false => reply
+    mode = waypoint_mode_add()
     step = -1
+    notice = ""
+    emit planned(reply.plan)
 
   on cancel_mode:
+    mode = waypoint_mode_add()
     step = -1
+    notice = ""
 
   on move_last:
-    step = match staged:
-      true => len(markers)
-      false => step
+    mode = waypoint_mode_move_last()
+    step = 0
+    notice = ""
+
+  on move_at(index: Int):
+    mode = index
+    step = 0
+    notice = ""
 
   on remove_last:
-    staged = rpc.survey_waypoint_remove_last(from, to).count > 0
+    reply = rpc.survey_waypoint_edit(from, to, waypoint_remove(via, waypoint_last_index(via)))
+    mode = waypoint_mode_add()
     step = -1
+    notice = ""
+    emit planned(reply.plan)
+
+  on remove_at(index: Int):
+    reply = rpc.survey_waypoint_edit(from, to, waypoint_remove(via, index))
+    mode = waypoint_mode_add()
+    step = -1
+    notice = ""
+    emit planned(reply.plan)
 
   on clear:
-    staged = rpc.survey_waypoint_clear().count > 0
+    reply = rpc.survey_waypoint_edit(from, to, [])
+    mode = waypoint_mode_add()
     step = -1
+    notice = ""
+    emit planned(reply.plan)
+
+  on place_cell:
+    notice = match len(cell_edit(via, cell)) == len(via):
+      true => "No cell added. Use a cell like 3,2, up to 6 waypoints."
+      false => ""
+    reply = rpc.survey_waypoint_edit(from, to, cell_edit(via, cell))
+    emit planned(reply.plan)
 
   html:
-    <when test={staged}>
+    <when test={len(via) > 0}>
       <div class="shape-row waypoint-line">
-        <span>Waypoint staged</span>
+        <span>Waypoint staged · {int_text(len(via) / 2)} of {int_text(via_max())}</span>
         <button class="ghost tiny" type="button" on-click={add_mode}>Add</button>
         <button class="ghost tiny" type="button" on-click={move_last}>Move last</button>
         <button class="ghost tiny" type="button" on-click={remove_last}>Remove last</button>
         <button class="ghost tiny" type="button" on-click={clear}>Clear</button>
       </div>
-      <p class="helper">Staged on the server; the exact corridor is surveyed when construction starts.</p>
+      <ul class="waypoint-list">
+        <each items={waypoint_rows(via, markers)} as="row" key={row.key}>
+          <li class="waypoint-row">
+            <span class="waypoint-index">{row.label}</span>
+            <span class="waypoint-name">{row.name}</span>
+            <button class="tiny" type="button" on-click={move_at(row.index)}>Move</button>
+            <button class="tiny" type="button" on-click={remove_at(row.index)}>Remove</button>
+          </li>
+        </each>
+      </ul>
+      <when test={step < 0}>
+        <div class="shape-row waypoint-cell">
+          <input id="waypoint-cell" bind-value={cell} maxlength="16" placeholder="cell x,y">
+          <button class="ghost tiny" type="button" on-click={place_cell}>Place here</button>
+        </div>
+      </when>
+      <when test={notice != ""}><p class="helper">{notice}</p></when>
+      <p class="helper">Waypoints steer the corridor; the plan above lists exactly the cells construction charges.</p>
     </when>
-    <when test={not staged and step < 0}>
+    <when test={len(via) == 0 and step < 0}>
       <div class="shape-row">
         <button class="ghost tiny" type="button" on-click={add_mode}>Add waypoint</button>
+        <div class="waypoint-cell">
+          <input id="waypoint-cell" bind-value={cell} maxlength="16" placeholder="cell x,y">
+          <button class="ghost tiny" type="button" on-click={place_cell}>Place here</button>
+        </div>
       </div>
+      <when test={notice != ""}><p class="helper">{notice}</p></when>
     </when>
     <when test={step >= 0}>
       <div class="shape-row">
@@ -157,17 +225,16 @@ export component Root:
   state show_preview: Bool = false
   state draft_plan: RoutePlan = empty_plan()
 
+  # Root re-evaluates every derived on each step of each handler, while the
+  # template is only evaluated when it renders. Values the handlers never read
+  # (marker names, stat headlines, plan stats) are therefore rendered inline
+  # instead of being carried as deriveds; what stays here is either read by a
+  # handler, repeated across the template, or costly enough to be worth one
+  # shared evaluation.
   derived world: World = game.world
   derived iv: InspectView = game.inspect
   derived sel: Selection = game.sel
-  derived map_markers: List<MarkerInfo> = make_markers(world)
-  derived draft_route_nodes: List<RouteNode> = draft_nodes(draft_plan, sel.ready)
-  derived population: Int = total_pop(world)
   derived prosperity: Int = total_prosperity(world)
-  derived tech: Text = tech_summary(world)
-  derived tech_percent: Int = tech_progress(world)
-  derived tech_class: Text = progress_class(world)
-  derived next_tech: Text = next_tech_name(world)
   derived routes_count: Int = len(world.routes)
   derived alert_items: List<Text> = alerts(world)
   derived alert_idx: List<Int> = indices(len(alert_items))
@@ -177,17 +244,8 @@ export component Root:
   derived signal_count: Int = len(alert_items) + upkeep_flag
   derived feed_items: List<Text> = log_feed(world)
   derived feed_idx: List<Int> = indices(len(feed_items))
-  derived history_idx: List<Int> = indices(len(world.history))
-  derived can_build: Bool = can_build_plan(world, game.projects, sel.from, sel.to, draft_plan, sel.ready)
-  derived blocker: Text = build_blocker_plan(world, game.projects, sel.from, sel.to, draft_plan, sel.ready)
-  derived build_time: Text = construction_preview_plan(world, sel.from, sel.to, draft_plan, sel.ready)
-  derived build_text: Text = build_button_text_plan(world, game.projects, sel.from, sel.to, draft_plan, sel.ready)
-  derived origin_name: Text = marker_name(world, sel.from)
-  derived destination_name: Text = marker_name(world, sel.to)
-  derived pending_route: Route = route_lookup(world, pending_dismantle)
-  derived pending_salvage: Text = match pending_dismantle == "":
-    true => ""
-    false => salvage_text(pending_route)
+  derived build_check: BuildCheck = build_check_plan(world, game.projects, sel.from, sel.to, draft_plan, sel.ready)
+  derived build_duration: Text = construction_preview_plan(world, sel.from, sel.to, draft_plan, sel.ready)
   derived scale_button: Text = match scale_active:
     true => "Continue cycle"
     false => "Run 1 day"
@@ -278,12 +336,18 @@ export component Root:
 
   on bend_left:
     game = game_bend(game, -1)
-    draft_plan = game.sel.draft
+    # Shaping by hand abandons staged waypoints, so survey the bend through the
+    # server: that clears the draft in the same step that replaces it.
+    draft_plan = match game.sel.ready:
+      true => rpc.survey_corridor_plan(game.sel.from, game.sel.to, game.sel.draft.bend)
+      false => draft_plan
     show_preview = false
 
   on bend_right:
     game = game_bend(game, 1)
-    draft_plan = game.sel.draft
+    draft_plan = match game.sel.ready:
+      true => rpc.survey_corridor_plan(game.sel.from, game.sel.to, game.sel.draft.bend)
+      false => draft_plan
     show_preview = false
 
   on shape_auto:
@@ -291,6 +355,9 @@ export component Root:
     draft_plan = match sel.ready:
       true => rpc.survey_path_plan(sel.from, sel.to)
       false => draft_plan
+
+  on waypoint_planned(plan: RoutePlan):
+    draft_plan = plan
 
   on cancel_route:
     game = game_cancel(game)
@@ -508,7 +575,7 @@ export component Root:
       <section class="stats">
         <article class="stat">
           <span class="stat-label">Population</span>
-          <strong>{population}</strong>
+          <strong>{total_pop(world)}</strong>
           <span class="stat-sub">{len(world.towns)} settlements</span>
         </article>
         <article class="stat">
@@ -519,16 +586,16 @@ export component Root:
         <article class="stat">
           <span class="stat-label">Best research</span>
           <strong>{max_town_research(world)}</strong>
-          <span class="stat-sub">next: {next_tech}</span>
+          <span class="stat-sub">next: {next_tech_name(world)}</span>
         </article>
         <article class="stat">
           <span class="stat-label">Routes</span>
           <strong>{routes_count}</strong>
-          <span class="stat-sub">{tech} unlocked</span>
+          <span class="stat-sub">{tech_summary(world)} unlocked</span>
         </article>
         <article class="stat wide">
-          <div class="stat-head"><span class="stat-label">Technology</span><span class="mono">{tech_percent}%</span></div>
-          <div class={"track " + tech_class}><span></span></div>
+          <div class="stat-head"><span class="stat-label">Technology</span><span class="mono">{tech_progress(world)}%</span></div>
+          <div class={"track " + progress_class(world)}><span></span></div>
           <span class="stat-sub">{tech_next_text(world)}</span>
         </article>
       </section>
@@ -551,7 +618,7 @@ export component Root:
           </div>
 
           <div class="map-frame">
-            <use component="MapCanvas" seed={world.seed} groups={game.route_groups} draft={draft_route_nodes} markers={map_markers} selected={sel.selected} on-picked={pick}></use>
+            <use component="MapCanvas" seed={world.seed} groups={game.route_groups} draft={draft_nodes(draft_plan, sel.ready)} markers={make_markers(world)} selected={sel.selected} on-picked={pick}></use>
             <div class="compass"><span>N</span><span class="north-needle"></span></div>
           </div>
 
@@ -595,11 +662,11 @@ export component Root:
             <when test={sel.routing}>
               <div class="route-draft">
                 <div class="endpoints">
-                  <span><span class="origin-dot"></span>{origin_name}</span>
+                  <span><span class="origin-dot"></span>{marker_name(world, sel.from)}</span>
                   <span class="arrow">→</span>
                   <span>
                     <when test={sel.to == ""}><em>choose destination</em></when>
-                    <when test={sel.to != ""}>{destination_name}</when>
+                    <when test={sel.to != ""}>{marker_name(world, sel.to)}</when>
                   </span>
                 </div>
                 <when test={iv.is_site and sel.to != ""}>
@@ -613,7 +680,7 @@ export component Root:
                     <div><span>Stone</span><strong>{draft_plan.stone}</strong></div>
                     <div><span>Bridges</span><strong>{draft_plan.water}</strong></div>
                     <div><span>Forest</span><strong>{draft_plan.forest}</strong></div>
-                    <div><span>Build time</span><strong>{build_time}</strong></div>
+                    <div><span>Build time</span><strong>{build_duration}</strong></div>
                   </div>
                   <div class="shape-row">
                     <span>Shape <strong>{draft_plan.bend}</strong></span>
@@ -623,15 +690,15 @@ export component Root:
                     <button class="ghost tiny" type="button" on-click={preview_details}>Preview details</button>
                   </div>
                   <each items={[sel.from + "-" + sel.to]} as="survey_key" key={survey_key}>
-                    <use component="WaypointDesk" from={sel.from} to={sel.to} markers={map_markers}></use>
+                    <use component="WaypointDesk" from={sel.from} to={sel.to} markers={make_markers(world)} plan={draft_plan} on-planned={waypoint_planned}></use>
                   </each>
                                     <p class="helper">Water crossings become bridges; they add cost, lower capacity, and lengthen construction.</p>
                   <when test={show_preview}>
                     <use component="SurveyPreviewPanel" from={sel.from} to={sel.to} plan={draft_plan} road={world.tech_road} river={world.tech_river} rail={world.tech_rail} on-choose={use_corridor}></use>
                   </when>
-                  <p class="blocker">{blocker}</p>
+                  <p class="blocker">{build_check.reason}</p>
                   <div class="actions">
-                    <button class="primary" type="button" on-click={build_route} disabled={not can_build}>{build_text}</button>
+                    <button class="primary" type="button" on-click={build_route} disabled={not build_check.ok}>{build_button_text_with(sel.ready, build_duration)}</button>
                     <button class="ghost" type="button" on-click={cancel_route}>Cancel</button>
                   </div>
                 </when>
@@ -760,7 +827,7 @@ export component Root:
           </when>
           <when test={pending_dismantle != ""}>
             <div class="confirm-dismantle">
-              <p>Dismantle {route_direction(pending_route)}? {pending_salvage}</p>
+              <p>Dismantle {route_direction(route_lookup(world, pending_dismantle))}? {salvage_text(route_lookup(world, pending_dismantle))}</p>
               <div class="actions">
                 <button class="small danger" type="button" on-click={confirm_dismantle}>Confirm dismantle</button>
                 <button class="ghost small" type="button" on-click={cancel_dismantle}>Cancel</button>

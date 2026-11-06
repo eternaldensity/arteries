@@ -442,27 +442,35 @@ fn packed_terrain(world: World) -> Text:
 # A kernel-planned corridor is a pure function of the world and endpoints, so
 # persisted rows only need the sentinel bend; loading recomputes the same path.
 fn concat_ints(xs: List<Int>, ys: List<Int>) -> List<Int>:
-  match len(xs) == 0:
-    true => ys
-    false => concat_ints(list_slice(xs, 1, len(xs) - 1), list_append(ys, nth_int(xs, 0)))
+  match len(ys) == 0:
+    true => xs
+    false => concat_ints(list_append(xs, nth_int(ys, 0)), list_slice(ys, 1, len(ys) - 1))
 
-fn path_through(world: World, points: List<Point>, i: Int, acc: List<Int>) -> List<Int>:
+# One A* leg between two consecutive waypoints. An unreachable or malformed leg
+# falls back to the straight segment between the pair, so the surveyed corridor
+# is always connected: the player never sees a jump the pathfinder refused.
+fn leg_path(grid: Text, features: Text, a: Point, b: Point) -> List<Int>:
+  let start = int_text(a.x) + "," + int_text(a.y)
+  let goal = int_text(b.x) + "," + int_text(b.y)
+  match host.compute<List<Int>>("arteries", "pathfind_features", grid, features, start, goal, "road"):
+    Err(_) => [a.x, a.y, b.x, b.y]
+    Ok(flat) => match len(flat) >= 4:
+      true => flat
+      false => [a.x, a.y, b.x, b.y]
+
+# Concatenate the per-leg corridors. The first leg contributes every cell; each
+# later leg drops its first cell because that cell closes the previous leg.
+fn path_through(grid: Text, features: Text, points: List<Point>, i: Int, acc: List<Int>) -> List<Int>:
   match list_get(points, i):
     None => acc
     Some(a) => match list_get(points, i + 1):
       None => acc
       Some(b) =>
-        let grid = packed_terrain(world)
-        let features = feature_grid(world.seed)
-        let start = int_text(a.x) + "," + int_text(a.y)
-        let goal = int_text(b.x) + "," + int_text(b.y)
-        match host.compute<List<Int>>("arteries", "pathfind_features", grid, features, start, goal, "road"):
-          Err(_) => []
-          Ok(flat) =>
-            let next = match i == 0:
-              true => flat
-              false => concat_ints(acc, list_slice(flat, 2, len(flat) - 2))
-            path_through(world, points, i + 1, next)
+        let flat = leg_path(grid, features, a, b)
+        let next = match i == 0:
+          true => flat
+          false => concat_ints(acc, list_slice(flat, 2, len(flat) - 2))
+        path_through(grid, features, points, i + 1, next)
 
 fn auto_plan(world: World, from: Text, to: Text) -> RoutePlan:
   let start = marker_point(world, from)
@@ -495,9 +503,15 @@ fn plan_via(world: World, from: Text, to: Text, via: List<Int>) -> RoutePlan:
             true => empty_plan()
             false =>
               let points = concat_points(concat_points([start], vias), [goal])
-              let flat = via_flat(points)
               let grid = packed_terrain(world)
               let features = feature_grid(world.seed)
+              # Survey each leg with A* and charge the concatenated corridor, so
+              # the drawn line and the crowns, timber, and stone it costs always
+              # describe the same cells.
+              let corridor = path_through(grid, features, points, 0, [])
+              let flat = match len(corridor) >= 4:
+                true => corridor
+                false => via_flat(points)
               match host.compute<List<Int>>("arteries", "route_cost_features", grid, features, flat, "road"):
                 Err(_) => empty_plan()
                 Ok(stats) => plan_from_path(flat, stats)
@@ -1415,11 +1429,26 @@ export fn survey_corridor_plan(from: Text, to: Text, bend: Int) -> Result<RouteP
   let _ = clear_draft()?
   Ok(plan_route_bend(world, from, to, bend))
 
+# The preview panel must describe the corridor the player will actually build.
+# With a staged waypoint draft that is the via corridor, not the plain auto
+# survey, otherwise the numbers under "Preview details" disagree with both the
+# plan grid and the crowns construction charges.
+fn preview_plan(world: World, from: Text, to: Text, bend: Int) -> RoutePlan:
+  match bend == auto_bend():
+    false => plan_route_bend(world, from, to, bend)
+    true => match worlds.select(limit: 1):
+      Err(_) => auto_plan(world, from, to)
+      Ok(rows) => match list_get(rows, 0):
+        None => auto_plan(world, from, to)
+        Some(row) =>
+          let via = draft_via(row, from, to)
+          match len(via) > 0:
+            true => plan_via(world, from, to, snap_via(world, via))
+            false => auto_plan(world, from, to)
+
 export fn survey_preview(from: Text, to: Text, bend: Int) -> Result<SurveyPreview, DataError>:
   let world = survey_context()?
-  let plan = match bend == auto_bend():
-    true => auto_plan(world, from, to)
-    false => plan_route_bend(world, from, to, bend)
+  let plan = preview_plan(world, from, to, bend)
   Ok(SurveyPreview(capacity: route_capacity(Path, plan), upkeep: route_upkeep(Path, plan), trade: survey_trade_volume(world, from, to, plan), found: survey_found_text(world, plan), material: material_split_text(world, from, to, plan), warning: material_warning(world, from, to, plan)))
 
 # Fill the survey draft from the native pathfinding kernel.
@@ -1428,11 +1457,28 @@ export fn survey_path_plan(from: Text, to: Text) -> Result<RoutePlan, DataError>
   let _ = clear_draft()?
   Ok(auto_plan(world, from, to))
 
-# Re-plan the draft through player-authored waypoints. Cells snap to a nearby
-# town or site marker; the path is the concatenation of per-leg A* corridors.
-export fn survey_waypoint_plan(from: Text, to: Text, via: List<Int>) -> Result<RoutePlan, DataError>:
+# Stage the desk's whole waypoint list in one round trip: snap every cell to a
+# town, site, or nearby route cell, persist the draft, and return the surveyed
+# corridor so the browser draws exactly the cells construction will charge. The
+# desk always sends the complete list, so a draft left by an earlier survey can
+# never merge into an edit the player did not make.
+export fn survey_waypoint_edit(from: Text, to: Text, via: List<Int>) -> Result<WaypointState, DataError>:
   let world = survey_context()?
-  Ok(plan_via(world, from, to, snap_via(world, via)))
+  let rows = worlds.select(limit: 1)?
+  match list_get(rows, 0):
+    None => Err("No world.")
+    Some(row) =>
+      let points = via_from_flat(via)
+      match len(points) > via_max():
+        true => Ok(WaypointState(count: len(points), ok: false, via: via_flat(points), plan: empty_plan()))
+        false =>
+          let snapped = for p in points:
+            waypoint_snap(world, p)
+          # start_route re-snaps the stored cells before it plans, so the
+          # preview applies the same transform to stay byte-identical with it.
+          let flat = snap_via(world, via_flat(snapped))
+          let saved = save_draft(row, from, to, flat)?
+          Ok(WaypointState(count: len(flat) / 2, ok: saved, via: flat, plan: plan_via(world, from, to, flat)))
 
 fn edit_world_draft(row: WorldRow, from: Text, to: Text, via: Text) -> EditWorldRow:
   EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: row.tick, money: row.money, tech_road: row.tech_road, tech_river: row.tech_river, tech_rail: row.tech_rail, auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: row.phase, epoch: row.epoch, settle_days: row.settle_days, settle_from: row.settle_from, draft_from: from, draft_to: to, draft_via: via)
@@ -1451,38 +1497,6 @@ fn draft_via(row: WorldRow, from: Text, to: Text) -> List<Int>:
   match row.draft_from == from and row.draft_to == to:
     true => decode_waypoints(row.draft_via)
     false => []
-
-export fn survey_waypoint_stage(from: Text, to: Text, mode: Int, x: Int, y: Int) -> Result<WaypointState, DataError>:
-  let world = survey_context()?
-  let rows = worlds.select(limit: 1)?
-  match list_get(rows, 0):
-    None => Err("No world.")
-    Some(row) =>
-      let current = draft_via(row, from, to)
-      let effective = match mode == -4:
-        true => match len(current) > 0:
-          true => len(current) / 2 - 1
-          false => -2
-        false => mode
-      let next = waypoint_place(world, via_from_flat(current), effective, x, y)
-      let saved = save_draft(row, from, to, via_flat(next))?
-      Ok(WaypointState(count: len(next), ok: saved))
-
-export fn survey_waypoint_remove_last(from: Text, to: Text) -> Result<WaypointState, DataError>:
-  let rows = worlds.select(limit: 1)?
-  match list_get(rows, 0):
-    None => Err("No world.")
-    Some(row) =>
-      let current = draft_via(row, from, to)
-      let next = match len(current) > 0:
-        true => via_remove_points(via_from_flat(current), len(current) / 2 - 1)
-        false => []
-      let saved = save_draft(row, from, to, via_flat(next))?
-      Ok(WaypointState(count: len(next), ok: saved))
-
-export fn survey_waypoint_clear() -> Result<WaypointState, DataError>:
-  let saved = clear_draft()?
-  Ok(WaypointState(count: 0, ok: saved))
 
 export fn start_route(from: Text, to: Text, bend: Int) -> Result<Game, DataError>:
   let state = load_state()?

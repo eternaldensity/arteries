@@ -95,6 +95,10 @@ async function advanceToRoutes(page, target) {
     // Player waypoints: add, move, remove, then build through one waypoint.
     await startSurvey(town('Hillcrest'), town('Greenvale'));
     const direct = await page.locator('.plan-grid').first().innerText();
+    const lengthOf = (text) => Number((text.match(/LENGTH\s+(\d+)/i) || [])[1] || 0);
+    const directLength = lengthOf(direct);
+    assert(directLength > 0, 'no direct route length before waypoints');
+
     await page.getByRole('button', { name: 'Add waypoint', exact: true }).click();
     await page.waitForTimeout(200);
     assert((await page.locator('.shape-row', { hasText: 'Waypoint marker' }).count()) > 0, 'no waypoint picker');
@@ -103,6 +107,15 @@ async function advanceToRoutes(page, target) {
     await page.waitForTimeout(1200);
     const addedLine = await page.locator('.waypoint-line').innerText();
     assert(/Waypoint staged/.test(addedLine), 'waypoint was not added: ' + addedLine);
+
+    // Staging re-surveys the corridor, so the plan grid describes the cells that
+    // will be built instead of the direct route it replaces.
+    const stagedPlan = await page.locator('.plan-grid').first().innerText();
+    assert(stagedPlan !== direct, 'plan grid did not follow the staged waypoint');
+    assert(lengthOf(stagedPlan) !== directLength, 'staged corridor kept the direct length');
+    const labelled = await page.locator('.waypoint-row').allInnerTexts();
+    assert(labelled.length === 1, 'expected one waypoint row, got ' + labelled.length);
+    assert(labelled[0].includes('Gold Plain'), 'waypoint row not labelled: ' + labelled[0]);
 
     await page.getByRole('button', { name: 'Move last', exact: true }).click();
     await page.waitForTimeout(200);
@@ -115,6 +128,7 @@ async function advanceToRoutes(page, target) {
     await page.getByRole('button', { name: 'Remove last', exact: true }).click();
     await page.waitForTimeout(1000);
     assert((await page.locator('.waypoint-line').count()) === 0, 'waypoint did not remove');
+    assert((await page.locator('.waypoint-row').count()) === 0, 'waypoint rows did not remove');
 
     await page.getByRole('button', { name: 'Add waypoint', exact: true }).click();
     await page.waitForTimeout(200);
@@ -125,8 +139,55 @@ async function advanceToRoutes(page, target) {
       /Waypoint staged/.test(await page.locator('.waypoint-line').innerText()),
       'waypoint was not re-added'
     );
-    const directLength = Number((direct.match(/LENGTH\s+(\d+)/i) || [])[1] || 0);
-    assert(directLength > 0, 'no direct route length before waypoints');
+
+    // Editing is not limited to the tail: stage a second waypoint, drop the
+    // first by hand, then move the survivor to another marker.
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await page.waitForTimeout(200);
+    await chooseMarker('Iron Scar');
+    await page.getByRole('button', { name: 'Place', exact: true }).click();
+    await page.waitForTimeout(1200);
+    let rows = await page.locator('.waypoint-row').allInnerTexts();
+    assert(rows.length === 2, 'expected two waypoint rows, got ' + rows.length);
+
+    await page.locator('.waypoint-row').first().getByRole('button', { name: 'Remove', exact: true }).click();
+    await page.waitForTimeout(1200);
+    rows = await page.locator('.waypoint-row').allInnerTexts();
+    assert(rows.length === 1, 'per-waypoint remove did not take: ' + rows.join(' | '));
+    assert(!rows[0].includes('Gold Plain'), 'removed the wrong waypoint: ' + rows[0]);
+
+    await page.locator('.waypoint-row').first().getByRole('button', { name: 'Move', exact: true }).click();
+    await page.waitForTimeout(200);
+    await chooseMarker('Gold Plain');
+    await page.getByRole('button', { name: 'Place', exact: true }).click();
+    await page.waitForTimeout(1200);
+    rows = await page.locator('.waypoint-row').allInnerTexts();
+    assert(rows.length === 1 && rows[0].includes('Gold Plain'), 'per-waypoint move failed: ' + rows.join(' | '));
+
+    // A free cell no marker covers can be staged directly, and taken back out
+    // with the same row control. Off-map and malformed cells are refused
+    // without disturbing the staged list.
+    await page.fill('#waypoint-cell', '99,99');
+    await page.getByRole('button', { name: 'Place here', exact: true }).click();
+    await page.waitForTimeout(900);
+    rows = await page.locator('.waypoint-row').allInnerTexts();
+    assert(rows.length === 1, 'off-map cell was staged: ' + rows.join(' | '));
+    assert(
+      (await page.locator('.helper', { hasText: 'No cell added' }).count()) > 0,
+      'off-map cell was not explained'
+    );
+
+    await page.fill('#waypoint-cell', '0,0');
+    await page.getByRole('button', { name: 'Place here', exact: true }).click();
+    await page.waitForTimeout(1200);
+    rows = await page.locator('.waypoint-row').allInnerTexts();
+    assert(rows.length === 2, 'free cell was not staged: ' + rows.join(' | '));
+
+    await page.locator('.waypoint-row').nth(1).getByRole('button', { name: 'Remove', exact: true }).click();
+    await page.waitForTimeout(1200);
+    rows = await page.locator('.waypoint-row').allInnerTexts();
+    assert(rows.length === 1 && rows[0].includes('Gold Plain'), 'free cell was not removed: ' + rows.join(' | '));
+    assert(lengthOf(await page.locator('.plan-grid').first().innerText()) > 0, 'no planned length after editing waypoints');
 
     await page.getByRole('button', { name: /Start construction/ }).click();
     await page.waitForTimeout(800);

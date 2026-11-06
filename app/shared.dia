@@ -289,10 +289,14 @@ export type Selection:
   routing: Bool
   notice: Text
 
-export fn waypoint_stage_mode(step: Int, count: Int) -> Int:
-  match step < count:
-    true => -2
-    false => -4
+# Desk edit modes. They are only ever carried by the browser: the server
+# receives the whole staged list and re-snaps it, so a stale draft can never
+# merge with an edit the player did not make.
+export fn waypoint_mode_add() -> Int:
+  -2
+
+export fn waypoint_mode_move_last() -> Int:
+  -4
 
 export fn waypoint_marker_name(markers: List<MarkerInfo>, step: Int) -> Text:
   let count = len(markers)
@@ -312,12 +316,41 @@ export fn waypoint_marker_y(markers: List<MarkerInfo>, step: Int) -> Int:
     true => -1
     false => nth_marker(markers, mod_int(step, count)).y
 
+# One staged waypoint as the desk renders it: its position, a human label, and
+# the index used by the per-row move and remove buttons.
+export type WaypointRow:
+  key: Text
+  index: Int
+  label: Text
+  name: Text
+
+fn marker_near_markers(markers: List<MarkerInfo>, x: Int, y: Int, i: Int) -> MarkerInfo:
+  match list_get(markers, i):
+    None => empty_marker()
+    Some(m) => match abs_int(m.x - x) <= 1 and abs_int(m.y - y) <= 1:
+      true => m
+      false => marker_near_markers(markers, x, y, i + 1)
+
+export fn waypoint_point_label(markers: List<MarkerInfo>, x: Int, y: Int) -> Text:
+  let near = marker_near_markers(markers, x, y, 0)
+  match near.id != "":
+    true => near.name
+    false => int_text(x) + "," + int_text(y)
+
+export fn waypoint_rows(via: List<Int>, markers: List<MarkerInfo>) -> List<WaypointRow>:
+  let points = via_from_flat(via)
+  for i in indices(len(points)):
+    let p = nth_point(points, i)
+    WaypointRow(key: "wp-" + int_text(i), index: i, label: int_text(i + 1), name: waypoint_point_label(markers, p.x, p.y))
+
 export type WaypointState:
   count: Int
   ok: Bool
+  via: List<Int>
+  plan: RoutePlan
 
 export fn empty_waypoint_state() -> WaypointState:
-  WaypointState(count: 0, ok: false)
+  WaypointState(count: 0, ok: false, via: [], plan: empty_plan())
 
 export fn encode_waypoints(via: List<Int>) -> Text:
   let parts = for i in indices(len(via) / 2):
@@ -1196,6 +1229,27 @@ fn empty_town() -> Town:
 export fn empty_plan() -> RoutePlan:
   RoutePlan(path: [], bend: 0, length: 0, water: 0, mountain: 0, forest: 0, money: 0, timber: 0, stone: 0, min_y: 0, max_y: 0)
 
+# The desk compares the corridor it surveyed against the corridor Root draws.
+# They start identical and only diverge when something else (a manual re-shape)
+# replaced the plan, which is exactly when the staged list must be abandoned.
+fn same_points(a: List<Point>, b: List<Point>, i: Int) -> Bool:
+  match len(a) == len(b):
+    false => false
+    true => match i >= len(a):
+      true => true
+      false => match list_get(a, i):
+        None => false
+        Some(p) => match list_get(b, i):
+          None => false
+          Some(q) => match p.x == q.x and p.y == q.y:
+            true => same_points(a, b, i + 1)
+            false => false
+
+export fn same_plan(a: RoutePlan, b: RoutePlan) -> Bool:
+  match a.bend == b.bend and a.length == b.length and a.money == b.money and a.min_y == b.min_y and a.max_y == b.max_y:
+    false => false
+    true => same_points(a.path, b.path, 0)
+
 fn make_towns(seed: Int) -> List<Town>:
   let points = town_positions(seed)
   for i in indices(3):
@@ -1526,9 +1580,9 @@ fn flatten_ints(xs: List<List<Int>>, i: Int, acc: List<Int>) -> List<Int>:
     Some(row) => flatten_ints(xs, i + 1, concat_int_lists(acc, row))
 
 fn concat_int_lists(xs: List<Int>, ys: List<Int>) -> List<Int>:
-  match len(xs) == 0:
-    true => ys
-    false => concat_int_lists(list_slice(xs, 1, len(xs) - 1), list_append(ys, nth_int(xs, 0)))
+  match len(ys) == 0:
+    true => xs
+    false => concat_int_lists(list_append(xs, nth_int(ys, 0)), list_slice(ys, 1, len(ys) - 1))
 
 export fn via_from_flat(flat: List<Int>) -> List<Point>:
   for i in indices(len(flat) / 2):
@@ -1559,6 +1613,71 @@ export fn via_remove_points(via: List<Point>, index: Int) -> List<Point>:
 export fn replace_point_ui(via: List<Point>, index: Int, x: Int, y: Int) -> List<Point>:
   replace_point(via, index, Point(x: clamp(x, 0, map_w() - 1), y: clamp(y, 0, map_h() - 1)))
 
+# Desk-side list edits. The browser owns the staged list and sends the whole
+# thing back on every change, so each mutation is a pure list transform; the
+# server re-snaps and persists the result. That also means a draft left behind
+# by an earlier survey can never merge into an edit the player did not make.
+export fn waypoint_last_index(via: List<Int>) -> Int:
+  len(via) / 2 - 1
+
+export fn waypoint_edit(via: List<Int>, mode: Int, x: Int, y: Int) -> List<Int>:
+  let points = via_from_flat(via)
+  match mode >= 0:
+    true => via_replace_flat(points, mode, x, y)
+    false => match mode == waypoint_mode_move_last():
+      true => match len(points) > 0:
+        true => via_replace_flat(points, len(points) - 1, x, y)
+        false => via_append_flat(points, x, y)
+      false => match len(points) < via_max():
+        true => via_append_flat(points, x, y)
+        false => via_flat(points)
+
+export fn waypoint_remove(via: List<Int>, index: Int) -> List<Int>:
+  let points = via_from_flat(via)
+  match index >= 0 and index < len(points):
+    true => via_flat(via_remove_points(points, index))
+    false => via_flat(points)
+
+# Apply the desk's free-cell field. A malformed field leaves the list untouched
+# so a typo can never stage some other cell.
+export fn cell_edit(via: List<Int>, cell: Text) -> List<Int>:
+  let p = parse_cell(cell)
+  match p.x < 0 or p.y < 0:
+    true => via
+    false => waypoint_edit(via, waypoint_mode_add(), p.x, p.y)
+
+fn find_char(text: Text, i: Int) -> Int:
+  match i >= len(text):
+    true => -1
+    false => match text_slice(text, i, 1) == ",":
+      true => i
+      false => find_char(text, i + 1)
+
+fn all_digits(text: Text) -> Bool:
+  match len(text) == 0:
+    true => true
+    false => text_contains("0123456789", text_slice(text, 0, 1)) and all_digits(text_slice(text, 1, len(text) - 1))
+
+# Parse the desk's free-cell input ("3,2"). A malformed, empty, or off-map field
+# yields the (-1, -1) sentinel so the desk can explain itself instead of
+# silently staging some other cell.
+export fn parse_cell(text: Text) -> Point:
+  let trimmed = text_trim(text)
+  let comma = find_char(trimmed, 0)
+  match comma <= 0:
+    true => Point(x: -1, y: -1)
+    false =>
+      let xs = text_slice(trimmed, 0, comma)
+      let ys = text_slice(trimmed, comma + 1, len(trimmed) - comma - 1)
+      match len(xs) > 0 and len(ys) > 0 and all_digits(xs) and all_digits(ys):
+        false => Point(x: -1, y: -1)
+        true =>
+          let px = text_int(xs)
+          let py = text_int(ys)
+          match px < map_w() and py < map_h():
+            true => Point(x: px, y: py)
+            false => Point(x: -1, y: -1)
+
 fn path_point_near(path: List<Point>, x: Int, y: Int, i: Int) -> Point:
   match list_get(path, i):
     None => Point(x: -1, y: -1)
@@ -1578,21 +1697,18 @@ fn route_point_near(routes: List<Route>, x: Int, y: Int, i: Int) -> Point:
 export fn near_route_point(world: World, x: Int, y: Int) -> Point:
   route_point_near(world.routes, x, y, 0)
 
-export fn waypoint_place(world: World, via: List<Point>, mode: Int, x: Int, y: Int) -> List<Point>:
-  let marker = near_marker_point(world, x, y)
-  let route = near_route_point(world, x, y)
-  let snapped = match marker.x != x or marker.y != y:
+# Snap a staged cell the way the desk intends it: a town or site within one
+# cell wins, then a cell of an already built route, otherwise the free cell the
+# player picked. Re-applying this to an already staged list is a no-op.
+export fn waypoint_snap(world: World, p: Point) -> Point:
+  let marker = near_marker_point(world, p.x, p.y)
+  match marker.x != p.x or marker.y != p.y:
     true => marker
-    false => match route.x >= 0:
-      true => route
-      false => marker
-  match mode >= 0:
-    true => match mode < len(via):
-      true => replace_point(via, mode, snapped)
-      false => via
-    false => match len(via) < via_max():
-      true => list_append(via, snapped)
-      false => via
+    false =>
+      let route = near_route_point(world, p.x, p.y)
+      match route.x >= 0:
+        true => route
+        false => marker
 
 fn flatten_points(xs: List<List<Point>>, i: Int, acc: List<Point>) -> List<Point>:
   match list_get(xs, i):
@@ -1600,9 +1716,9 @@ fn flatten_points(xs: List<List<Point>>, i: Int, acc: List<Point>) -> List<Point
     Some(row) => flatten_points(xs, i + 1, concat_point_lists(acc, row))
 
 fn concat_point_lists(xs: List<Point>, ys: List<Point>) -> List<Point>:
-  match len(xs) == 0:
-    true => ys
-    false => concat_point_lists(list_slice(xs, 1, len(xs) - 1), list_append(ys, nth_point(xs, 0)))
+  match len(ys) == 0:
+    true => xs
+    false => concat_point_lists(list_append(xs, nth_point(ys, 0)), list_slice(ys, 1, len(ys) - 1))
 
 export fn concat_points(xs: List<Point>, ys: List<Point>) -> List<Point>:
   concat_point_lists(xs, ys)
@@ -3378,32 +3494,44 @@ fn has_project_for(projects: List<Project>, id: Text) -> Bool:
     bool_int(p.route_id == id or p.id == id)
   total(flags) > 0
 
-export fn can_build_plan(world: World, projects: List<Project>, from: Text, to: Text, plan: RoutePlan, ready: Bool) -> Bool:
+# The guard button, the blocker line, the build time, and the button label all
+# describe one survey. Root re-evaluates every derived on each step of each
+# handler, so computing the same world scan twice per render is what pushes the
+# browser's managed-value budget: one check serves all four.
+export type BuildCheck:
+  ok: Bool
+  reason: Text
+
+export fn build_check_plan(world: World, projects: List<Project>, from: Text, to: Text, plan: RoutePlan, ready: Bool) -> BuildCheck:
   let slots = len(world.routes) + route_project_count(projects)
-  ready and plan.length > 0 and slots < max_routes() and len(projects) < max_projects() and not has_project_for(projects, from + "-" + to) and world.money >= plan.money and combined_stock(world, from, to, Timber) >= plan.timber and combined_stock(world, from, to, Stone) >= plan.stone and not route_exists(world.routes, from, to, 0)
+  match ready and plan.length > 0:
+    false => BuildCheck(ok: false, reason: "Survey a route first.")
+    true => match len(projects) >= max_projects():
+      true => BuildCheck(ok: false, reason: "Two construction projects are already active. Wait for one to finish.")
+      false => match has_project_for(projects, from + "-" + to):
+        true => BuildCheck(ok: false, reason: "A route between these settlements is already under construction.")
+        false => match slots >= max_routes():
+          true => BuildCheck(ok: false, reason: "Three trunk routes are already built or under construction.")
+          false => match route_exists(world.routes, from, to, 0):
+            true => BuildCheck(ok: false, reason: "A route already connects these settlements.")
+            false => match world.money < plan.money:
+              true => BuildCheck(ok: false, reason: "Need " + int_text(plan.money) + " crowns; treasury has " + int_text(world.money) + ".")
+              false => match combined_stock(world, from, to, Timber) < plan.timber:
+                true => BuildCheck(ok: false, reason: "Need " + int_text(plan.timber) + " timber at the endpoints.")
+                false => match combined_stock(world, from, to, Stone) < plan.stone:
+                  true => BuildCheck(ok: false, reason: "Need " + int_text(plan.stone) + " stone at the endpoints.")
+                  false => BuildCheck(ok: true, reason: "Ready to start construction.")
+
+export fn can_build_plan(world: World, projects: List<Project>, from: Text, to: Text, plan: RoutePlan, ready: Bool) -> Bool:
+  let check = build_check_plan(world, projects, from, to, plan, ready)
+  check.ok
 
 export fn can_build_route(game: Game) -> Bool:
   can_build_plan(game.world, game.projects, game.sel.from, game.sel.to, game.sel.draft, game.sel.ready)
 
 export fn build_blocker_plan(world: World, projects: List<Project>, from: Text, to: Text, plan: RoutePlan, ready: Bool) -> Text:
-  let slots = len(world.routes) + route_project_count(projects)
-  match ready and plan.length > 0:
-    false => "Survey a route first."
-    true => match len(projects) >= max_projects():
-      true => "Two construction projects are already active. Wait for one to finish."
-      false => match has_project_for(projects, from + "-" + to):
-        true => "A route between these settlements is already under construction."
-        false => match slots >= max_routes():
-          true => "Three trunk routes are already built or under construction."
-          false => match route_exists(world.routes, from, to, 0):
-            true => "A route already connects these settlements."
-            false => match world.money < plan.money:
-              true => "Need " + int_text(plan.money) + " crowns; treasury has " + int_text(world.money) + "."
-              false => match combined_stock(world, from, to, Timber) < plan.timber:
-                true => "Need " + int_text(plan.timber) + " timber at the endpoints."
-                false => match combined_stock(world, from, to, Stone) < plan.stone:
-                  true => "Need " + int_text(plan.stone) + " stone at the endpoints."
-                  false => "Ready to start construction."
+  let check = build_check_plan(world, projects, from, to, plan, ready)
+  check.reason
 
 export fn build_blocker(game: Game) -> Text:
   build_blocker_plan(game.world, game.projects, game.sel.from, game.sel.to, game.sel.draft, game.sel.ready)
@@ -3416,10 +3544,15 @@ export fn construction_preview_plan(world: World, from: Text, to: Text, plan: Ro
 export fn construction_preview(game: Game) -> Text:
   construction_preview_plan(game.world, game.sel.from, game.sel.to, game.sel.draft, game.sel.ready)
 
-export fn build_button_text_plan(world: World, projects: List<Project>, from: Text, to: Text, plan: RoutePlan, ready: Bool) -> Text:
+# Split out so the desk can label the button from an already computed duration
+# instead of paying for construction_time a second time.
+export fn build_button_text_with(ready: Bool, duration: Text) -> Text:
   match ready:
-    true => "Start construction · " + construction_preview_plan(world, from, to, plan, ready)
+    true => "Start construction · " + duration
     false => "Start construction"
+
+export fn build_button_text_plan(world: World, projects: List<Project>, from: Text, to: Text, plan: RoutePlan, ready: Bool) -> Text:
+  build_button_text_with(ready, construction_preview_plan(world, from, to, plan, ready))
 
 export fn build_button_text(game: Game) -> Text:
   build_button_text_plan(game.world, game.projects, game.sel.from, game.sel.to, game.sel.draft, game.sel.ready)

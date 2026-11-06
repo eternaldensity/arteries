@@ -756,6 +756,38 @@ button.tiny { padding: 2px 8px; font-size: 13px; border-radius: 6px; }
 .shape-row span { flex: 1; }
 .shape-row strong { color: var(--text); font-variant-numeric: tabular-nums; }
 
+/* Staged waypoint desk: one row per waypoint with its own move and remove. */
+.waypoint-list {
+  list-style: none;
+  margin: 0 0 9px;
+  padding: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  overflow: hidden;
+}
+.waypoint-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  font-size: 11.5px;
+  border-top: 1px solid rgba(255,255,255,.05);
+}
+.waypoint-row:first-child { border-top: 0; }
+.waypoint-index { color: var(--faint); font-family: var(--mono); min-width: 10px; }
+.waypoint-name { flex: 1; color: var(--text); }
+.waypoint-cell { display: flex; align-items: center; gap: 6px; flex: 1; }
+.waypoint-cell input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: #081120;
+  color: var(--text);
+  font-size: 11.5px;
+}
+
 .projects { margin: 0 0 12px; border: 1px solid var(--line-soft); border-radius: 10px; padding: 9px; background: rgba(94,234,212,.035); }
 .projects-head { display: flex; justify-content: space-between; align-items: center; color: var(--teal); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 6px; }
 .project-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,.05); }

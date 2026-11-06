@@ -93,9 +93,15 @@ Routes are not fixed links. Click two settlements to survey one:
 - a site can be chosen as the route destination; when construction completes,
   that exact site is founded as a settlement (rather than whichever site the
   corridor happens to pass first);
-- the Route desk can stage up to six waypoints on towns and sites. The draft is
-  kept on the server, added/moved/removed from the desk, and surveyed into the
-  exact corridor when construction starts;
+- the Route desk can stage up to six waypoints. A marker within one cell wins,
+  then a cell of an already built route, otherwise the free cell the player
+  picked, so any map cell can be a waypoint; each row can be moved or removed on
+  its own, and every edit sends the whole staged list to the server, which
+  persists it and returns the surveyed corridor in the same round trip;
+- the corridor between waypoints is surveyed per leg with the native kernel
+  (`pathfind_features`) and charged once over the concatenated corridor, so the
+  map overlay, the plan grid, and the crowns construction charges always
+  describe the same cells;
 - the built route and project rows persist the surveyed polyline, so a reloaded
   route keeps the same geometry even if generation or pathfinding changes;
 - **Preview details** fetches capacity, upkeep, expected trade, founding
@@ -192,8 +198,10 @@ Dismantle a route to free a slot. The UI explains both caps when you reach them.
 - **Frontier survey** — click any settlement or site to inspect it. Use
   **Survey route** from the selected settlement, then click a destination. The
   Route desk shows the real length, crown cost, material cost, river crossings,
-  forest crossings, and construction time. Adjust the waypoint bend and start
-  construction when the cost is met.
+  forest crossings, and construction time. Stage waypoints on towns, sites, or
+  any free cell; the map corridor, plan grid, and charged cost update as you
+  edit, and each staged row can be moved or removed. Adjust the waypoint bend or
+  start construction when the cost is met.
 - **Settlements** — a compact list with population and prosperity status.
 - **Signals** — food shortages, congestion, treasury trouble, and upkeep debt.
 - **Inspector** — the selected settlement's population, prosperity, research,
@@ -337,8 +345,9 @@ node tests/ui-m3.js
 `ui-smoke.js` exercises initial render, settlement and site inspection, three
 route builds with construction projects, route cap, manual upkeep debt and
 degradation, paying upkeep, automatic upkeep, dismantling, and new-world
-generation. `ui-m3.js` covers site-directed founding, adding/moving/removing a
-staged waypoint, a built corridor whose length reflects that waypoint, and an
+generation. `ui-m3.js` covers site-directed founding, a live waypoint corridor
+whose plan grid changes with every edit, per-row move and remove, free-cell
+placement, a built corridor whose length reflects the staged waypoints, and an
 identical reload. Both fail on page errors, console errors, missing UI state, or
 unexpected cycle failures.
 
@@ -376,8 +385,8 @@ This is a prototype, not the full design in
 - economy and research are deliberately simplified;
 - events are deterministic and limited to harvest/storm/caravan plus annual
   deposit depletion;
-- waypoints currently snap to town/site markers; free-cell waypoints and
-  per-waypoint editing beyond the last staged point are deferred;
+- waypoints snap to a town or site within one cell, then to a nearby cell of a
+  built route, and otherwise stay on the free cell the player named;
 - the three-route/four-settlement caps are runtime-budget constraints.
 
 The natural next steps are M4 multi-hop network flow and link rules, a save
