@@ -418,7 +418,7 @@ budgets become the binding constraint; `RUST_HOST_EXTENSIONS.md` (v0.3) maps
 Arteries onto Diamond's **compute extensions** — manifest-declared exports,
 `host.compute<Reply>(module, export, ...)`, and per-export `Compute<…>`
 capabilities — as the scale path (phases H0–H4). The pure-compute half is
-upstreamed in Diamond PR #1 (RFC) and PR #2 (host tier), so terrain,
+merged upstream (Diamond PRs #1 and #2, `main` at `49b505f`), so terrain,
 hydrology, and pathfinding need no fork; the stateful tick still does, and
 remains staged RPCs until H3. H0's terrain slice has landed — `core/` owns the
 map generator, `tools/gen-maps.sh` consumes it, and `tools/check-core.sh` keeps
@@ -456,7 +456,7 @@ work actually presses against the budgets.
 | Scope: E+F are a large tail | M1 and M2 deliver value independently; F starts only after the local loop is solid |
 | Saved-game compatibility | `generation_version`; waypoint field falls back to `bend` for old routes |
 | Richer planning overwhelms the player | Defaults, named alternatives, and legibility-first UI as in design doc §8 |
-| Diamond budget ceiling at target scale | Rust host extensions (`RUST_HOST_EXTENSIONS.md`, phases H0–H4); the pure-compute half is upstreamed in Diamond PR #1 (RFC) and PR #2 (host tier), so no fork is needed for terrain/pathfinding |
+| Diamond budget ceiling at target scale | Rust host extensions (`RUST_HOST_EXTENSIONS.md`, phases H0–H4); the pure-compute half is merged upstream (Diamond PRs #1/#2, `main` at `49b505f`), so no fork is needed for terrain/pathfinding |
 
 Open: the exact play area per region (one face vs cluster); whether survey
 reveals terrain progressively; how many waypoints before UI friction outweighs

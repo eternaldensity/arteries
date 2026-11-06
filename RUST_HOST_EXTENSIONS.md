@@ -12,16 +12,16 @@ The Diamond half is no longer speculative. The generic extension point that
 
 | Piece | Where |
 | --- | --- |
-| RFC: call surface, manifest, guarantee classes, invariants | `docs/compute-extensions.md`, Diamond PR **#1** (branch `feat/compute-extensions`) |
-| Implementation: registry, manifest, checker, dispatch, capability, artifact, tests | Diamond PR **#2** (branch `feat/compute-host-tier`, tip `ede9184`) |
+| RFC: call surface, manifest, guarantee classes, invariants | `docs/compute-extensions.md`, Diamond PR **#1**, merged into `main` |
+| Implementation: registry, manifest, checker, dispatch, capability, artifact, tests | Diamond PR **#2**, merged into `main` at `49b505f` |
 
 Draft v0.3 rewrites this document against that implemented surface: the
 application-specific `ArteriesCompute` capability and `host.arteries_*` family
 from v0.2 are gone, replaced by manifest-declared exports and
-`Compute<module.export>` capabilities. References point at Diamond source;
-those marked *(PR #2)* exist on `feat/compute-host-tier` only. Both branches
-report the same `0.20.0` version string, so pin the commit, not the version
-(§14).
+`Compute<module.export>` capabilities. Both PRs are merged, so every reference
+marked *(PR #2)* is on `main` as of `49b505f` and marks where the merged
+implementation introduced that surface. Every branch reports the same `0.20.0`
+version string, so pin the commit, not the version (§14).
 
 **What changed from v0.2**
 
@@ -31,8 +31,9 @@ report the same `0.20.0` version string, so pin the commit, not the version
   one `Compute<module.export>` capability per export. No Diamond source patch
   is needed for pure compute anymore.
 - Resolved: §14's open question "can the generic extension point be
-  upstreamed?" — yes. RFC at PR #1, host tier implemented at PR #2. The
-  recommended path is now *use upstream*, not *vendor a fork*.
+  upstreamed?" — yes. RFC at PR #1 and host tier at PR #2 are merged into
+  Diamond `main` (`49b505f`). The recommended path is *use upstream*, not
+  *vendor a fork*.
 - Corrected: pure compute **cannot** host the stateful tick. Kernels receive
   only wire-encoded values and a `ComputeContext` — no principal, no Postgres
   handle, no secret. §6.2/§8 remain a separate design problem.
@@ -656,23 +657,21 @@ compute.
 
 | Path | Status |
 | --- | --- |
-| **Upstream a generic extension point** | **Done, in review.** RFC at Diamond PR **#1** (`docs/compute-extensions.md`), host tier at PR **#2** (branch `feat/compute-host-tier`). Manifest declarations, static call surface, per-export capabilities, kernel registry, artifact publication, tests. Pure compute needs **no fork**. |
+| **Upstream a generic extension point** | **Done, merged.** RFC at Diamond PR **#1** (`docs/compute-extensions.md`) and host tier at PR **#2** are on `main` (`49b505f`). Manifest declarations, static call surface, per-export capabilities, kernel registry, artifact publication, tests. Pure compute needs **no fork**. |
 | **Vendor a fork with a tracked patch set** | Not needed for compute. It remains the *only* route to a stateful in-process tick (§8 option 1), because the upstream surface deliberately carries no database handle. |
-| **Separate Rust HTTP service** | Still valid as the fallback if #1/#2 are declined, and as the transport for stateful work. `host.http_post` under an `Http<name>` capability. Adds deployment, auth, and network latency. |
+| **Separate Rust HTTP service** | Still valid as the transport for stateful work. `host.http_post` under an `Http<name>` capability. Adds deployment, auth, and network latency. |
 
 Practical consequences:
 
-- **Until #1/#2 merge**, "a Diamond with compute" means a build from
-  `feat/compute-host-tier`; upstream `main` (`929dd98`) has no compute surface.
-  On this machine `diamond` is a symlink to
-  `/home/yria/dev/Diamond/target/debug/diamond` — this working tree — which is
-  why `diamond check` on Diamond's `examples/compute-lab/diamond.toml` already
-  accepts `[compute.sim]` today. Treat that as a local development build: pin
-  the commit, because `0.20.0` is the version string on both branches and the
-  binary will silently change meaning when `main` is checked out.
-- **The RFC is a draft until merged.** §13's guarantee classes (trusted and
+- **#1/#2 are merged**, so a build from `main` (`49b505f`) has the compute
+  surface. On this machine `diamond` is a symlink to
+  `/home/yria/dev/Diamond/target/debug/diamond`, which is why `diamond check`
+  on Diamond's `examples/compute-lab/diamond.toml` accepts `[compute.sim]`.
+  Keep pinning the commit: every branch reports `0.20.0`, so the binary
+  silently changes meaning when the checkout moves.
+- **The merged RFC can still evolve.** §13's guarantee classes (trusted and
   advisory host tier; export-specific capabilities; manifest-declared identity)
-  are what Arteries is designing against — if review changes the call surface
+  are what Arteries designs against — if a later change moves the call surface
   or limits, this document's §5/§6/§10 mapping tables are the parts to re-verify.
 - **`arteries-core` is transport-independent** (§9). It backs the in-process
   kernel *and* the CLI exporter *and*, if it comes to that, an HTTP service.
@@ -715,8 +714,8 @@ with the target region size. Otherwise complete the gameplay phases first, as
 
 | Risk | Mitigation |
 | --- | --- |
-| PR #1/#2 declined or reshaped by review | The RFC is explicitly a draft; §5/§6/§10 are the mapping tables to re-verify. Fallbacks are the HTTP service and a tracked fork (§14) |
-| Running an unmerged Diamond build | Pin the exact revision next to the binary; re-run `verification/examples.py` and the Arteries smoke test on upgrade |
+| Later review reshapes the merged surface | §5/§6/§10 are the mapping tables to re-verify against the pinned commit. Fallbacks are the HTTP service and a tracked fork (§14) |
+| Running a Diamond build from a moving branch | Pin the exact revision next to the binary; re-run `verification/examples.py` and the Arteries smoke test on upgrade |
 | Deadline overruns | `ComputeContext::checkpoint` inside kernel loops + chunking; `max_duration_ms` is a post-call check; do not add nested blocking; check the admission class |
 | Pure-Diamond tick hits managed-value work at scale | Measured: ~5 settlements per 28-day market+finish phase, ~10 for finish alone. The H3 path is a Rust tick kernel with a compact row ABI and a compact view response, not more micro-optimisation of `shared.dia`. `tools/check-tick-scale.sh` records the probe |
 | Nondeterminism | Integer/fixed-point, sorted iteration, no f64, digest assertions; `deterministic = true` is declared but not proven |
@@ -729,8 +728,9 @@ with the target region size. Otherwise complete the gameplay phases first, as
 
 Open questions:
 
-- Which Diamond revision does Arteries pin while #1/#2 are unmerged, and when
-  is it re-verified? (Decide before H1; record it in `runserv.sh` docs.)
+- **Answered:** Arteries pins Diamond `49b505f`, the merge of PR #1/#2. It was
+  re-verified with `diamond check`/`build`, all seven `tools/check-*.sh` gates,
+  and both browser tests after the M3 waypoint polish (`8886c27`).
 - Does the authoritative tick own its transaction, or participate in the
   caller's? (Recommendation: participate; never commit independently.)
 - If H3's staged RPCs hit their limit, is a transactional host operation worth
@@ -753,7 +753,7 @@ document's target scale. The recommended order is:
 2. Extract `arteries-core` (H0) so generation and pathfinding have a single,
    testable implementation.
 3. Add the first compute export (H1) and pathfinding (H2) when budget pressure
-   appears — once a Diamond build containing PR #2 is pinned (§14).
+   appears — a Diamond build containing PR #2 is now pinned (§14).
 4. Move the tick (H3) and planet generation (H4) once the gameplay loop is
    validated.
 

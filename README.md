@@ -370,8 +370,8 @@ Beyond those workarounds, [`RUST_HOST_EXTENSIONS.md`](RUST_HOST_EXTENSIONS.md)
 maps Arteries onto Diamond's **compute extensions**: pure terrain, hydrology,
 noise, and pathfinding run as registered Rust kernels behind
 `host.compute<Reply>(module, export, ...)`, while the authoritative tick stays on
-staged RPCs. The pure-compute half is upstreamed in Diamond PR #1 (RFC) and
-PR #2 (host tier), so it needs no Diamond fork.
+staged RPCs. The pure-compute half is merged upstream (Diamond PRs #1 and #2,
+`main` at `49b505f`), so it needs no Diamond fork; Arteries pins that commit.
 
 ## Known limits / next steps
 
