@@ -9,7 +9,8 @@
 use arteries_core::{
     fbm, finish_towns, generate_faces, generate_world, market, pathfind, pathfind_features,
     region_text, route_cost, route_cost_features, trade, FeatureGrid, Grid, GridPoint, TickRoute,
-    TickState, TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED, TOWN_ROW_LEN,
+    TickState, TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED, ROUTE_ROW_LEN,
+    TOWN_ROW_LEN,
 };
 use diamond::{Compute, ComputeContext, ComputeError, RuntimeGrants};
 use serde_json::Value as Json;
@@ -722,7 +723,7 @@ fn parse_tick_state(
 
     let mut routes = Vec::with_capacity(route_rows.len());
     for row in route_rows {
-        if row.len() != 6 {
+        if row.len() != ROUTE_ROW_LEN {
             return Err(ComputeError::InvalidInput);
         }
         let a = usize::try_from(row[0]).map_err(|_| ComputeError::InvalidInput)?;
@@ -730,6 +731,10 @@ fn parse_tick_state(
         if a >= towns.len() || b >= towns.len() {
             return Err(ComputeError::InvalidInput);
         }
+        let mut allow = [0_i64; GOOD_COUNT];
+        let mut good_fee = [0_i64; GOOD_COUNT];
+        allow.copy_from_slice(&row[7..7 + GOOD_COUNT]);
+        good_fee.copy_from_slice(&row[7 + GOOD_COUNT..ROUTE_ROW_LEN]);
         routes.push(TickRoute {
             a,
             b,
@@ -737,6 +742,9 @@ fn parse_tick_state(
             traffic: row[3],
             capacity: row[4],
             upkeep: row[5],
+            mode: row[6],
+            allow,
+            good_fee,
         });
     }
     Ok(TickState {

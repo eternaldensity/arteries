@@ -20,7 +20,7 @@ cat "$ROOT/tools/tick_market_main.dia" >> "$GEN"
 
 "$DIAMOND" check "$GEN" >/dev/null
 RESULT=$("$DIAMOND" run "$GEN")
-EXPECTED='163|5,26,98,11,3,3,4,2,0,0,0|3,0,42,3,27,9,0,0,0,0,0|3'
+EXPECTED='162|5,26,98,12,3,3,4,2,0,0,0|3,0,42,2,27,9,0,0,0,0,0|2'
 if [ "$RESULT" = "$EXPECTED" ]; then
   echo "Diamond market fixture matches the frozen Rust expectation"
 else

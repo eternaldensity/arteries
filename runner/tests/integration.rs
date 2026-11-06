@@ -189,16 +189,19 @@ fn market_kernel_matches_the_diamond_market_period() {
             "0", "0", "0"
         ]
     ]);
-    let routes = json!([["0", "1", "1", "0", "20", "1"]]);
+    let routes = json!([[
+        "0", "1", "1", "0", "20", "1", "2", "1", "1", "1", "1", "1", "1", "1", "1", "0", "0", "0",
+        "0", "0", "0", "0", "0"
+    ]]);
     let reply =
         Market::evaluate(&[json!("160"), towns, routes, json!("7"), json!("100")]).expect("market");
     assert_eq!(
         reply,
         json!([
-            ["163"],
-            ["5", "26", "98", "11", "3", "3", "4", "2", "0", "0", "0"],
-            ["3", "0", "42", "3", "27", "9", "0", "0", "0", "0", "0"],
-            ["3"]
+            ["162"],
+            ["5", "26", "98", "12", "3", "3", "4", "2", "0", "0", "0"],
+            ["3", "0", "42", "2", "27", "9", "0", "0", "0", "0", "0"],
+            ["2"]
         ])
     );
 }
@@ -308,14 +311,18 @@ fn market_kernel_handles_a_hundred_towns_through_the_abi() {
     }
     let mut routes = Vec::with_capacity(50);
     for i in 0..50 {
-        routes.push(json!([
-            i.to_string(),
-            (i + 1).to_string(),
-            "1",
-            "0",
-            "20",
-            "1"
-        ]));
+        let mut row: Vec<Json> = vec![
+            json!(i.to_string()),
+            json!((i + 1).to_string()),
+            json!("1"),
+            json!("0"),
+            json!("20"),
+            json!("1"),
+            json!("2"),
+        ];
+        row.extend((0..8).map(|_| json!("1")));
+        row.extend((0..8).map(|_| json!("0")));
+        routes.push(Json::Array(row));
     }
     let reply = Market::evaluate(&[
         json!("10000"),

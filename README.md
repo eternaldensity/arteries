@@ -102,6 +102,15 @@ Routes are not fixed links. Click two settlements to survey one:
   (`pathfind_features`) and charged once over the concatenated corridor, so the
   map overlay, the plan grid, and the crowns construction charges always
   describe the same cells;
+- goods route themselves across the whole network: each settlement's surplus
+  flows toward the cheapest deficit path, paying every link's toll plus the
+  good's surcharge and one transfer penalty per intermediate settlement, with
+  each direction's capacity shared across goods;
+- every link has a **Rules** desk: allow or block each of the eight goods, and
+  add a per-good surcharge on top of the base toll. Blocked goods never enter
+  the link, and a surcharge high enough to cover the deficit sends the flow
+  down a different path; both are persisted with the route and applied by the
+  same Rust kernel that runs the staged tick;
 - the built route and project rows persist the surveyed polyline, so a reloaded
   route keeps the same geometry even if generation or pathfinding changes;
 - **Preview details** fetches capacity, upkeep, expected trade, founding
@@ -138,10 +147,12 @@ Each cycle a settlement:
 - grows when it is prosperous and has food and building materials;
 - can decline when it is starving and neglected.
 
-Goods only move along routes you have built. Routes have finite capacity, and
-tolls suppress marginal trade while funding the treasury. The network is the
-only thing you control, so a settlement's fate is mostly a question of what
-reaches it.
+Goods only move along routes you have built, and they can cross several links
+to reach a deficit. Routes have finite capacity shared by direction, and each
+link's allow/deny flags and per-good surcharges decide what may pass and what it
+costs; the base toll and the surcharges both fund the treasury while suppressing
+marginal trade. The network is the only thing you control, so a settlement's
+fate is mostly a question of what reaches it.
 
 Deterministic events (harvests, storms, caravans) and discoveries keep the
 frontier moving. Discoveries are local: a settlement's research unlocks a
@@ -210,7 +221,9 @@ Dismantle a route to free a slot. The UI explains both caps when you reach them.
   richness, terrain, and founding status. Use **Refresh** after running cycles.
 - **Network** — tolls, traffic, capacity, upkeep, upgrades, dismantling,
   manual/automatic maintenance, and active construction projects with their
-  remaining cycles.
+  remaining cycles. Each route's **Rules** button opens a per-good allow toggle
+  and surcharge desk; changes persist immediately and take effect on the next
+  tick.
 - **Chronicle** — the latest events and a prosperity history.
 - **Advance 1 cycle** — step the simulation. Construction and upgrades take
   time; newly started projects appear in the Network panel and open when their
@@ -259,6 +272,7 @@ tools/
 tests/
   ui-smoke.js      real-browser acceptance and exploration driver
   ui-m3.js         site-directed founding and waypoint acceptance
+  ui-m4.js         multi-hop flow and link-rules acceptance
 ```
 
 `shared.dia` is the whole simulation. Terrain is a deterministic function;
@@ -340,6 +354,7 @@ CHROMIUM_PATH=/path/to/chrome \
 UI_URL=http://127.0.0.1:3032/ \
 node tests/ui-smoke.js
 node tests/ui-m3.js
+node tests/ui-m4.js
 ```
 
 `ui-smoke.js` exercises initial render, settlement and site inspection, three
@@ -348,8 +363,10 @@ degradation, paying upkeep, automatic upkeep, dismantling, and new-world
 generation. `ui-m3.js` covers site-directed founding, a live waypoint corridor
 whose plan grid changes with every edit, per-row move and remove, free-cell
 placement, a built corridor whose length reflects the staged waypoints, and an
-identical reload. Both fail on page errors, console errors, missing UI state, or
-unexpected cycle failures.
+identical reload. `ui-m4.js` covers a two-link chain that carries trade, blocking
+every good on a busy link (the next tick leaves it idle), restoring the flow, and
+a persisted per-good surcharge. All three fail on page errors, console errors,
+missing UI state, or unexpected cycle failures.
 
 ## Scale and the Diamond evaluation budget
 
@@ -389,5 +406,5 @@ This is a prototype, not the full design in
   built route, and otherwise stay on the free cell the player named;
 - the three-route/four-settlement caps are runtime-budget constraints.
 
-The natural next steps are M4 multi-hop network flow and link rules, a save
+The natural next steps are per-mode transit time and hubs (M4's C3/C4), a save
 format, and multiple regions.

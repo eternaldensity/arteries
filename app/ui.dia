@@ -208,6 +208,46 @@ export component WaypointDesk(from: Text, to: Text, markers: List<MarkerInfo>, p
       </div>
     </when>
 
+export component LinkRulesDesk(link: Text, rules: LinkRules):
+  # The desk sends the whole policy on every change, so the browser never merges
+  # a partial rule set into the authoritative one. Root adopts the returned Game.
+  output changed(value: Game)
+  state reply: Game = empty_game()
+
+  on toggle(good: Int):
+    reply = rpc.set_route_rules(link, toggle_rule_allow(rules.allow, good), rules.fee)
+    emit changed(reply)
+
+  on fee_up(good: Int):
+    reply = rpc.set_route_rules(link, rules.allow, adjust_rule_fee(rules.fee, good, 1))
+    emit changed(reply)
+
+  on fee_down(good: Int):
+    reply = rpc.set_route_rules(link, rules.allow, adjust_rule_fee(rules.fee, good, -1))
+    emit changed(reply)
+
+  on allow_all:
+    reply = rpc.set_route_rules(link, default_rules().allow, rules.fee)
+    emit changed(reply)
+
+  html:
+    <div class="rules-desk">
+      <div class="rules-head">
+        <span>Link policy</span>
+        <button class="ghost tiny" type="button" on-click={allow_all}>Allow all goods</button>
+      </div>
+      <each items={indices(len(goods()))} as="good" key={int_text(good)}>
+        <div class="rules-row">
+          <span class="rules-good">{good_short_at(good)}</span>
+          <button class="tiny" type="button" on-click={toggle(good)}>{rule_label(rules, good)}</button>
+          <span class="rules-fee">{int_text(rule_fee_at(rules, good))}</span>
+          <button class="tiny" type="button" on-click={fee_down(good)} aria-label="Lower good toll">−</button>
+          <button class="tiny" type="button" on-click={fee_up(good)} aria-label="Raise good toll">+</button>
+        </div>
+      </each>
+      <p class="helper">Blocked goods cannot use this link. A surcharge is added to the base toll when routing that good.</p>
+    </div>
+
 export component Root:
   state game: Game = empty_game()
   state signed_in: Text = ""
@@ -216,6 +256,7 @@ export component Root:
   state password: Text = ""
   state auth_notice: Text = "Sign in to load the authoritative world."
   state pending_dismantle: Text = ""
+  state rules_open: Text = ""
   state scale_mode: Bool = false
   state scale_active: Bool = false
   state scale_summary: ScaleSummary = ScaleSummary(seed: 7, tick: 0, money: 0, towns: 0, routes: 0, phase: 0)
@@ -418,6 +459,14 @@ export component Root:
 
   on fee_up(id: Text):
     game = server_apply(game, rpc.set_fee(id, 1))
+
+  on toggle_rules(id: Text):
+    rules_open = match rules_open == id:
+      true => ""
+      false => id
+
+  on rules_changed(fresh: Game):
+    game = server_apply(game, fresh)
 
   on fee_down(id: Text):
     game = server_apply(game, rpc.set_fee(id, -1))
@@ -857,6 +906,12 @@ export component Root:
                     <button class="small" type="button" on-click={upgrade(r.id)} disabled={not can_start_upgrade(game, r)} title={upgrade_preview_text(r)}>Upgrade</button>
                     <button class="small danger" type="button" on-click={request_dismantle(r.id)} title={salvage_text(r)}>Dismantle</button>
                   </div>
+                </div>
+                <div class="route-rules">
+                  <button class="ghost tiny" type="button" on-click={toggle_rules(r.id)}>{route_rules_label(r)}</button>
+                  <when test={rules_open == r.id}>
+                    <use component="LinkRulesDesk" link={r.id} rules={r.rules} on-changed={rules_changed}></use>
+                  </when>
                 </div>
               </article>
             </each>

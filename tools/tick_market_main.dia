@@ -13,7 +13,7 @@ fn main() -> Text:
   let base = new_world(7)
   let a = market_town(nth_town(base.towns, 0), [4, 0, 0, 0, 1, 0, 0, 0], [16, 4, 4, 4, 2, 0, 0, 4], 4, 6)
   let b = market_town(nth_town(base.towns, 1), [0, 3, 1, 0, 0, 0, 0, 0], [8, 6, 2, 0, 0, 0, 0, 0], 4, 6)
-  let route = Route(id: "r0", a: a.id, b: b.id, a_name: a.name, b_name: b.name, mode: Road, plan: empty_plan(), fee: 1, traffic: 0, capacity: 20, upkeep: 1)
+  let route = Route(id: "r0", a: a.id, b: b.id, a_name: a.name, b_name: b.name, mode: Road, plan: empty_plan(), fee: 1, traffic: 0, capacity: 20, upkeep: 1, rules: default_rules())
   let world = World(seed: 7, tick: 0, money: 160, towns: [a, b], sites: [], routes: [route], log: [], history: [], tech_road: false, tech_river: false, tech_rail: false)
   let result = market_period(world, 7, 100)
   let t0 = nth_town(result.towns, 0)

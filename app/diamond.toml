@@ -56,13 +56,14 @@ survey_corridor_plan = "server.survey_corridor_plan"
 survey_preview = "server.survey_preview"
 survey_waypoint_edit = "server.survey_waypoint_edit"
 set_fee = "server.set_fee"
+set_route_rules = "server.set_route_rules"
 pay_upkeep = "server.pay_upkeep"
 toggle_auto = "server.toggle_auto"
 new_seed = "server.new_seed"
 
 [storage]
 profile = "relational-v1"
-version = 5
+version = 6
 
 [storage.resources.Worlds]
 scope = "id"

@@ -39,6 +39,10 @@ pub struct TickTown {
 pub const TOWN_ROW_LEN: usize = 3 + GOOD_COUNT * 2 + 1;
 
 /// One route's mutable market state. `a` and `b` index into [`TickState::towns`].
+///
+/// `mode` is the wire code from `route_mode_code` in the app, `allow` has one
+/// flag per good (0 blocks the good, anything else allows it), and `good_fee`
+/// is the per-good surcharge added to `fee`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TickRoute {
     pub a: usize,
@@ -47,7 +51,15 @@ pub struct TickRoute {
     pub traffic: i64,
     pub capacity: i64,
     pub upkeep: i64,
+    pub mode: i64,
+    pub allow: [i64; GOOD_COUNT],
+    pub good_fee: [i64; GOOD_COUNT],
 }
+
+/// Number of integers in one compact route row: `a`, `b`, `fee`, `traffic`,
+/// `capacity`, `upkeep`, `mode`, one allow flag per good, and one surcharge per
+/// good.
+pub const ROUTE_ROW_LEN: usize = 7 + GOOD_COUNT * 2;
 
 /// Compact state for one market phase.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -71,35 +83,197 @@ pub fn market(state: &mut TickState, days: i64, scale: i64) {
     trade(state, days, scale);
 }
 
-/// Apply route trade only, leaving production and growth untouched.
+/// Apply network flow only, leaving production and growth untouched.
 ///
-/// This is the chunked-market trade stage: the caller passes the endpoint
-/// towns for one route page and the routes use page-local indices.
+/// Goods move from a surplus town to a deficit town along the cheapest path
+/// whose links allow that good and still have capacity. Every link charges its
+/// base fee plus the good's surcharge, and each intermediate settlement costs a
+/// transfer penalty. Capacity is shared per directed link across goods. This is
+/// the Rust twin of `flow_pass` in `app/shared.dia`; the two implementations
+/// must stay byte-for-byte equivalent.
 pub fn trade(state: &mut TickState, days: i64, scale: i64) {
-    if days <= 0 {
+    if days <= 0 || state.towns.is_empty() {
         return;
     }
+    for route in &mut state.routes {
+        route.traffic = 0;
+    }
+    let mut remaining: Vec<i64> = Vec::with_capacity(state.routes.len() * 2);
+    for route in &state.routes {
+        let cap = (route.capacity.saturating_mul(scale) / 100)
+            .saturating_mul(days)
+            .max(2);
+        remaining.push(cap);
+        remaining.push(cap);
+    }
     let mut income = 0_i64;
-    for index in 0..state.routes.len() {
-        state.routes[index].traffic = 0;
-        let (a, b, fee, capacity) = {
-            let route = &state.routes[index];
-            (route.a, route.b, route.fee, route.capacity)
-        };
-        if a >= state.towns.len() || b >= state.towns.len() || a == b {
-            continue;
+    for good in 0..GOOD_COUNT {
+        for receiver in 0..state.towns.len() {
+            for _ in 0..FLOW_ROUNDS {
+                let deficit = flow_deficit(state, receiver, good);
+                if deficit <= 0 {
+                    break;
+                }
+                let Some(source) = flow_find(state, &remaining, good, receiver) else {
+                    break;
+                };
+                let usable = flow_surplus(state, source.sender, good).min(deficit - source.toll);
+                let capacity = source
+                    .path
+                    .windows(2)
+                    .map(|pair| {
+                        flow_slot(state, pair[0], pair[1])
+                            .map(|slot| remaining[slot])
+                            .unwrap_or_else(flow_big)
+                    })
+                    .min()
+                    .unwrap_or_else(flow_big);
+                let units = usable.min(capacity);
+                if units <= 0 {
+                    break;
+                }
+                for pair in source.path.windows(2) {
+                    if let Some(slot) = flow_slot(state, pair[0], pair[1]) {
+                        let fee = flow_fee(&state.routes[slot / 2], good);
+                        let route = &mut state.routes[slot / 2];
+                        route.traffic = route.traffic.saturating_add(units);
+                        remaining[slot] = (remaining[slot] - units).max(0);
+                        income = income.saturating_add(units.saturating_mul(fee));
+                    }
+                }
+                state.towns[source.sender].stock[good] =
+                    (state.towns[source.sender].stock[good] - units).max(0);
+                state.towns[receiver].stock[good] =
+                    state.towns[receiver].stock[good].saturating_add(units);
+            }
         }
-        let cap = (capacity * scale / 100 * days).max(2);
-        let mut from = state.towns[a].clone();
-        let mut to = state.towns[b].clone();
-        let moves = trade_moves(&from, &to, fee, cap);
-        apply_moves(&mut from, &mut to, &moves);
-        state.towns[a] = from;
-        state.towns[b] = to;
-        state.routes[index].traffic = state.routes[index].traffic.saturating_add(moves.moved);
-        income = income.saturating_add(state.routes[index].traffic.saturating_mul(fee));
     }
     state.money = state.money.saturating_add(income);
+}
+
+/// One transfer through an intermediate settlement.
+const FLOW_TRANSFER_PENALTY: i64 = 2;
+
+/// Per-receiver rounds per good; bounds one receiver fed by several senders.
+const FLOW_ROUNDS: usize = 8;
+
+fn flow_big() -> i64 {
+    1_000_000_000
+}
+
+fn flow_hop_cost(mode: i64) -> i64 {
+    match mode {
+        4 => 1,     // rail
+        1 | 3 => 2, // pack route, river barge
+        _ => 3,     // road, unknown
+    }
+}
+
+fn flow_fee(route: &TickRoute, good: usize) -> i64 {
+    route.fee.saturating_add(route.good_fee[good])
+}
+
+fn flow_surplus(state: &TickState, town: usize, good: usize) -> i64 {
+    let t = &state.towns[town];
+    (t.stock[good] - need_of(t, good) - 1).max(0)
+}
+
+fn flow_deficit(state: &TickState, town: usize, good: usize) -> i64 {
+    let t = &state.towns[town];
+    (need_of(t, good) - t.stock[good]).max(0)
+}
+
+/// Capacity slot for the first route joining `from` and `to`: `2 * index` for
+/// `a -> b`, `2 * index + 1` for `b -> a`.
+fn flow_slot(state: &TickState, from: usize, to: usize) -> Option<usize> {
+    for (i, route) in state.routes.iter().enumerate() {
+        if route.a == from && route.b == to {
+            return Some(i * 2);
+        }
+        if route.a == to && route.b == from {
+            return Some(i * 2 + 1);
+        }
+    }
+    None
+}
+
+struct FlowSource {
+    sender: usize,
+    path: Vec<usize>,
+    toll: i64,
+}
+
+fn flow_find(
+    state: &TickState,
+    remaining: &[i64],
+    good: usize,
+    receiver: usize,
+) -> Option<FlowSource> {
+    let n = state.towns.len();
+    let mut dist = vec![flow_big(); n];
+    let mut prev = vec![usize::MAX; n];
+    let mut visited = vec![false; n];
+    dist[receiver] = 0;
+    for _ in 0..n {
+        let mut pick = usize::MAX;
+        for i in 0..n {
+            if visited[i] || dist[i] >= flow_big() {
+                continue;
+            }
+            if pick == usize::MAX || dist[i] < dist[pick] {
+                pick = i;
+            }
+        }
+        if pick == usize::MAX {
+            return None;
+        }
+        if pick != receiver && flow_surplus(state, pick, good) > 0 {
+            let mut path = vec![pick];
+            let mut node = prev[pick];
+            while node != usize::MAX {
+                path.push(node);
+                node = prev[node];
+            }
+            let toll = path
+                .windows(2)
+                .map(|pair| {
+                    flow_slot(state, pair[0], pair[1])
+                        .map(|slot| flow_fee(&state.routes[slot / 2], good))
+                        .unwrap_or(0)
+                })
+                .sum();
+            return Some(FlowSource {
+                sender: pick,
+                path,
+                toll,
+            });
+        }
+        visited[pick] = true;
+        for (i, route) in state.routes.iter().enumerate() {
+            let (next, forward) = if route.a == pick && route.b != pick {
+                (route.b, true)
+            } else if route.b == pick && route.a != pick {
+                (route.a, false)
+            } else {
+                continue;
+            };
+            if next >= n {
+                continue;
+            }
+            let slot = i * 2 + usize::from(!forward);
+            if route.allow[good] == 0 || remaining[slot] <= 0 {
+                continue;
+            }
+            let step =
+                flow_fee(route, good) * 4 + flow_hop_cost(route.mode) + FLOW_TRANSFER_PENALTY;
+            let candidate = dist[pick].saturating_add(step);
+            if candidate < dist[next] {
+                dist[next] = candidate;
+                prev[next] = pick;
+            }
+        }
+    }
+    None
 }
 
 fn advance_town_days(town: &TickTown, days: i64) -> TickTown {
@@ -216,39 +390,6 @@ fn growth_stock(after: &[i64; GOOD_COUNT]) -> [i64; GOOD_COUNT] {
     final_stock
 }
 
-fn trade_moves(a: &TickTown, b: &TickTown, fee: i64, capacity: i64) -> TradeMoves {
-    let quota = (capacity / GOOD_COUNT as i64).max(1);
-    let mut moves = TradeMoves::default();
-    for good in 0..GOOD_COUNT {
-        moves.ab[good] = move_ab(a, b, good, quota, fee);
-        moves.ba[good] = move_ab(b, a, good, quota, fee);
-        moves.moved += moves.ab[good] + moves.ba[good];
-    }
-    moves
-}
-
-fn move_ab(a: &TickTown, b: &TickTown, good: usize, quota: i64, fee: i64) -> i64 {
-    let penalty = if matches!(good, GRAIN | FISH) {
-        fee / 2
-    } else {
-        fee
-    };
-    let surplus_a = a.stock[good] - need_of(a, good) - 1;
-    let need_b = (need_of(b, good) - b.stock[good] - penalty).max(0);
-    if surplus_a > 0 && need_b > 0 {
-        surplus_a.min(need_b).min(quota)
-    } else {
-        0
-    }
-}
-
-fn apply_moves(a: &mut TickTown, b: &mut TickTown, moves: &TradeMoves) {
-    for good in 0..GOOD_COUNT {
-        a.stock[good] = (a.stock[good] - moves.ab[good] + moves.ba[good]).max(0);
-        b.stock[good] = (b.stock[good] + moves.ab[good] - moves.ba[good]).max(0);
-    }
-}
-
 fn need_of(town: &TickTown, good: usize) -> i64 {
     let base = match good {
         GRAIN => town.pop,
@@ -363,13 +504,6 @@ fn clamp(value: i64, low: i64, high: i64) -> i64 {
     value.max(low).min(high)
 }
 
-#[derive(Default)]
-struct TradeMoves {
-    ab: [i64; GOOD_COUNT],
-    ba: [i64; GOOD_COUNT],
-    moved: i64,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -393,6 +527,9 @@ mod tests {
             traffic: 0,
             capacity: 20,
             upkeep: 1,
+            mode: 2,
+            allow: [1; GOOD_COUNT],
+            good_fee: [0; GOOD_COUNT],
         }
     }
 
@@ -508,7 +645,7 @@ mod tests {
             routes: vec![route(0, 1)],
         };
         market(&mut state, 7, 100);
-        assert_eq!(state.money, 163);
+        assert_eq!(state.money, 162);
         assert_eq!(
             (
                 state.towns[0].pop,
@@ -517,7 +654,7 @@ mod tests {
             ),
             (5, 26, 98)
         );
-        assert_eq!(state.towns[0].stock, [11, 3, 3, 4, 2, 0, 0, 0]);
+        assert_eq!(state.towns[0].stock, [12, 3, 3, 4, 2, 0, 0, 0]);
         assert_eq!(
             (
                 state.towns[1].pop,
@@ -526,8 +663,8 @@ mod tests {
             ),
             (3, 0, 42)
         );
-        assert_eq!(state.towns[1].stock, [3, 27, 9, 0, 0, 0, 0, 0]);
-        assert_eq!(state.routes[0].traffic, 3);
+        assert_eq!(state.towns[1].stock, [2, 27, 9, 0, 0, 0, 0, 0]);
+        assert_eq!(state.routes[0].traffic, 2);
     }
 
     #[test]
@@ -584,6 +721,108 @@ mod tests {
         let mut towns = vec![town(2, [1; GOOD_COUNT]); 2];
         assert!(finish_towns(&mut towns, 7, 0, 28, 1, 0).is_err());
         assert!(finish_towns(&mut towns, 7, 0, 28, 0, 0).is_err());
+    }
+
+    fn rule_route(
+        a: usize,
+        b: usize,
+        allow: [i64; GOOD_COUNT],
+        good_fee: [i64; GOOD_COUNT],
+    ) -> TickRoute {
+        TickRoute {
+            a,
+            b,
+            fee: 1,
+            traffic: 0,
+            capacity: 20,
+            upkeep: 1,
+            mode: 2,
+            allow,
+            good_fee,
+        }
+    }
+
+    #[test]
+    fn flow_carries_goods_across_two_hops() {
+        let mut state = TickState {
+            money: 0,
+            towns: vec![
+                town(4, [20, 4, 4, 4, 2, 0, 0, 4]),
+                town(4, [4, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [0, 0, 0, 0, 0, 0, 0, 0]),
+            ],
+            routes: vec![route(0, 1), route(1, 2)],
+        };
+        trade(&mut state, 7, 100);
+        // 4 grain needed, two links at one crown each, so two units move one
+        // hop at a time: the middle town only transships them.
+        assert_eq!(state.towns[2].stock[GRAIN], 2);
+        assert!(state.routes[0].traffic >= 2);
+        assert!(state.routes[1].traffic >= 2);
+        assert!(state.money > 0);
+    }
+
+    #[test]
+    fn a_denied_good_never_enters_the_link() {
+        let mut allow = [1; GOOD_COUNT];
+        allow[GRAIN] = 0;
+        let mut state = TickState {
+            money: 0,
+            towns: vec![
+                town(4, [20, 4, 4, 4, 2, 0, 0, 4]),
+                town(4, [4, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [0, 0, 0, 0, 0, 0, 0, 0]),
+            ],
+            routes: vec![
+                rule_route(0, 1, allow, [0; GOOD_COUNT]),
+                rule_route(1, 2, [1; GOOD_COUNT], [0; GOOD_COUNT]),
+            ],
+        };
+        trade(&mut state, 7, 100);
+        assert_eq!(state.towns[2].stock[GRAIN], 0);
+    }
+
+    #[test]
+    fn a_per_good_toll_moves_the_flow_to_the_other_path() {
+        let mut direct_fee = [0; GOOD_COUNT];
+        direct_fee[GRAIN] = 9;
+        let mut state = TickState {
+            money: 0,
+            towns: vec![
+                town(4, [20, 4, 4, 4, 2, 0, 0, 4]),
+                town(4, [4, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [0, 0, 0, 0, 0, 0, 0, 0]),
+            ],
+            // A direct a-c link exists, but its grain toll (10 delivered) is
+            // above the whole deficit, so the two-hop chain must carry it.
+            routes: vec![
+                rule_route(0, 1, [1; GOOD_COUNT], [0; GOOD_COUNT]),
+                rule_route(1, 2, [1; GOOD_COUNT], [0; GOOD_COUNT]),
+                rule_route(0, 2, [1; GOOD_COUNT], direct_fee),
+            ],
+        };
+        trade(&mut state, 7, 100);
+        assert_eq!(state.towns[2].stock[GRAIN], 2);
+        assert!(state.routes[0].traffic >= 2);
+    }
+
+    #[test]
+    fn capacity_is_shared_across_goods_per_direction() {
+        let mut state = TickState {
+            money: 0,
+            towns: vec![
+                town(4, [20, 4, 4, 4, 2, 0, 0, 4]),
+                town(4, [0, 0, 0, 0, 0, 0, 0, 0]),
+            ],
+            routes: vec![TickRoute {
+                capacity: 3,
+                ..route(0, 1)
+            }],
+        };
+        trade(&mut state, 1, 100);
+        assert_eq!(state.routes[0].traffic, 3);
+        assert_eq!(state.towns[1].stock[GRAIN], 3);
+        assert_eq!(state.towns[1].stock[FISH], 0);
     }
 
     #[test]
