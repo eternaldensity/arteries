@@ -616,13 +616,16 @@ fn two_digit(n: Int) -> Text:
     true => "0" + int_text(n)
     false => int_text(n)
 
-export fn calendar_text(world: World) -> Text:
-  let t = max_int(world.tick, 0)
+export fn calendar_at_tick(tick: Int) -> Text:
+  let t = max_int(tick, 0)
   let year = t / hours_per_year() + 1
   let month = mod_int(t, hours_per_year()) / hours_per_month() + 1
   let day = mod_int(t, hours_per_month()) / hours_per_day() + 1
   let hour = mod_int(t, hours_per_day())
   "Year " + int_text(year) + " · Month " + int_text(month) + " · Day " + int_text(day) + " · " + two_digit(hour) + ":00"
+
+export fn calendar_text(world: World) -> Text:
+  calendar_at_tick(world.tick)
 
 export fn duration_text(hours: Int) -> Text:
   let h = max_int(hours, 0)
@@ -2710,6 +2713,33 @@ fn route_connected(routes: List<Route>, node: Text, goal: Text, skip: Text, seen
 export fn route_has_alternate(world: World, route: Route) -> Bool:
   route_connected(world.routes, route.a, route.b, route.id, [])
 
+fn town_has_route(routes: List<Route>, id: Text, i: Int) -> Bool:
+  match list_get(routes, i):
+    None => false
+    Some(r) => match r.a == id or r.b == id:
+      true => true
+      false => town_has_route(routes, id, i + 1)
+
+export fn connected_town_count(world: World) -> Int:
+  let flags = for t in world.towns:
+    match town_has_route(world.routes, t.id, 0):
+      true => 1
+      false => 0
+  total(flags)
+
+export fn resilient_route_count(world: World) -> Int:
+  let flags = for r in world.routes:
+    match route_has_alternate(world, r):
+      true => 1
+      false => 0
+  total(flags)
+
+export fn prosperity_per_upkeep(world: World) -> Int:
+  let upkeep = total_upkeep(world.routes)
+  match upkeep <= 0:
+    true => total_prosperity(world)
+    false => total_prosperity(world) / upkeep
+
 export fn route_dependency_text(world: World, route: Route) -> Text:
   match route_has_alternate(world, route):
     true => "Alternate path available; other links still connect these settlements."
@@ -3861,6 +3891,17 @@ fn nth_node(xs: List<RouteNode>, i: Int) -> RouteNode:
     Some(n) => n
     None => RouteNode(key: "", position: "", css: "")
 
+fn ghost_nodes_from(projects: List<Project>, i: Int, acc: List<RouteNode>) -> List<RouteNode>:
+  match list_get(projects, i):
+    None => acc
+    Some(p) => ghost_nodes_from(projects, i + 1, concat_nodes(acc, path_nodes(p.plan.path, 0, p.id + "-ghost", "rn-ghost")))
+
+export fn ghost_nodes(projects: List<Project>) -> List<RouteNode>:
+  ghost_nodes_from(projects, 0, [])
+
+export fn map_draft_nodes(draft: List<RouteNode>, projects: List<Project>) -> List<RouteNode>:
+  concat_nodes(draft, ghost_nodes(projects))
+
 export fn route_groups(routes: List<Route>) -> List<RouteNodeGroup>:
   for r in routes:
     RouteNodeGroup(key: r.id, nodes: path_nodes(r.plan.path, 0, r.id, node_css(route_mode_code(r.mode)) + " " + route_flow_class(r) + route_good_class(r)))
@@ -4053,6 +4094,16 @@ export fn upgrade_time_text(game: Game, route: Route) -> Text:
 
 export fn project_remaining(p: Project, tick: Int) -> Int:
   max_int(0, p.ready_tick - tick)
+
+fn project_position(projects: List<Project>, id: Text, i: Int) -> Int:
+  match list_get(projects, i):
+    None => 0
+    Some(p) => match p.id == id:
+      true => i
+      false => project_position(projects, id, i + 1)
+
+export fn project_queue_text(projects: List<Project>, p: Project) -> Text:
+  "Queue " + int_text(project_position(projects, p.id, 0) + 1) + " · ready " + calendar_at_tick(p.ready_tick)
 
 export fn project_title(p: Project) -> Text:
   p.a_name + " → " + p.b_name

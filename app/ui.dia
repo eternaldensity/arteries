@@ -786,7 +786,7 @@ export component Root:
           </div>
 
           <div class="map-frame">
-            <use component="MapCanvas" seed={world.seed} groups={game.route_groups} draft={draft_nodes(draft_plan, sel.ready)} markers={make_markers(world)} selected={sel.selected} on-picked={pick}></use>
+            <use component="MapCanvas" seed={world.seed} groups={game.route_groups} draft={map_draft_nodes(draft_nodes(draft_plan, sel.ready), game.projects)} markers={make_markers(world)} selected={sel.selected} on-picked={pick}></use>
             <div class="compass"><span>N</span><span class="north-needle"></span></div>
           </div>
 
@@ -978,12 +978,17 @@ export component Root:
               <button class="ghost" type="button" on-click={toggle_auto}>Auto upkeep: {auto_text(game.auto_upkeep)}</button>
             </div>
           </div>
+          <div class="maintenance network-health">
+            <div class="maint-block"><span>Pros/upkeep</span><strong>{int_text(prosperity_per_upkeep(world))}</strong></div>
+            <div class="maint-block"><span>Connected</span><strong>{int_text(connected_town_count(world))}/{int_text(len(world.towns))}</strong></div>
+            <div class="maint-block"><span>Redundant links</span><strong>{int_text(resilient_route_count(world))}/{int_text(len(world.routes))}</strong></div>
+          </div>
           <when test={len(game.projects) > 0}>
             <div class="projects">
-              <div class="projects-head">Under construction <span class="badge">{len(game.projects)}</span></div>
+              <div class="projects-head">Under construction <span class="badge">{len(game.projects)} / {max_projects()}</span></div>
               <each items={game.projects} as="p" key={p.id}>
                 <div class="project-row">
-                  <div><strong>{project_title(p)}</strong><span>{project_action_text(p)} · {duration_text(project_remaining(p, world.tick))} left</span></div>
+                  <div><strong>{project_title(p)}</strong><span>{project_action_text(p)} · {duration_text(project_remaining(p, world.tick))} left · {project_queue_text(game.projects, p)}</span></div>
                   <div class="project-actions">
                      <span class="project-tick">{world.tick} / {p.ready_tick}</span>
                      <button class="tiny danger" type="button" on-click={cancel_project(p.id)} disabled={project_remaining(p, world.tick) <= 0}>Cancel</button>

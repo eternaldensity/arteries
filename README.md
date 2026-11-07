@@ -274,7 +274,7 @@ tools/
   check-tick-finish.sh  diff the Rust finish kernel against shared.dia
   tick_finish_main.dia  fixed two-town finish fixture for that diff
 tests/
-  ui-smoke.js      real-browser acceptance and exploration driver
+  ui-smoke.js      real-browser acceptance driver (routes, ghost plans, queue ETAs, health, upkeep, dismantle)
   ui-m3.js         site-directed founding and waypoint acceptance
   ui-m4.js         multi-hop flow, link rules, flow overlay, and dismantle-warning acceptance
   ui-m5.js         globe region-map, sea-lane, continent, raster, and region-trade acceptance

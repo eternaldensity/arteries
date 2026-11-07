@@ -137,8 +137,23 @@ function assert(condition, message) {
       (await page.locator('.project-row').count()) > 0,
       `no project row for ${a}-${b}`
     );
+    assert(
+      (await page.locator('.route-cell.rn-ghost').count()) > 0,
+      `no ghost plan while ${a}-${b} is under construction`
+    );
+    const projectText = await page.locator('.project-row').first().innerText();
+    assert(
+      /Queue \d+/.test(projectText) && /ready Year/.test(projectText),
+      `project row is missing its queue/ETA: ${projectText}`
+    );
     for (let i = 0; i < 12; i++) {
-      if ((await page.locator('.route-card').count()) > before) return;
+      if ((await page.locator('.route-card').count()) > before) {
+        assert(
+          (await page.locator('.route-cell.rn-ghost').count()) === 0,
+          `ghost plan remained after ${a}-${b} completed`
+        );
+        return;
+      }
       await page.getByRole('button', { name: 'Advance 1 hour' }).click();
       await page.waitForTimeout(550);
     }
@@ -221,6 +236,10 @@ function assert(condition, message) {
     s = await state();
     assert(!s.error, 'component error after building routes: ' + s.error);
     assert(s.routes === 3, `expected 3 routes, got ${s.routes}`);
+    const health = (await page.locator('.network-health').innerText()).toLowerCase();
+    for (const label of ['pros/upkeep', 'connected', 'redundant links']) {
+      assert(health.includes(label), `network health is missing ${label}: ${health}`);
+    }
     assert(s.towns.length === 4, 'expected one founded settlement after three routes');
 
     // Route cap: a fifth survey must be refused, not rendered as buildable.
