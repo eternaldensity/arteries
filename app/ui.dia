@@ -607,7 +607,7 @@ export component Root:
               </each>
             </div>
             <when test={len(region_map.tiles) > 0}>
-              <p class="scale-hint">{int_text(region_map.land)} land · {int_text(region_map.ocean)} ocean faces · {int_text(region_map.continents)} continents (largest {int_text(region_map.largest)})</p>
+              <p class="scale-hint">{int_text(region_map.land)} land · {int_text(region_map.ocean)} ocean faces · {int_text(region_map.continents)} continents (largest {int_text(region_map.largest)}) · {int_text(region_climate_count(region_map.tiles, 1))} cold · {int_text(region_climate_count(region_map.tiles, 2))} hot</p>
             </when>
             <when test={len(region_path) > 0}>
               <p class="scale-hint">Sea lane: {region_path_text(region_path)}</p>

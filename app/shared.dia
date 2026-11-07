@@ -87,6 +87,7 @@ export type FaceTile:
   water: Int
   land: Int
   climate: Int
+  biome: Int
 
 export type RegionMap:
   tiles: List<FaceTile>
@@ -2575,14 +2576,34 @@ fn region_in_path_at(path: List<Int>, i: Int, k: Int) -> Bool:
 export fn region_in_path(i: Int, path: List<Int>) -> Bool:
   region_in_path_at(path, i, 0)
 
+export fn region_biome_class(code: Int) -> Text:
+  match code == 1:
+    true => "region-plains"
+    false => match code == 2:
+      true => "region-forest"
+      false => match code == 3:
+        true => "region-hills"
+        false => match code == 4:
+          true => "region-mountain"
+          false => match code == 7:
+            true => "region-marsh"
+            false => "region-land"
+
+export fn region_climate_count(tiles: List<FaceTile>, zone: Int) -> Int:
+  let flags = for t in tiles:
+    match t.climate == zone:
+      true => 1
+      false => 0
+  total(flags)
+
 export fn region_tile_class(map: RegionMap, i: Int) -> Text:
   let tile = match list_get(map.tiles, i):
     Some(t) => t
-    None => FaceTile(face: i, water: 0, land: 0, climate: 0)
+    None => FaceTile(face: i, water: 0, land: 0, climate: 0, biome: 0)
   match len(map.tiles) == 0:
     true => ""
     false => match tile.land > tile.water:
-      true => "region-land"
+      true => region_biome_class(tile.biome)
       false => "region-water"
 
 export fn globe_terrain_class(code: Int) -> Text:

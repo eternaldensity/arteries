@@ -62,12 +62,24 @@ async function signIn(page) {
     await page.waitForTimeout(1500);
     const summary = await page.locator('#region-map .scale-hint').first().innerText();
     assert(/land/i.test(summary) && /ocean faces/i.test(summary), 'no region summary: ' + summary);
-    const landOrWater = await page
-      .locator('#region-map .region-cell.region-land, #region-map .region-cell.region-water')
+    const waterFaces = await page.locator('#region-map .region-cell.region-water').count();
+    const landFaces = await page
+      .locator(
+        '#region-map .region-cell.region-plains, #region-map .region-cell.region-forest, ' +
+          '#region-map .region-cell.region-hills, #region-map .region-cell.region-mountain, ' +
+          '#region-map .region-cell.region-marsh'
+      )
       .count();
-    assert(landOrWater === 30, `expected 30 classified faces, got ${landOrWater}`);
+    assert(waterFaces + landFaces === 30, `expected 30 classified faces, got ${waterFaces + landFaces}`);
+    assert(
+      waterFaces > 0 && landFaces > 0,
+      `globe needs land and ocean faces, got ${landFaces} land / ${waterFaces} ocean`
+    );
     const largest = Number((summary.match(/largest (\d+)/) || [])[1] || 0);
     assert(largest >= 2, 'no continent spans multiple faces: ' + summary);
+    const cold = Number((summary.match(/(\d+) cold/) || [])[1] || 0);
+    const hot = Number((summary.match(/(\d+) hot/) || [])[1] || 0);
+    assert(cold > 0 && hot > 0, `expected cold and hot climate zones, got ${cold} cold / ${hot} hot`);
 
     // Plan a sea lane between two faces and check a path is reported.
     await cells.nth(0).click();

@@ -109,11 +109,14 @@ mod tests {
     }
 }
 
-/// Per-face terrain summary: `[face, water_cells, land_cells, climate]`.
+/// Per-face terrain summary.
 ///
-/// Samples the face at `detail` with the same classifier the planet kernel
-/// uses, so the region map agrees with the generated globe. `climate` is 1
-/// (cold) when the face centre is above 60 degrees latitude, else 0.
+/// Reply row: `[face, water, land, climate, dominant_land]`. Water counts
+/// Water+Coast cells; `climate` is 0 temperate, 1 cold (face centre above 60
+/// degrees latitude), or 2 hot (below 20). `dominant_land` is the most common
+/// land code, or 0 for an ocean face.
+/// Samples use the same classifier as the planet kernel, so the region map
+/// agrees with the generated globe.
 pub fn face_summary(
     seed: i64,
     detail: usize,
@@ -126,19 +129,36 @@ pub fn face_summary(
     }
     let rows = crate::planet::generate_faces(seed, detail, face_index, 1, vertices, faces)?;
     let row = rows.first().ok_or("no face generated")?;
-    let mut water = 0_i64;
-    let mut land = 0_i64;
+    let mut counts = [0_i64; 8];
     for code in row {
-        if matches!(code, 5 | 6) {
-            water += 1;
-        } else {
-            land += 1;
+        if let Ok(index) = usize::try_from(*code) {
+            if (1..=7).contains(&index) {
+                counts[index] += 1;
+            }
         }
     }
+    let water = counts[5] + counts[6];
+    let land = i64::try_from(row.len()).unwrap_or(0) - water;
     let center = face_center(vertices, &faces[face_index]);
     let latitude = center[2].unsigned_abs() * 100 / 1_000_000;
-    let climate = i64::from(latitude > 60);
-    Ok(vec![face_index as i64, water, land, climate])
+    let climate = if latitude > 60 {
+        1
+    } else if latitude < 20 {
+        2
+    } else {
+        0
+    };
+    // Fixed order gives deterministic tie-breaking.
+    let mut dominant = 0_i64;
+    let mut best = 0_i64;
+    for code in [1_i64, 2, 3, 4, 7] {
+        let count = counts[usize::try_from(code).unwrap_or(0)];
+        if count > best {
+            best = count;
+            dominant = code;
+        }
+    }
+    Ok(vec![face_index as i64, water, land, climate, dominant])
 }
 
 fn face_center(vertices: &[[i64; 3]], face: &[usize; 4]) -> [i64; 3] {
@@ -412,6 +432,22 @@ mod raster_tests {
         for &code in cells.iter().filter(|&&code| code != 0) {
             assert_eq!(code / 8, 0, "unexpected face in code {code}");
             assert!((1..=7).contains(&(code % 8)), "bad terrain code {code}");
+        }
+    }
+
+    #[test]
+    fn face_summary_reports_counts_and_dominant_biome() {
+        let (mut vertices, _) = flat_face();
+        vertices.resize(32, [0_i64; 3]);
+        let faces = vec![[0_usize, 1, 2, 3]; 30];
+        let row = face_summary(7, 4, 0, &vertices, &faces).expect("summary");
+        assert_eq!(row.len(), 5);
+        assert_eq!(row[0], 0);
+        assert_eq!(row[1] + row[2], 16);
+        assert!((0..=2).contains(&row[3]));
+        assert!([0, 1, 2, 3, 4, 7].contains(&row[4]));
+        if row[2] > 0 {
+            assert_ne!(row[4], 0, "land faces need a dominant biome");
         }
     }
 

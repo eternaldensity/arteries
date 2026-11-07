@@ -1305,7 +1305,7 @@ export fn region_map(seed: Int, detail: Int) -> Result<RegionMap, DataError>:
     let r = match list_get(rows, i):
       Some(row) => row
       None => []
-    FaceTile(face: nth_int(r, 0), water: nth_int(r, 1), land: nth_int(r, 2), climate: nth_int(r, 3))
+    FaceTile(face: nth_int(r, 0), water: nth_int(r, 1), land: nth_int(r, 2), climate: nth_int(r, 3), biome: nth_int(r, 4))
   let land_flags = for t in tiles:
     match t.land > t.water:
       true => 1

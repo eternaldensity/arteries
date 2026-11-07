@@ -1058,6 +1058,31 @@ button.tiny { padding: 2px 8px; font-size: 13px; border-radius: 6px; }
   border-color: rgba(94, 234, 212, .35);
   color: var(--text);
 }
+.region-cell.region-plains {
+  background: rgba(143, 191, 106, .16);
+  border-color: rgba(143, 191, 106, .42);
+  color: var(--text);
+}
+.region-cell.region-forest {
+  background: rgba(63, 138, 79, .18);
+  border-color: rgba(63, 138, 79, .45);
+  color: var(--text);
+}
+.region-cell.region-hills {
+  background: rgba(179, 154, 91, .18);
+  border-color: rgba(179, 154, 91, .45);
+  color: var(--text);
+}
+.region-cell.region-mountain {
+  background: rgba(216, 210, 198, .16);
+  border-color: rgba(216, 210, 198, .42);
+  color: var(--text);
+}
+.region-cell.region-marsh {
+  background: rgba(111, 154, 122, .18);
+  border-color: rgba(111, 154, 122, .45);
+  color: var(--text);
+}
 .region-cell.region-water {
   background: rgba(56, 132, 255, .12);
   border-color: rgba(56, 132, 255, .35);
