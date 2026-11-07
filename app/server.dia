@@ -1282,6 +1282,19 @@ fn planet_summary_chunks(seed: Int, detail: Int, start: Int, vertices: List<List
       let chunk = host.compute<List<Int>>("arteries", "planet_summary", seed, detail, start, 5, vertices, faces)?
       planet_summary_chunks(seed, detail, start + 5, vertices, faces, faces_acc + nth_int(chunk, 0), cells_acc + nth_int(chunk, 1), checksum_acc + nth_int(chunk, 2))
 
+# `rt_seams()` recurses 120 deep and overflows the server stack, so build the
+# list with the shallow `indices` helper instead.
+fn seam_rows() -> List<List<Int>>:
+  for i in indices(rt_seam_count()):
+    let s = rt_seam(i)
+    [s.face, s.edge, s.neighbor, s.neighbor_edge, s.au, s.bu, s.cu, s.av, s.bv, s.cv]
+
+export fn face_neighbors() -> Result<List<List<Int>>, DataError>:
+  host.compute<List<List<Int>>>("arteries", "face_neighbors", seam_rows())
+
+export fn face_path(from: Int, to: Int) -> Result<List<Int>, DataError>:
+  host.compute<List<Int>>("arteries", "face_path", seam_rows(), from, to)
+
 export fn planet_summary(seed: Int, detail: Int) -> Result<PlanetSummary, DataError>:
   let vertices = planet_vertices()
   let faces = planet_faces()

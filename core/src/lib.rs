@@ -9,12 +9,14 @@
 //! regenerates both and compares, and `tests/terrain-expected.txt` is a frozen
 //! snapshot of the Diamond output for the default seed range.
 
+mod globe;
 mod noise;
 mod path;
 mod planet;
 mod tick;
 mod worldgen;
 
+pub use globe::{face_neighbors, face_path};
 pub use noise::{fbm, hash, ridged, value, warp, MAX_OCTAVES, NOISE_SCALE};
 pub use path::{
     pathfind, pathfind_features, route_cost, route_cost_features, FeatureGrid, Grid, GridPoint,

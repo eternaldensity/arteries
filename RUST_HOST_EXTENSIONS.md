@@ -338,6 +338,8 @@ names; the call site is `host.compute<Reply>("arteries", "<name>", args...)`.
 | `finish` | `(Int, Int, Int, Int, Int, List<List<Int>>) -> List<List<Int>>` | `(seed, from, days, town_count, page_start, town rows)`; applies harvest/storm/caravan events to one page using global target indices; reply is `[max_research, total_prosperity]` plus one 11-int town row per page town |
 | `planet` | `(Int, Int, Int, Int, List<List<Int>>, List<List<Int>>) -> List<List<Int>>` | `(seed, detail, face_start, face_count, vertices, faces)`; samples the checked RT topology on a `detail × detail` bilinear grid and returns one terrain-code row per face; detail is capped at 16 |
 | `planet_summary` | same arguments as `planet`, result `List<Int>` | `[face_count, cell_count, terrain_checksum]`; lets the server page the planet without materialising every cell in Diamond |
+| `face_neighbors` | `(List<List<Int>>) -> List<List<Int>>` | `(seam rows)`; one neighbour-face list per RT face, deduplicated in seam order |
+| `face_path` | `(List<List<Int>>, Int, Int) -> List<Int>` | `(seam rows, from_face, to_face)`; BFS path over the 30-face seam adjacency, or empty when unreachable |
 | `plan_many` | `(Text, Text, Text, Int) -> Text` | alternates in one call |
 | `digest` | `(Text) -> Text` | stable hash for determinism checks and save integrity |
 | `generate_planet` | `(Int, Int) -> Text` | coarse planet topology; likely chunked or background |

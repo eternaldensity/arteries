@@ -277,6 +277,7 @@ tests/
   ui-smoke.js      real-browser acceptance and exploration driver
   ui-m3.js         site-directed founding and waypoint acceptance
   ui-m4.js         multi-hop flow and link-rules acceptance
+  ui-m5.js         globe region-map and sea-lane acceptance
 ```
 
 `shared.dia` is the whole simulation. Terrain is a deterministic function;
@@ -359,6 +360,7 @@ UI_URL=http://127.0.0.1:3032/ \
 node tests/ui-smoke.js
 node tests/ui-m3.js
 node tests/ui-m4.js
+node tests/ui-m5.js
 ```
 
 `ui-smoke.js` exercises initial render, settlement and site inspection, three

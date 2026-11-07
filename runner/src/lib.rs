@@ -7,10 +7,10 @@
 //! this binary instead.
 
 use arteries_core::{
-    fbm, finish_towns, generate_faces, generate_world, market, pathfind, pathfind_features,
-    region_text, route_cost, route_cost_features, trade, FeatureGrid, Grid, GridPoint, TickRoute,
-    TickState, TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED, PIPELINE_LEN,
-    ROUTE_ROW_LEN, TOWN_ROW_LEN,
+    face_neighbors, face_path, fbm, finish_towns, generate_faces, generate_world, market, pathfind,
+    pathfind_features, region_text, route_cost, route_cost_features, trade, FeatureGrid, Grid,
+    GridPoint, TickRoute, TickState, TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED,
+    PIPELINE_LEN, TOWN_ROW_LEN,
 };
 use diamond::{Compute, ComputeContext, ComputeError, RuntimeGrants};
 use serde_json::Value as Json;
@@ -465,6 +465,69 @@ impl Noise {
 }
 
 impl Compute for Noise {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
+/// Pure-compute export `arteries.face_neighbors`.
+pub struct FaceNeighbors;
+
+impl FaceNeighbors {
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 1 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let seam_rows = nested_int_list_arg(arguments, 0)?;
+        let mut seams = Vec::with_capacity(seam_rows.len());
+        for row in &seam_rows {
+            if row.len() < 4 {
+                return Err(ComputeError::InvalidInput);
+            }
+            seams.push(row.clone());
+        }
+        Ok(nested_int_list_json(face_neighbors(&seams)))
+    }
+}
+
+impl Compute for FaceNeighbors {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
+/// Pure-compute export `arteries.face_path`.
+pub struct FacePath;
+
+impl FacePath {
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 3 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let seam_rows = nested_int_list_arg(arguments, 0)?;
+        let mut seams = Vec::with_capacity(seam_rows.len());
+        for row in &seam_rows {
+            if row.len() < 4 {
+                return Err(ComputeError::InvalidInput);
+            }
+            seams.push(row.clone());
+        }
+        let from =
+            usize::try_from(int_arg(arguments, 1)?).map_err(|_| ComputeError::InvalidInput)?;
+        let to = usize::try_from(int_arg(arguments, 2)?).map_err(|_| ComputeError::InvalidInput)?;
+        Ok(int_list_json(face_path(&seams, from, to)))
+    }
+}
+
+impl Compute for FacePath {
     fn call(
         &self,
         _context: &ComputeContext<'_>,
@@ -985,6 +1048,20 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
         ],
         "List<Int>",
         PlanetSummaryKernel,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "face_neighbors",
+        &["List<List<Int>>"],
+        "List<List<Int>>",
+        FaceNeighbors,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "face_path",
+        &["List<List<Int>>", "Int", "Int"],
+        "List<Int>",
+        FacePath,
     )?;
     grants.register_compute(
         "arteries",

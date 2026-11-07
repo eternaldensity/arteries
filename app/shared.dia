@@ -2540,6 +2540,26 @@ export fn town_is_hub(routes: List<Route>, id: Text) -> Bool:
 export fn in_transit(r: Route) -> Int:
   total(r.pipeline)
 
+export fn region_path_text(path: List<Int>) -> Text:
+  let parts = for i in indices(len(path)):
+    int_text(nth_int(path, i))
+  join_text(parts, " -> ")
+
+fn region_in_path_at(path: List<Int>, i: Int, k: Int) -> Bool:
+  match list_get(path, k):
+    None => false
+    Some(v) => match v == i:
+      true => true
+      false => region_in_path_at(path, i, k + 1)
+
+export fn region_in_path(i: Int, path: List<Int>) -> Bool:
+  region_in_path_at(path, i, 0)
+
+export fn region_class(i: Int, path: List<Int>) -> Text:
+  match region_in_path(i, path):
+    true => "region-path"
+    false => ""
+
 export fn town_hub_text(world: World, id: Text) -> Text:
   match town_is_hub(world.routes, id):
     true => "Hub: transfers between modes are free."

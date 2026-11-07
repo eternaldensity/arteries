@@ -1005,6 +1005,28 @@ button.tiny { padding: 2px 8px; font-size: 13px; border-radius: 6px; }
   text-transform: none;
 }
 
+.region-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  margin: 8px 0;
+}
+.region-cell {
+  padding: 6px 0;
+  font-size: 11px;
+  font-family: var(--mono);
+  border-radius: 6px;
+  border: 1px solid var(--line-soft);
+  background: #081120;
+  color: var(--muted);
+  cursor: pointer;
+}
+.region-cell.region-path {
+  background: rgba(94, 234, 212, .18);
+  border-color: var(--teal);
+  color: var(--text);
+}
+
 .scale-planet {
   margin-top: 20px;
   border-top: 1px solid var(--line-soft);

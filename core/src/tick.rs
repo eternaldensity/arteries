@@ -131,8 +131,8 @@ pub fn trade(state: &mut TickState, days: i64, scale: i64) {
         let shift = mature * GOOD_COUNT * 2;
         if shift > 0 && shift <= PIPELINE_LEN {
             let mut shifted = vec![0_i64; PIPELINE_LEN];
-            for i in shift..PIPELINE_LEN {
-                shifted[i - shift] = route.pipeline[i];
+            if shift <= PIPELINE_LEN {
+                shifted[..PIPELINE_LEN - shift].copy_from_slice(&route.pipeline[shift..]);
             }
             route.pipeline = shifted;
         }
@@ -146,7 +146,7 @@ pub fn trade(state: &mut TickState, days: i64, scale: i64) {
         remaining.push(cap);
         remaining.push(cap);
     }
-    let mut caps = remaining.clone();
+    let caps = remaining.clone();
     let mut income = 0_i64;
     for good in 0..GOOD_COUNT {
         for receiver in 0..state.towns.len() {
@@ -214,9 +214,6 @@ pub fn trade(state: &mut TickState, days: i64, scale: i64) {
 
 /// One transfer through an intermediate settlement.
 const FLOW_TRANSFER_PENALTY: i64 = 2;
-
-/// Per-receiver rounds per good; bounds one receiver fed by several senders.
-const FLOW_ROUNDS: usize = 8;
 
 fn flow_big() -> i64 {
     1_000_000_000
