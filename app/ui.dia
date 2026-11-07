@@ -808,6 +808,8 @@ export component Root:
             <span class="key f-pass"><span class="swatch"></span>Pass</span>
             <span class="key f-ford"><span class="swatch"></span>Ford</span>
             <span class="key f-harbor"><span class="swatch"></span>Harbor</span>
+            <span class="legend-gap"></span>
+            <span class="legend-note">Link weight = traffic · colour = dominant cargo</span>
           </div>
         </section>
 
@@ -999,6 +1001,7 @@ export component Root:
           <when test={pending_dismantle != ""}>
             <div class="confirm-dismantle">
               <p>Dismantle {route_direction(route_lookup(world, pending_dismantle))}? {salvage_text(route_lookup(world, pending_dismantle))}</p>
+              <p class="helper">{route_dependency_text(world, route_lookup(world, pending_dismantle))}</p>
               <div class="actions">
                 <button class="small danger" type="button" on-click={confirm_dismantle}>Confirm dismantle</button>
                 <button class="ghost small" type="button" on-click={cancel_dismantle}>Cancel</button>
@@ -1020,11 +1023,9 @@ export component Root:
                   <span class="usage-text">{r.traffic}/{r.capacity} used</span>
                 </div>
                 <when test={in_transit(r) > 0}>
-                  <p class="helper">In transit: {in_transit(r)} units.</p>
+                  <p class="helper">In transit: {int_text(in_transit(r))} units{route_cargo_text(r)}</p>
                 </when>
-                <when test={in_transit(r) > 0}>
-                  <p class="helper">In transit: {in_transit(r)} units.</p>
-                </when>
+                <p class="helper">{route_dependency_text(world, r)}</p>
 
                 <div class="route-bottom">
                   <span>{fee_label(r)} · {income_label(r)}</span>

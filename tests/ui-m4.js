@@ -85,6 +85,29 @@ const trafficOf = (text) => Number((text.match(/(\d+)\/\d+ used/) || [])[1] || 0
     }
     assert(first + second > 0, 'the two-link chain carried no trade at all');
 
+    // Flow overlay: active links carry a traffic-thickness class, and every
+    // route card explains whether removing it would isolate its endpoints.
+    const flowCells = await page
+      .locator(
+        '.route-cell.flow-low, .route-cell.flow-mid, .route-cell.flow-high, .route-cell.flow-full'
+      )
+      .count();
+    assert(flowCells > 0, 'flow overlay did not mark active links');
+    const dependencyLines = await page
+      .locator('.route-card .helper', { hasText: /Sole link|Alternate path/ })
+      .count();
+    assert(dependencyLines >= 2, `expected dependency lines on both cards, got ${dependencyLines}`);
+
+    // The second link is the only connection to Greenvale.
+    const soleCard = page.locator('.route-card').nth(1);
+    await soleCard.locator('button.danger').click();
+    await page.waitForTimeout(300);
+    const dismantle = await page.locator('.confirm-dismantle').innerText();
+    assert(/Sole link/i.test(dismantle), 'dismantle warning did not flag a sole link: ' + dismantle);
+    assert(/isolates/i.test(dismantle), 'dismantle warning did not name the isolation: ' + dismantle);
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await page.waitForTimeout(250);
+
     // Per-link rules: the desk opens on the route and lists one row per good.
     const target = first > 0 ? 0 : 1;
     const card = page.locator('.route-card').nth(target);

@@ -205,6 +205,21 @@ button.tiny { padding: 2px 8px; font-size: 13px; border-radius: 6px; }
 .r-river::after { opacity: .95; background: #67d9f6; box-shadow: 0 0 9px rgba(103, 217, 246, .65); }
 .r-rail::after { opacity: .98; background: #d8e7ff; box-shadow: 0 0 9px rgba(216, 231, 255, .65); border-radius: 1px; }
 .r-draft::after { opacity: .8; background: repeating-linear-gradient(90deg, var(--teal) 0 3px, transparent 3px 6px); box-shadow: 0 0 8px rgba(94,234,212,.5); }
+.flow-idle::after { opacity: .45; }
+.flow-low::after { height: 2px; }
+.flow-mid::after { height: 4px; }
+.flow-high::after { height: 6px; }
+.flow-full::after { height: 8px; box-shadow: 0 0 12px var(--rg, rgba(231,196,125,.6)); }
+.flow-grain::after { background: #d9b44a; }
+.flow-timber::after { background: #6f9a5a; }
+.flow-stone::after { background: #b9b3a6; }
+.flow-ore::after { background: #8d9bb0; }
+.flow-fiber::after { background: #c7d38a; }
+.flow-tools::after { background: #c9a227; }
+.flow-cloth::after { background: #d98fb0; }
+.flow-fish::after { background: #67d9f6; }
+.legend-note { color: var(--muted); font-size: 11px; }
+
 
 .town-marker, .site-marker {
   position: absolute;

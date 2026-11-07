@@ -2609,6 +2609,112 @@ export fn town_is_hub(routes: List<Route>, id: Text) -> Bool:
 export fn in_transit(r: Route) -> Int:
   total(r.pipeline)
 
+fn pipeline_good_units(r: Route, good: Int) -> Int:
+  let width = len(goods()) * 2
+  let slots = len(r.pipeline) / width
+  let values = for slot in indices(slots):
+    nth_int(r.pipeline, slot * width + good * 2) + nth_int(r.pipeline, slot * width + good * 2 + 1)
+  total(values)
+
+fn dominant_good_index(values: List<Int>, i: Int, best: Int, best_value: Int) -> Int:
+  match i >= len(values):
+    true => best
+    false => match nth_int(values, i) > best_value:
+      true => dominant_good_index(values, i + 1, i, nth_int(values, i))
+      false => dominant_good_index(values, i + 1, best, best_value)
+
+fn route_dominant_good(r: Route) -> Int:
+  let values = for good in indices(len(goods())):
+    pipeline_good_units(r, good)
+  dominant_good_index(values, 0, -1, 0)
+
+export fn route_flow_class(r: Route) -> Text:
+  let pct = match r.capacity <= 0:
+    true => 0
+    false => r.traffic * 100 / r.capacity
+  match pct >= 90:
+    true => "flow-full"
+    false => match pct >= 60:
+      true => "flow-high"
+      false => match pct >= 25:
+        true => "flow-mid"
+        false => match r.traffic > 0:
+          true => "flow-low"
+          false => "flow-idle"
+
+export fn route_good_class(r: Route) -> Text:
+  let good = route_dominant_good(r)
+  match good == 0:
+    true => " flow-grain"
+    false => match good == 1:
+      true => " flow-timber"
+      false => match good == 2:
+        true => " flow-stone"
+        false => match good == 3:
+          true => " flow-ore"
+          false => match good == 4:
+            true => " flow-fiber"
+            false => match good == 5:
+              true => " flow-tools"
+              false => match good == 6:
+                true => " flow-cloth"
+                false => match good == 7:
+                  true => " flow-fish"
+                  false => ""
+
+export fn route_cargo_text(r: Route) -> Text:
+  let parts = for good in indices(len(goods())):
+    let units = pipeline_good_units(r, good)
+    match units > 0:
+      true => [good_short_at(good) + " " + int_text(units)]
+      false => []
+  let flat = flatten_texts(parts, 0, [])
+  match len(flat) == 0:
+    true => ""
+    false => " · " + join_text(flat, " · ")
+
+fn text_seen(xs: List<Text>, value: Text, i: Int) -> Bool:
+  match list_get(xs, i):
+    None => false
+    Some(x) => match x == value:
+      true => true
+      false => text_seen(xs, value, i + 1)
+
+fn route_next_nodes(routes: List<Route>, node: Text, skip: Text, i: Int, acc: List<Text>) -> List<Text>:
+  match list_get(routes, i):
+    None => acc
+    Some(r) => match r.id == skip:
+      true => route_next_nodes(routes, node, skip, i + 1, acc)
+      false => match r.a == node:
+        true => route_next_nodes(routes, node, skip, i + 1, list_append(acc, r.b))
+        false => match r.b == node:
+          true => route_next_nodes(routes, node, skip, i + 1, list_append(acc, r.a))
+          false => route_next_nodes(routes, node, skip, i + 1, acc)
+
+fn route_connected_any(routes: List<Route>, pending: List<Text>, goal: Text, skip: Text, seen: List<Text>, i: Int) -> Bool:
+  match list_get(pending, i):
+    None => false
+    Some(next) => match route_connected(routes, next, goal, skip, seen):
+      true => true
+      false => route_connected_any(routes, pending, goal, skip, seen, i + 1)
+
+fn route_connected(routes: List<Route>, node: Text, goal: Text, skip: Text, seen: List<Text>) -> Bool:
+  match node == goal:
+    true => true
+    false => match text_seen(seen, node, 0):
+      true => false
+      false =>
+        let pending = route_next_nodes(routes, node, skip, 0, [])
+        route_connected_any(routes, pending, goal, skip, list_append(seen, node), 0)
+
+export fn route_has_alternate(world: World, route: Route) -> Bool:
+  route_connected(world.routes, route.a, route.b, route.id, [])
+
+export fn route_dependency_text(world: World, route: Route) -> Text:
+  match route_has_alternate(world, route):
+    true => "Alternate path available; other links still connect these settlements."
+    false => "Sole link: dismantling isolates " + route.a_name + " and " + route.b_name + " and stops their trade."
+
 export fn region_path_text(path: List<Int>) -> Text:
   let parts = for i in indices(len(path)):
     int_text(nth_int(path, i))
@@ -3757,7 +3863,7 @@ fn nth_node(xs: List<RouteNode>, i: Int) -> RouteNode:
 
 export fn route_groups(routes: List<Route>) -> List<RouteNodeGroup>:
   for r in routes:
-    RouteNodeGroup(key: r.id, nodes: path_nodes(r.plan.path, 0, r.id, node_css(route_mode_code(r.mode))))
+    RouteNodeGroup(key: r.id, nodes: path_nodes(r.plan.path, 0, r.id, node_css(route_mode_code(r.mode)) + " " + route_flow_class(r) + route_good_class(r)))
 
 export fn draft_nodes(plan: RoutePlan, ready: Bool) -> List<RouteNode>:
   match ready:
