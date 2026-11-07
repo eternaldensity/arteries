@@ -900,6 +900,12 @@ export component Root:
                   <div class={"usage " + usage_class(r)}><span></span></div>
                   <span class="usage-text">{r.traffic}/{r.capacity} used</span>
                 </div>
+                <when test={in_transit(r) > 0}>
+                  <p class="helper">In transit: {in_transit(r)} units.</p>
+                </when>
+                <when test={in_transit(r) > 0}>
+                  <p class="helper">In transit: {in_transit(r)} units.</p>
+                </when>
 
                 <div class="route-bottom">
                   <span>{fee_label(r)} · {income_label(r)}</span>

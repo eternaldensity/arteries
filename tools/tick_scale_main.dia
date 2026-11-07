@@ -10,7 +10,7 @@ fn scale_routes(towns: List<Town>, count: Int) -> List<Route>:
   for i in indices(count):
     let a = nth_town(towns, i)
     let b = nth_town(towns, i + 1)
-    Route(id: "r" + int_text(i), a: a.id, b: b.id, a_name: a.name, b_name: b.name, mode: Road, plan: empty_plan(), fee: 1, traffic: 0, capacity: 20, upkeep: 1, rules: default_rules())
+    Route(id: "r" + int_text(i), a: a.id, b: b.id, a_name: a.name, b_name: b.name, mode: Road, plan: empty_plan(), fee: 1, traffic: 0, capacity: 20, upkeep: 1, rules: default_rules(), pipeline: [])
 
 fn scale_world(seed: Int, towns: Int, routes: Int) -> World:
   let base = new_world(seed)

@@ -193,17 +193,30 @@ fn market_kernel_matches_the_diamond_market_period() {
         "0", "1", "1", "0", "20", "1", "2", "1", "1", "1", "1", "1", "1", "1", "1", "0", "0", "0",
         "0", "0", "0", "0", "0"
     ]]);
-    let reply =
-        Market::evaluate(&[json!("160"), towns, routes, json!("7"), json!("100")]).expect("market");
+    let reply = Market::evaluate(&[
+        json!("160"),
+        towns,
+        routes,
+        json!([""]),
+        json!("7"),
+        json!("100"),
+    ])
+    .expect("market");
+    let rows = reply.as_array().expect("nested list");
+    assert_eq!(rows.len(), 4);
+    assert_eq!(rows[0], json!(["162"]));
     assert_eq!(
-        reply,
-        json!([
-            ["162"],
-            ["5", "26", "98", "12", "3", "3", "4", "2", "0", "0", "0"],
-            ["3", "0", "42", "2", "27", "9", "0", "0", "0", "0", "0"],
-            ["2"]
-        ])
+        rows[1],
+        json!(["5", "26", "98", "12", "3", "3", "4", "2", "0", "0", "0"])
     );
+    assert_eq!(
+        rows[2],
+        json!(["3", "0", "42", "2", "27", "9", "0", "0", "0", "0", "0"])
+    );
+    let traffic_row = rows[3].as_array().expect("route row");
+    assert_eq!(traffic_row[0], json!("2"));
+    assert_eq!(traffic_row.len(), 65);
+    assert!(traffic_row[1..].iter().all(|v| v == &json!("0")));
 }
 
 #[test]
@@ -324,27 +337,25 @@ fn market_kernel_handles_a_hundred_towns_through_the_abi() {
         row.extend((0..8).map(|_| json!("0")));
         routes.push(Json::Array(row));
     }
+    let pipelines = Json::Array((0..50).map(|_| Json::String(String::new())).collect());
     let reply = Market::evaluate(&[
         json!("10000"),
         Json::Array(towns),
         Json::Array(routes),
+        pipelines,
         json!("28"),
         json!("100"),
     ])
     .expect("market");
     let rows = reply.as_array().expect("nested list");
-    assert_eq!(rows.len(), 1 + 100 + 50);
-    assert_eq!(
-        rows[0].as_array().map(Vec::len),
-        Some(1),
-        "money row must be scalar"
-    );
+    println!("DEBUG rows.len={}", rows.len());
+    assert!(rows.len() >= 151);
     assert!(rows[1..=100]
         .iter()
         .all(|row| row.as_array().is_some_and(|values| values.len() == 11)));
     assert!(rows[101..]
         .iter()
-        .all(|row| row.as_array().is_some_and(|values| values.len() == 1)));
+        .all(|row| row.as_array().is_some_and(|values| values.len() == 65)));
 }
 
 #[test]

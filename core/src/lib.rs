@@ -23,7 +23,7 @@ pub use path::{
 pub use planet::{generate_faces, MAX_DETAIL, PLANET_SCALE};
 pub use tick::{
     finish_towns, market, trade, FinishPage, TickRoute, TickState, TickTown, CLOTH, FIBER, FISH,
-    GOOD_COUNT, GRAIN, ORE, ROUTE_ROW_LEN, STONE, TIMBER, TOOLS, TOWN_ROW_LEN,
+    GOOD_COUNT, GRAIN, ORE, PIPELINE_LEN, ROUTE_ROW_LEN, STONE, TIMBER, TOOLS, TOWN_ROW_LEN,
 };
 pub use worldgen::{
     climate_code, generate as generate_world, map_line as worldgen_map_line,

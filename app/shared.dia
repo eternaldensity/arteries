@@ -153,6 +153,7 @@ export type Route:
   capacity: Int
   upkeep: Int
   rules: LinkRules
+  pipeline: List<Int>
 
 # Per-link flow rules (design doc §5.4). `allow` holds one 0/1 entry per good in
 # `goods()` order and `fee` a per-good surcharge on top of the link's base fee.
@@ -223,6 +224,19 @@ export fn encode_link_rules(rules: LinkRules) -> Text:
   let fee = for i in indices(len(rules.fee)):
     pad2(nth_int(rules.fee, i))
   join_text(allow, "") + join_text(fee, "")
+
+# In-transit consignments per route, padded to the fixed kernel width. An empty
+# column decodes to an empty (zeroed) pipeline, so pre-transit rows stay valid.
+export fn encode_pipeline(pipeline: List<Int>) -> Text:
+  let parts = for i in indices(len(pipeline)):
+    pad4(nth_int(pipeline, i))
+  join_text(parts, "")
+
+export fn decode_pipeline(text: Text) -> List<Int>:
+  let count = len(text) / 4
+  let groups = for i in indices(count):
+    [int_of(text_slice(text, i * 4, 4))]
+  flatten_ints(groups, 0, [])
 
 export fn decode_link_rules(text: Text) -> LinkRules:
   match len(text) < len(goods()) * 3:
@@ -2331,7 +2345,7 @@ export fn game_link_rules(game: Game, id: Text, allow: List<Int>, fees: List<Int
   match r.id == "":
     true => game
     false =>
-      let changed = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: r.fee, traffic: r.traffic, capacity: r.capacity, upkeep: r.upkeep, rules: LinkRules(allow: allow, fee: fees))
+      let changed = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: r.fee, traffic: r.traffic, capacity: r.capacity, upkeep: r.upkeep, rules: LinkRules(allow: allow, fee: fees), pipeline: [])
       Game(world: with_routes(game.world, replace_route(game.world.routes, changed)), sel: game.sel, notice: "Link rules updated.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
 
 export fn route_text(mode: RouteMode) -> Text:
@@ -2521,6 +2535,11 @@ fn town_hub_at(routes: List<Route>, id: Text, i: Int, first: Int, seen: Int) -> 
 export fn town_is_hub(routes: List<Route>, id: Text) -> Bool:
   town_hub_at(routes, id, 0, 0, 0)
 
+# Units currently in transit on this link (not yet delivered to the
+# destination). The pipeline matures over several days depending on the mode.
+export fn in_transit(r: Route) -> Int:
+  total(r.pipeline)
+
 export fn town_hub_text(world: World, id: Text) -> Text:
   match town_is_hub(world.routes, id):
     true => "Hub: transfers between modes are free."
@@ -2611,7 +2630,7 @@ export fn route_upkeep(mode: RouteMode, plan: RoutePlan) -> Int:
 fn make_route(towns: List<Town>, a: Text, b: Text, plan: RoutePlan) -> Route:
   let ta = find_town(towns, a)
   let tb = find_town(towns, b)
-  Route(id: a + "-" + b, a: a, b: b, a_name: ta.name, b_name: tb.name, mode: Path, plan: plan, fee: 1, traffic: 0, capacity: route_capacity(Path, plan), upkeep: route_upkeep(Path, plan), rules: default_rules())
+  Route(id: a + "-" + b, a: a, b: b, a_name: ta.name, b_name: tb.name, mode: Path, plan: plan, fee: 1, traffic: 0, capacity: route_capacity(Path, plan), upkeep: route_upkeep(Path, plan), rules: default_rules(), pipeline: [])
 
 fn site_near_plan(plan: RoutePlan, s: Site) -> Bool:
   plan_crosses(plan, s.x, s.y) or plan_crosses(plan, s.x + 1, s.y) or plan_crosses(plan, s.x - 1, s.y) or plan_crosses(plan, s.x, s.y + 1) or plan_crosses(plan, s.x, s.y - 1)
@@ -2673,7 +2692,7 @@ export fn build_route(world: World, a: Text, b: Text, plan: RoutePlan) -> BuildR
               BuildResult(world: w, ok: true, message: "Route built. " + route.a_name + " and " + route.b_name + " are connected.", from: "", to: "")
 
 fn empty_route() -> Route:
-  Route(id: "", a: "", b: "", a_name: "", b_name: "", mode: NoRoute, plan: empty_plan(), fee: 0, traffic: 0, capacity: 0, upkeep: 0, rules: default_rules())
+  Route(id: "", a: "", b: "", a_name: "", b_name: "", mode: NoRoute, plan: empty_plan(), fee: 0, traffic: 0, capacity: 0, upkeep: 0, rules: default_rules(), pipeline: [])
 
 fn route_by_id_small(routes: List<Route>, id: Text, start: Int, count: Int) -> Route:
   match count <= 0:
@@ -2768,7 +2787,7 @@ export fn upgrade_route(world: World, id: Text) -> BuildResult:
         let w2 = match r.mode:
           River => with_towns(w1, pay_good(w1, r.a, r.b, Tools, 2))
           _ => w1
-        let upgraded = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: next_mode, plan: r.plan, fee: r.fee, traffic: r.traffic, capacity: route_capacity(next_mode, r.plan), upkeep: route_upkeep(next_mode, r.plan), rules: r.rules)
+        let upgraded = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: next_mode, plan: r.plan, fee: r.fee, traffic: r.traffic, capacity: route_capacity(next_mode, r.plan), upkeep: route_upkeep(next_mode, r.plan), rules: r.rules, pipeline: [])
         let w3 = with_routes(w2, replace_route(w2.routes, upgraded))
         let w4 = with_resources(w3, w3.money - cost, w3.log)
         let w5 = record(w4, r.a_name + " to " + r.b_name + " upgraded to " + route_text(next_mode) + ".")
@@ -2837,7 +2856,7 @@ export fn survey_trade_volume(world: World, from: Text, to: Text, plan: RoutePla
     true => 0
     false =>
       let cap = route_capacity(Path, plan)
-      let moves = trade_moves(a, b, town_climate(world.seed, a.x, a.y), town_climate(world.seed, b.x, b.y), Route(id: "", a: a.id, b: b.id, a_name: a.name, b_name: b.name, mode: Path, plan: plan, fee: 1, traffic: 0, capacity: cap, upkeep: 0, rules: default_rules()), cap)
+      let moves = trade_moves(a, b, town_climate(world.seed, a.x, a.y), town_climate(world.seed, b.x, b.y), Route(id: "", a: a.id, b: b.id, a_name: a.name, b_name: b.name, mode: Path, plan: plan, fee: 1, traffic: 0, capacity: cap, upkeep: 0, rules: default_rules(), pipeline: []), cap)
       moves.moved
 
 # How materials are split between endpoints when paying for the plan.
@@ -2941,7 +2960,7 @@ export fn adjust_fee(world: World, id: Text, delta: Int) -> World:
   match r.id == "":
     true => world
     false =>
-      let changed = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: clamp(r.fee + delta, 0, 5), traffic: r.traffic, capacity: r.capacity, upkeep: r.upkeep, rules: r.rules)
+      let changed = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: clamp(r.fee + delta, 0, 5), traffic: r.traffic, capacity: r.capacity, upkeep: r.upkeep, rules: r.rules, pipeline: [])
       with_routes(world, replace_route(world.routes, changed))
 
 fn empty_project() -> Project:
@@ -3049,7 +3068,7 @@ fn begin_upgrade(world: World, id: Text) -> ProjectStart:
 fn complete_project(world: World, project: Project) -> World:
   match project.kind == "route":
     true =>
-      let route = Route(id: project.a + "-" + project.b, a: project.a, b: project.b, a_name: project.a_name, b_name: project.b_name, mode: project.mode, plan: project.plan, fee: 1, traffic: 0, capacity: route_capacity(project.mode, project.plan), upkeep: route_upkeep(project.mode, project.plan), rules: default_rules())
+      let route = Route(id: project.a + "-" + project.b, a: project.a, b: project.b, a_name: project.a_name, b_name: project.b_name, mode: project.mode, plan: project.plan, fee: 1, traffic: 0, capacity: route_capacity(project.mode, project.plan), upkeep: route_upkeep(project.mode, project.plan), rules: default_rules(), pipeline: [])
       let log1 = append_message(world.log, "Construction finished: " + project.a_name + " to " + project.b_name + " is open.")
       let found = found_target(project.b, world.towns, world.sites, log1, project.plan, 1)
       World(seed: world.seed, tick: world.tick, money: world.money, towns: found.towns, sites: found.sites, routes: list_append(world.routes, route), log: found.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
@@ -3058,7 +3077,7 @@ fn complete_project(world: World, project: Project) -> World:
       match r.id == "":
         true => record(world, project.a_name + " to " + project.b_name + " upgrade was abandoned because the route no longer exists.")
         false =>
-          let upgraded = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: project.mode, plan: r.plan, fee: r.fee, traffic: r.traffic, capacity: route_capacity(project.mode, r.plan), upkeep: route_upkeep(project.mode, r.plan), rules: r.rules)
+          let upgraded = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: project.mode, plan: r.plan, fee: r.fee, traffic: r.traffic, capacity: route_capacity(project.mode, r.plan), upkeep: route_upkeep(project.mode, r.plan), rules: r.rules, pipeline: [])
           record(with_routes(world, replace_route(world.routes, upgraded)), "Construction finished: " + r.a_name + " to " + r.b_name + " is now a " + route_text(project.mode) + ".")
 
 fn complete_message(project: Project) -> Text:
@@ -3230,7 +3249,7 @@ export fn flow_apply_routes(routes: List<Route>, result: List<List<Int>>, town_c
     let traffic_values = match list_get(result, town_count + 1 + i):
       Some(row) => row
       None => [0]
-    Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: r.fee, traffic: nth_int(traffic_values, 0), capacity: r.capacity, upkeep: r.upkeep, rules: r.rules)
+    Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: r.fee, traffic: nth_int(traffic_values, 0), capacity: r.capacity, upkeep: r.upkeep, rules: r.rules, pipeline: [])
 
 fn max_research_small(towns: List<Town>, start: Int, count: Int) -> Int:
   match count <= 0:

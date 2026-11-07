@@ -410,5 +410,4 @@ This is a prototype, not the full design in
   built route, and otherwise stay on the free cell the player named;
 - the three-route/four-settlement caps are runtime-budget constraints.
 
-The natural next steps are per-mode transit time and hubs (M4's C3/C4), a save
-format, and multiple regions.
+The natural next steps are a save format, multiple regions, and the M5 globe.

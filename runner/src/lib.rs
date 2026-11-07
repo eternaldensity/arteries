@@ -9,8 +9,8 @@
 use arteries_core::{
     fbm, finish_towns, generate_faces, generate_world, market, pathfind, pathfind_features,
     region_text, route_cost, route_cost_features, trade, FeatureGrid, Grid, GridPoint, TickRoute,
-    TickState, TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED, ROUTE_ROW_LEN,
-    TOWN_ROW_LEN,
+    TickState, TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED, PIPELINE_LEN,
+    ROUTE_ROW_LEN, TOWN_ROW_LEN,
 };
 use diamond::{Compute, ComputeContext, ComputeError, RuntimeGrants};
 use serde_json::Value as Json;
@@ -197,15 +197,22 @@ impl Market {
     /// Returns [`ComputeError::InvalidInput`] for malformed rows or out-of-range
     /// town indices.
     pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
-        if arguments.len() != 5 {
+        if arguments.len() != 6 {
             return Err(ComputeError::InvalidInput);
         }
         let money = int_arg(arguments, 0)?;
         let town_rows = nested_int_list_arg(arguments, 1)?;
         let route_rows = nested_int_list_arg(arguments, 2)?;
-        let days = int_arg(arguments, 3)?;
-        let scale = int_arg(arguments, 4)?;
-        let mut state = parse_tick_state(money, &town_rows, &route_rows)?;
+        let pipeline_texts = text_list_arg(arguments, 3)?;
+        eprintln!(
+            "DEBUG market: towns={} routes={} pipelines={}",
+            town_rows.len(),
+            route_rows.len(),
+            pipeline_texts.len()
+        );
+        let days = int_arg(arguments, 4)?;
+        let scale = int_arg(arguments, 5)?;
+        let mut state = parse_tick_state(money, &town_rows, &route_rows, &pipeline_texts)?;
         market(&mut state, days, scale);
         Ok(tick_state_json(&state))
     }
@@ -225,15 +232,22 @@ impl Trade {
     /// Returns [`ComputeError::InvalidInput`] for malformed rows or out-of-range
     /// town indices.
     pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
-        if arguments.len() != 5 {
+        if arguments.len() != 6 {
             return Err(ComputeError::InvalidInput);
         }
         let money = int_arg(arguments, 0)?;
         let town_rows = nested_int_list_arg(arguments, 1)?;
         let route_rows = nested_int_list_arg(arguments, 2)?;
-        let days = int_arg(arguments, 3)?;
-        let scale = int_arg(arguments, 4)?;
-        let mut state = parse_tick_state(money, &town_rows, &route_rows)?;
+        let pipeline_texts = text_list_arg(arguments, 3)?;
+        eprintln!(
+            "DEBUG market: towns={} routes={} pipelines={}",
+            town_rows.len(),
+            route_rows.len(),
+            pipeline_texts.len()
+        );
+        let days = int_arg(arguments, 4)?;
+        let scale = int_arg(arguments, 5)?;
+        let mut state = parse_tick_state(money, &town_rows, &route_rows, &pipeline_texts)?;
         trade(&mut state, days, scale);
         Ok(tick_state_json(&state))
     }
@@ -701,10 +715,12 @@ fn parse_tick_state(
     money: i64,
     town_rows: &[Vec<i64>],
     route_rows: &[Vec<i64>],
+    pipeline_texts: &[String],
 ) -> Result<TickState, ComputeError> {
     let mut towns = Vec::with_capacity(town_rows.len());
     for row in town_rows {
         if row.len() != TOWN_ROW_LEN {
+            eprintln!("BAD TOWN LEN {}", row.len());
             return Err(ComputeError::InvalidInput);
         }
         let mut endow = [0_i64; GOOD_COUNT];
@@ -722,8 +738,9 @@ fn parse_tick_state(
     }
 
     let mut routes = Vec::with_capacity(route_rows.len());
-    for row in route_rows {
-        if row.len() != ROUTE_ROW_LEN {
+    for (index, row) in route_rows.iter().enumerate() {
+        if row.len() != 7 + GOOD_COUNT * 2 {
+            eprintln!("BAD ROUTE LEN {}", row.len());
             return Err(ComputeError::InvalidInput);
         }
         let a = usize::try_from(row[0]).map_err(|_| ComputeError::InvalidInput)?;
@@ -734,7 +751,25 @@ fn parse_tick_state(
         let mut allow = [0_i64; GOOD_COUNT];
         let mut good_fee = [0_i64; GOOD_COUNT];
         allow.copy_from_slice(&row[7..7 + GOOD_COUNT]);
-        good_fee.copy_from_slice(&row[7 + GOOD_COUNT..ROUTE_ROW_LEN]);
+        good_fee.copy_from_slice(&row[7 + GOOD_COUNT..7 + GOOD_COUNT * 2]);
+        let pipeline_text = pipeline_texts.get(index).map(String::as_str).unwrap_or("");
+        let mut pipeline = if pipeline_text.is_empty() {
+            vec![0; PIPELINE_LEN]
+        } else {
+            let mut parsed = Vec::with_capacity(PIPELINE_LEN);
+            for chunk in pipeline_text.chars().collect::<Vec<_>>().chunks(4) {
+                let text: String = chunk.iter().collect();
+                parsed.push(text.parse().unwrap_or(0));
+            }
+            while parsed.len() < PIPELINE_LEN {
+                parsed.push(0);
+            }
+            parsed.truncate(PIPELINE_LEN);
+            parsed
+        };
+        if pipeline.len() != PIPELINE_LEN {
+            pipeline.resize(PIPELINE_LEN, 0);
+        }
         routes.push(TickRoute {
             a,
             b,
@@ -745,6 +780,7 @@ fn parse_tick_state(
             mode: row[6],
             allow,
             good_fee,
+            pipeline,
         });
     }
     Ok(TickState {
@@ -764,7 +800,9 @@ fn tick_state_json(state: &TickState) -> Json {
         result.push(row);
     }
     for route in &state.routes {
-        result.push(vec![route.traffic]);
+        let mut row = vec![route.traffic];
+        row.extend(route.pipeline.iter().copied());
+        result.push(row);
     }
     nested_int_list_json(result)
 }
@@ -782,6 +820,21 @@ fn text_arg(arguments: &[Json], index: usize) -> Result<&str, ComputeError> {
         .get(index)
         .and_then(Json::as_str)
         .ok_or(ComputeError::InvalidInput)
+}
+
+fn text_list_arg(arguments: &[Json], index: usize) -> Result<Vec<String>, ComputeError> {
+    arguments
+        .get(index)
+        .and_then(Json::as_array)
+        .ok_or(ComputeError::InvalidInput)?
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map(String::from)
+                .ok_or(ComputeError::InvalidInput)
+        })
+        .collect()
 }
 
 fn int_list_arg(arguments: &[Json], index: usize) -> Result<Vec<i64>, ComputeError> {
@@ -873,14 +926,28 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
     grants.register_compute(
         "arteries",
         "market",
-        &["Int", "List<List<Int>>", "List<List<Int>>", "Int", "Int"],
+        &[
+            "Int",
+            "List<List<Int>>",
+            "List<List<Int>>",
+            "List<Text>",
+            "Int",
+            "Int",
+        ],
         "List<List<Int>>",
         Market,
     )?;
     grants.register_compute(
         "arteries",
         "trade",
-        &["Int", "List<List<Int>>", "List<List<Int>>", "Int", "Int"],
+        &[
+            "Int",
+            "List<List<Int>>",
+            "List<List<Int>>",
+            "List<Text>",
+            "Int",
+            "Int",
+        ],
         "List<List<Int>>",
         Trade,
     )?;

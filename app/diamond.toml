@@ -145,7 +145,7 @@ max_output_bytes = 4096
 max_duration_ms = 2000
 
 [compute.arteries.exports.market]
-arguments = ["Int", "List<List<Int>>", "List<List<Int>>", "Int", "Int"]
+arguments = ["Int", "List<List<Int>>", "List<List<Int>>", "List<Text>", "Int", "Int"]
 result = "List<List<Int>>"
 deterministic = true
 max_input_bytes = 262144
@@ -161,7 +161,7 @@ max_output_bytes = 131072
 max_duration_ms = 2000
 
 [compute.arteries.exports.trade]
-arguments = ["Int", "List<List<Int>>", "List<List<Int>>", "Int", "Int"]
+arguments = ["Int", "List<List<Int>>", "List<List<Int>>", "List<Text>", "Int", "Int"]
 result = "List<List<Int>>"
 deterministic = true
 max_input_bytes = 262144
