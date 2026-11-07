@@ -95,6 +95,10 @@ export type RegionMap:
   continents: Int
   largest: Int
 
+export type GlobeRow:
+  index: Int
+  codes: List<Int>
+
 export fn empty_region_map() -> RegionMap:
   RegionMap(tiles: [], land: 0, ocean: 0, continents: 0, largest: 0)
 
@@ -2580,6 +2584,28 @@ export fn region_tile_class(map: RegionMap, i: Int) -> Text:
     false => match tile.land > tile.water:
       true => "region-land"
       false => "region-water"
+
+export fn globe_terrain_class(code: Int) -> Text:
+  match code == 5:
+    true => "globe-water"
+    false => match code == 6:
+      true => "globe-coast"
+      false => match code == 2:
+        true => "globe-forest"
+        false => match code == 3:
+          true => "globe-hills"
+          false => match code == 4:
+            true => "globe-mountain"
+            false => match code == 7:
+              true => "globe-marsh"
+              false => "globe-plains"
+
+export fn globe_code_class(code: Int, path: List<Int>) -> Text:
+  match code == 0:
+    true => "globe-space"
+    false => match region_in_path(code / 8, path):
+      true => "globe-path"
+      false => globe_terrain_class(code - (code / 8) * 8)
 
 export fn region_class(i: Int, path: List<Int>) -> Text:
   match region_in_path(i, path):

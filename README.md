@@ -256,7 +256,7 @@ core/
   src/main.rs      terrain + worldgen table exporter
 runner/
   Cargo.toml       arteries-runner: serves an Arteries project with compute
-  src/lib.rs       kernels (terrain_region, noise, worldgen, pathfind, pathfind_features, route_cost, market, trade, finish, planet)
+  src/lib.rs       kernels (terrain_region, noise, worldgen, pathfind, pathfind_features, route_cost, market, trade, finish, planet, face graph, globe raster)
   src/main.rs      serve binary, requires DIAMOND_POSTGRES_URL
   tests/           validate_compute + end-to-end dispatch against probe projects
 tools/
@@ -277,7 +277,7 @@ tests/
   ui-smoke.js      real-browser acceptance and exploration driver
   ui-m3.js         site-directed founding and waypoint acceptance
   ui-m4.js         multi-hop flow and link-rules acceptance
-  ui-m5.js         globe region-map and sea-lane acceptance
+  ui-m5.js         globe region-map, sea-lane, continent, and raster acceptance
 ```
 
 `shared.dia` is the whole simulation. Terrain is a deterministic function;
@@ -412,4 +412,4 @@ This is a prototype, not the full design in
   built route, and otherwise stay on the free cell the player named;
 - the three-route/four-settlement caps are runtime-budget constraints.
 
-The natural next steps are a save format, multiple regions, and the M5 globe.
+The natural next steps are a save format, seam-aware hydrology, and inter-region transport on the M5 globe.

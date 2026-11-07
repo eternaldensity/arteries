@@ -1021,6 +1021,38 @@ button.tiny { padding: 2px 8px; font-size: 13px; border-radius: 6px; }
   color: var(--muted);
   cursor: pointer;
 }
+.globe {
+  display: flex;
+  flex-direction: column;
+  width: 210px;
+  gap: 0;
+  margin: 12px auto 4px;
+  padding: 8px;
+  background: radial-gradient(circle at 50% 40%, rgba(56, 132, 255, .08), transparent 70%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.globe-row {
+  display: flex;
+  gap: 0;
+  line-height: 0;
+}
+.globe-cell {
+  display: block;
+  width: 7px;
+  height: 7px;
+  background: transparent;
+}
+.globe-cell.globe-space { background: transparent; }
+.globe-cell.globe-water { background: #2f6fd0; }
+.globe-cell.globe-coast { background: #4f93d8; }
+.globe-cell.globe-plains { background: #8fbf6a; }
+.globe-cell.globe-forest { background: #3f8a4f; }
+.globe-cell.globe-hills { background: #b39a5b; }
+.globe-cell.globe-mountain { background: #d8d2c6; }
+.globe-cell.globe-marsh { background: #6f9a7a; }
+.globe-cell.globe-path { background: #f2c14e; box-shadow: 0 0 3px #f2c14e; }
+
 .region-cell.region-land {
   background: rgba(94, 234, 212, .10);
   border-color: rgba(94, 234, 212, .35);

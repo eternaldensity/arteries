@@ -8,7 +8,7 @@
 
 use arteries_core::{
     face_components, face_neighbors, face_path, face_summary, fbm, finish_towns, generate_faces,
-    generate_world, market, pathfind, pathfind_features, region_text, route_cost,
+    generate_world, globe_raster, market, pathfind, pathfind_features, region_text, route_cost,
     route_cost_features, trade, FeatureGrid, Grid, GridPoint, TickRoute, TickState, TickTown,
     TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED, PIPELINE_LEN, TOWN_ROW_LEN,
 };
@@ -625,6 +625,61 @@ impl Compute for FaceComponents {
     }
 }
 
+/// Pure-compute export `arteries.globe_raster`.
+///
+/// Arguments: `(seed, width, height, view, vertices, faces)`. Reply is a flat
+/// `width * height` row-major image, each cell `face * 8 + terrain` or `0` for
+/// space and the far hemisphere.
+pub struct GlobeRaster;
+
+impl GlobeRaster {
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 6 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let seed = int_arg(arguments, 0)?;
+        let width =
+            usize::try_from(int_arg(arguments, 1)?).map_err(|_| ComputeError::InvalidInput)?;
+        let height =
+            usize::try_from(int_arg(arguments, 2)?).map_err(|_| ComputeError::InvalidInput)?;
+        let view =
+            usize::try_from(int_arg(arguments, 3)?).map_err(|_| ComputeError::InvalidInput)?;
+        let vertex_rows = nested_int_list_arg(arguments, 4)?;
+        let mut vertices = Vec::with_capacity(vertex_rows.len());
+        for row in &vertex_rows {
+            if row.len() != 3 {
+                return Err(ComputeError::InvalidInput);
+            }
+            vertices.push([row[0], row[1], row[2]]);
+        }
+        let face_rows = nested_int_list_arg(arguments, 5)?;
+        let mut faces = Vec::with_capacity(face_rows.len());
+        for row in &face_rows {
+            if row.len() != 4 {
+                return Err(ComputeError::InvalidInput);
+            }
+            let mut face = [0_usize; 4];
+            for (index, value) in row.iter().enumerate() {
+                face[index] = usize::try_from(*value).map_err(|_| ComputeError::InvalidInput)?;
+            }
+            faces.push(face);
+        }
+        let raster = globe_raster(seed, width, height, view, &vertices, &faces)
+            .map_err(|_| ComputeError::InvalidInput)?;
+        Ok(int_list_json(raster))
+    }
+}
+
+impl Compute for GlobeRaster {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
 /// Pure-compute export `arteries.worldgen`.
 ///
 /// Arguments: `(seed, width, height, row_start, row_count)`.
@@ -1143,6 +1198,20 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
         &["Int", "Int", "List<List<Int>>", "List<List<Int>>"],
         "List<List<Int>>",
         FaceSummaries,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "globe_raster",
+        &[
+            "Int",
+            "Int",
+            "Int",
+            "Int",
+            "List<List<Int>>",
+            "List<List<Int>>",
+        ],
+        "List<Int>",
+        GlobeRaster,
     )?;
     grants.register_compute(
         "arteries",

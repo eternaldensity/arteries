@@ -84,6 +84,36 @@ async function signIn(page) {
     const highlighted = await page.locator('#region-map .region-cell.region-path').count();
     assert(highlighted >= 2, `expected highlighted path, got ${highlighted}`);
 
+    // Render the orthographic globe: 32x32 cells, some space, both land and
+    // water terrain, and the sea-lane faces overlaid where they are visible.
+    await page.getByRole('button', { name: 'Globe equator' }).click();
+    await page.waitForSelector('#globe-view', { timeout: 10000 });
+    await page.waitForTimeout(1500);
+    const globeCells = page.locator('#globe-view .globe-cell');
+    assert((await globeCells.count()) === 30 * 30, `expected 900 globe cells, got ${await globeCells.count()}`);
+    const space = await page.locator('#globe-view .globe-cell.globe-space').count();
+    assert(space > 0 && space < 30 * 30, `globe has no silhouette: ${space} space cells`);
+    const water = await page
+      .locator('#globe-view .globe-cell.globe-water, #globe-view .globe-cell.globe-coast')
+      .count();
+    assert(water > 0, 'globe rendered no water');
+    const land = await page
+      .locator(
+        '#globe-view .globe-cell.globe-plains, #globe-view .globe-cell.globe-forest, ' +
+          '#globe-view .globe-cell.globe-hills, #globe-view .globe-cell.globe-mountain, ' +
+          '#globe-view .globe-cell.globe-marsh'
+      )
+      .count();
+    assert(land > 0, 'globe rendered no land');
+
+    // A different camera re-rasterises the same mesh.
+    await page.getByRole('button', { name: 'Globe pole' }).click();
+    await page.waitForTimeout(1500);
+    assert(
+      (await page.locator('#globe-view .globe-cell').count()) === 30 * 30,
+      'pole view did not render 900 cells'
+    );
+
     assert(errors.length === 0, 'browser errors: ' + errors.join(' | '));
     console.log('PASS: Arteries M5 region map test');
   } finally {

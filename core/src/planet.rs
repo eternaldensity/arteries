@@ -84,7 +84,7 @@ fn interpolate(corners: &[[i64; 3]], u: usize, v: usize, detail: usize) -> [i64;
     point
 }
 
-fn classify(seed: i64, face: usize, u: usize, v: usize, z: i64) -> i64 {
+pub(crate) fn classify(seed: i64, face: usize, u: usize, v: usize, z: i64) -> i64 {
     let latitude = z.unsigned_abs() * 100 / u64::try_from(PLANET_SCALE).unwrap_or(1);
     if latitude > 82 {
         return Terrain::Mountain.code();

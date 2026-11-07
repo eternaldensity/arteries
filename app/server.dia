@@ -1289,6 +1289,14 @@ fn seam_rows() -> List<List<Int>>:
     let s = rt_seam(i)
     [s.face, s.edge, s.neighbor, s.neighbor_edge, s.au, s.bu, s.cu, s.av, s.bv, s.cv]
 
+export fn globe_raster(seed: Int, view: Int) -> Result<List<GlobeRow>, DataError>:
+  let vertices = planet_vertices()
+  let faces = planet_faces()
+  let codes = host.compute<List<Int>>("arteries", "globe_raster", seed, 30, 30, view, vertices, faces)?
+  let rows = for r in indices(30):
+    GlobeRow(index: r, codes: list_slice(codes, r * 30, 30))
+  Ok(rows)
+
 export fn region_map(seed: Int, detail: Int) -> Result<RegionMap, DataError>:
   let vertices = planet_vertices()
   let faces = planet_faces()

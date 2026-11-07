@@ -340,6 +340,9 @@ names; the call site is `host.compute<Reply>("arteries", "<name>", args...)`.
 | `planet_summary` | same arguments as `planet`, result `List<Int>` | `[face_count, cell_count, terrain_checksum]`; lets the server page the planet without materialising every cell in Diamond |
 | `face_neighbors` | `(List<List<Int>>) -> List<List<Int>>` | `(seam rows)`; one neighbour-face list per RT face, deduplicated in seam order |
 | `face_path` | `(List<List<Int>>, Int, Int) -> List<Int>` | `(seam rows, from_face, to_face)`; BFS path over the 30-face seam adjacency, or empty when unreachable |
+| `face_summaries` | `(Int, Int, List<List<Int>>, List<List<Int>>) -> List<List<Int>>` | `(seed, detail, vertices, faces)`; one `[face, water_cells, land_cells, cold_climate]` row per face using the planet classifier |
+| `face_components` | `(List<List<Int>>, List<Int>) -> List<Int>` | `(seam rows, land flags)`; `[continent_count, largest_continent_faces]` from connected land faces over the seam adjacency |
+| `globe_raster` | `(Int, Int, Int, Int, List<List<Int>>, List<List<Int>>) -> List<Int>` | `(seed, width, height, view, vertices, faces)`; flat row-major orthographic terrain image, each cell `face * 8 + terrain` or `0` for space/far hemisphere; six axis-aligned views, size capped at 64 and 900 cells for Diamond's list limit |
 | `plan_many` | `(Text, Text, Text, Int) -> Text` | alternates in one call |
 | `digest` | `(Text) -> Text` | stable hash for determinism checks and save integrity |
 | `generate_planet` | `(Int, Int) -> Text` | coarse planet topology; likely chunked or background |

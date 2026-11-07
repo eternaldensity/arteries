@@ -266,6 +266,8 @@ export component Root:
   state region_to: Int = 1
   state region_path: List<Int> = []
   state region_map: RegionMap = empty_region_map()
+  state globe: List<GlobeRow> = []
+  state globe_view: Int = 0
   state worldgen: WorldgenSummary = empty_worldgen_summary()
   state show_preview: Bool = false
   state draft_plan: RoutePlan = empty_plan()
@@ -517,6 +519,18 @@ export component Root:
   on region_survey:
     region_map = rpc.region_map(scale_summary.seed, 4)
 
+  on globe_front:
+    globe_view = 0
+    globe = rpc.globe_raster(scale_summary.seed, 0)
+
+  on globe_side:
+    globe_view = 2
+    globe = rpc.globe_raster(scale_summary.seed, 2)
+
+  on globe_pole:
+    globe_view = 4
+    globe = rpc.globe_raster(scale_summary.seed, 4)
+
   on generate_terrain:
     worldgen = rpc.worldgen_summary(scale_summary.seed, 16, 12)
 
@@ -583,6 +597,9 @@ export component Root:
             </div>
             <div class="actions">
               <button class="ghost" type="button" on-click={region_survey}>Survey regions</button>
+              <button class="ghost" type="button" on-click={globe_front}>Globe equator</button>
+              <button class="ghost" type="button" on-click={globe_side}>Globe side</button>
+              <button class="ghost" type="button" on-click={globe_pole}>Globe pole</button>
             </div>
             <div class="region-grid">
               <each items={indices(30)} as="i" key={int_text(i)}>
@@ -594,6 +611,18 @@ export component Root:
             </when>
             <when test={len(region_path) > 0}>
               <p class="scale-hint">Sea lane: {region_path_text(region_path)}</p>
+            </when>
+            <when test={len(globe) > 0}>
+              <div class="globe" id="globe-view">
+                <each items={globe} as="row" key={int_text(row.index)}>
+                  <div class="globe-row">
+                    <each items={indices(len(row.codes))} as="c" key={int_text(c)}>
+                      <span class={"globe-cell " + globe_code_class(nth_int(row.codes, c), region_path)}></span>
+                    </each>
+                  </div>
+                </each>
+              </div>
+              <p class="scale-hint">Orthographic view {int_text(globe_view)} · 30×30</p>
             </when>
           </div>
           <div class="scale-planet" id="worldgen-panel">

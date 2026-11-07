@@ -16,7 +16,7 @@ mod planet;
 mod tick;
 mod worldgen;
 
-pub use globe::{face_components, face_neighbors, face_path, face_summary};
+pub use globe::{face_components, face_neighbors, face_path, face_summary, globe_raster};
 pub use noise::{fbm, hash, ridged, value, warp, MAX_OCTAVES, NOISE_SCALE};
 pub use path::{
     pathfind, pathfind_features, route_cost, route_cost_features, FeatureGrid, Grid, GridPoint,
