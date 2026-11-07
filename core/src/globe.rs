@@ -108,3 +108,110 @@ mod tests {
         assert_eq!(n[0], vec![1, 2]);
     }
 }
+
+/// Per-face terrain summary: `[face, water_cells, land_cells, climate]`.
+///
+/// Samples the face at `detail` with the same classifier the planet kernel
+/// uses, so the region map agrees with the generated globe. `climate` is 1
+/// (cold) when the face centre is above 60 degrees latitude, else 0.
+pub fn face_summary(
+    seed: i64,
+    detail: usize,
+    face_index: usize,
+    vertices: &[[i64; 3]],
+    faces: &[[usize; 4]],
+) -> Result<Vec<i64>, String> {
+    if face_index >= faces.len() {
+        return Err("face index out of range".to_string());
+    }
+    let rows = crate::planet::generate_faces(seed, detail, face_index, 1, vertices, faces)?;
+    let row = rows.first().ok_or("no face generated")?;
+    let mut water = 0_i64;
+    let mut land = 0_i64;
+    for code in row {
+        if matches!(code, 5 | 6) {
+            water += 1;
+        } else {
+            land += 1;
+        }
+    }
+    let center = face_center(vertices, &faces[face_index]);
+    let latitude = center[2].unsigned_abs() * 100 / 1_000_000;
+    let climate = i64::from(latitude > 60);
+    Ok(vec![face_index as i64, water, land, climate])
+}
+
+fn face_center(vertices: &[[i64; 3]], face: &[usize; 4]) -> [i64; 3] {
+    let corners = [
+        vertices[face[0]],
+        vertices[face[1]],
+        vertices[face[2]],
+        vertices[face[3]],
+    ];
+    let mut point = [0_i64; 3];
+    for axis in 0..3 {
+        point[axis] =
+            (corners[0][axis] + corners[1][axis] + corners[2][axis] + corners[3][axis]) / 4;
+    }
+    point
+}
+
+/// Connected components of land faces over the seam adjacency.
+///
+/// `land` is one flag per face (nonzero = land). Returns
+/// `[component_count, largest_component_size]`.
+pub fn face_components(seams: &[Vec<i64>], land: &[i64]) -> Vec<i64> {
+    let neighbors = face_neighbors(seams);
+    let n = land.len().min(neighbors.len());
+    let mut visited = vec![false; n];
+    let mut component_count = 0_i64;
+    let mut largest = 0_i64;
+    for start in 0..n {
+        if visited[start] || land[start] == 0 {
+            continue;
+        }
+        component_count += 1;
+        let mut size = 0_i64;
+        let mut queue = std::collections::VecDeque::new();
+        visited[start] = true;
+        queue.push_back(start);
+        while let Some(node) = queue.pop_front() {
+            size += 1;
+            for &next in &neighbors[node] {
+                let idx = next as usize;
+                if idx < n && !visited[idx] && land[idx] != 0 {
+                    visited[idx] = true;
+                    queue.push_back(idx);
+                }
+            }
+        }
+        largest = largest.max(size);
+    }
+    vec![component_count, largest]
+}
+
+#[cfg(test)]
+mod component_tests {
+    use super::*;
+
+    fn seams_for(edges: &[(i64, i64)]) -> Vec<Vec<i64>> {
+        edges
+            .iter()
+            .map(|(a, b)| vec![*a, 0, *b, 0, 0, 0, 0, 0, 0, 0])
+            .collect()
+    }
+
+    #[test]
+    fn components_count_connected_land_faces() {
+        // 0-1-2 land chain, 3 ocean, 4 land isolated.
+        let seams = seams_for(&[(0, 1), (1, 2), (2, 3), (3, 4)]);
+        let land = [1, 1, 1, 0, 1];
+        assert_eq!(face_components(&seams, &land), vec![2, 3]);
+    }
+
+    #[test]
+    fn no_land_has_no_components() {
+        let seams = seams_for(&[(0, 1)]);
+        assert_eq!(face_components(&seams, &[0, 0]), vec![0, 0]);
+    }
+}

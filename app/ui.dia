@@ -265,6 +265,7 @@ export component Root:
   state region_from: Int = 0
   state region_to: Int = 1
   state region_path: List<Int> = []
+  state region_map: RegionMap = empty_region_map()
   state worldgen: WorldgenSummary = empty_worldgen_summary()
   state show_preview: Bool = false
   state draft_plan: RoutePlan = empty_plan()
@@ -513,6 +514,9 @@ export component Root:
   on region_plan:
     region_path = rpc.face_path(region_from, region_to)
 
+  on region_survey:
+    region_map = rpc.region_map(scale_summary.seed, 4)
+
   on generate_terrain:
     worldgen = rpc.worldgen_summary(scale_summary.seed, 16, 12)
 
@@ -577,11 +581,17 @@ export component Root:
               </div>
               <button class="primary" type="button" on-click={region_plan}>Plan sea lane</button>
             </div>
+            <div class="actions">
+              <button class="ghost" type="button" on-click={region_survey}>Survey regions</button>
+            </div>
             <div class="region-grid">
               <each items={indices(30)} as="i" key={int_text(i)}>
-                <button class={"region-cell " + region_class(i, region_path)} type="button" on-click={region_from_pick(i)}>{int_text(i)}</button>
+                <button class={"region-cell " + region_tile_class(region_map, i) + " " + region_class(i, region_path)} type="button" on-click={region_from_pick(i)}>{int_text(i)}</button>
               </each>
             </div>
+            <when test={len(region_map.tiles) > 0}>
+              <p class="scale-hint">{int_text(region_map.land)} land · {int_text(region_map.ocean)} ocean faces · {int_text(region_map.continents)} continents (largest {int_text(region_map.largest)})</p>
+            </when>
             <when test={len(region_path) > 0}>
               <p class="scale-hint">Sea lane: {region_path_text(region_path)}</p>
             </when>

@@ -82,6 +82,22 @@ export type ScaleSummary:
   routes: Int
   phase: Int
 
+export type FaceTile:
+  face: Int
+  water: Int
+  land: Int
+  climate: Int
+
+export type RegionMap:
+  tiles: List<FaceTile>
+  land: Int
+  ocean: Int
+  continents: Int
+  largest: Int
+
+export fn empty_region_map() -> RegionMap:
+  RegionMap(tiles: [], land: 0, ocean: 0, continents: 0, largest: 0)
+
 export type PlanetSummary:
   seed: Int
   detail: Int
@@ -2554,6 +2570,16 @@ fn region_in_path_at(path: List<Int>, i: Int, k: Int) -> Bool:
 
 export fn region_in_path(i: Int, path: List<Int>) -> Bool:
   region_in_path_at(path, i, 0)
+
+export fn region_tile_class(map: RegionMap, i: Int) -> Text:
+  let tile = match list_get(map.tiles, i):
+    Some(t) => t
+    None => FaceTile(face: i, water: 0, land: 0, climate: 0)
+  match len(map.tiles) == 0:
+    true => ""
+    false => match tile.land > tile.water:
+      true => "region-land"
+      false => "region-water"
 
 export fn region_class(i: Int, path: List<Int>) -> Text:
   match region_in_path(i, path):

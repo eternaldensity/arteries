@@ -56,6 +56,19 @@ async function signIn(page) {
     const cells = page.locator('#region-map .region-cell');
     assert((await cells.count()) === 30, `expected 30 region cells, got ${await cells.count()}`);
 
+    // Survey the region graph: faces become land/ocean tiles with a continent
+    // summary (a continent must span at least two faces).
+    await page.getByRole('button', { name: 'Survey regions' }).click();
+    await page.waitForTimeout(1500);
+    const summary = await page.locator('#region-map .scale-hint').first().innerText();
+    assert(/land/i.test(summary) && /ocean faces/i.test(summary), 'no region summary: ' + summary);
+    const landOrWater = await page
+      .locator('#region-map .region-cell.region-land, #region-map .region-cell.region-water')
+      .count();
+    assert(landOrWater === 30, `expected 30 classified faces, got ${landOrWater}`);
+    const largest = Number((summary.match(/largest (\d+)/) || [])[1] || 0);
+    assert(largest >= 2, 'no continent spans multiple faces: ' + summary);
+
     // Plan a sea lane between two faces and check a path is reported.
     await cells.nth(0).click();
     await page.waitForTimeout(150);
@@ -63,7 +76,7 @@ async function signIn(page) {
     await page.waitForTimeout(150);
     await page.getByRole('button', { name: 'Plan sea lane' }).click();
     await page.waitForTimeout(1200);
-    const hint = await page.locator('#region-map .scale-hint').innerText();
+    const hint = await page.locator('#region-map .scale-hint', { hasText: 'Sea lane' }).innerText();
     assert(/Sea lane:/i.test(hint), 'no sea lane was reported: ' + hint);
     assert(hint.includes(" -> "), "sea lane has no path: " + hint);
 

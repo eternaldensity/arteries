@@ -1021,6 +1021,17 @@ button.tiny { padding: 2px 8px; font-size: 13px; border-radius: 6px; }
   color: var(--muted);
   cursor: pointer;
 }
+.region-cell.region-land {
+  background: rgba(94, 234, 212, .10);
+  border-color: rgba(94, 234, 212, .35);
+  color: var(--text);
+}
+.region-cell.region-water {
+  background: rgba(56, 132, 255, .12);
+  border-color: rgba(56, 132, 255, .35);
+  color: var(--text);
+}
+
 .region-cell.region-path {
   background: rgba(94, 234, 212, .18);
   border-color: var(--teal);

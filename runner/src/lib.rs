@@ -7,10 +7,10 @@
 //! this binary instead.
 
 use arteries_core::{
-    face_neighbors, face_path, fbm, finish_towns, generate_faces, generate_world, market, pathfind,
-    pathfind_features, region_text, route_cost, route_cost_features, trade, FeatureGrid, Grid,
-    GridPoint, TickRoute, TickState, TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED,
-    PIPELINE_LEN, TOWN_ROW_LEN,
+    face_components, face_neighbors, face_path, face_summary, fbm, finish_towns, generate_faces,
+    generate_world, market, pathfind, pathfind_features, region_text, route_cost,
+    route_cost_features, trade, FeatureGrid, Grid, GridPoint, TickRoute, TickState, TickTown,
+    TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED, PIPELINE_LEN, TOWN_ROW_LEN,
 };
 use diamond::{Compute, ComputeContext, ComputeError, RuntimeGrants};
 use serde_json::Value as Json;
@@ -537,6 +537,94 @@ impl Compute for FacePath {
     }
 }
 
+/// Pure-compute export `arteries.face_summaries`.
+///
+/// Arguments: `(seed, detail, vertices, faces)`. Reply is one
+/// `[face, water, land, climate]` row per face.
+pub struct FaceSummaries;
+
+impl FaceSummaries {
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 4 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let seed = int_arg(arguments, 0)?;
+        let detail =
+            usize::try_from(int_arg(arguments, 1)?).map_err(|_| ComputeError::InvalidInput)?;
+        let vertex_rows = nested_int_list_arg(arguments, 2)?;
+        let mut vertices = Vec::with_capacity(vertex_rows.len());
+        for row in &vertex_rows {
+            if row.len() != 3 {
+                return Err(ComputeError::InvalidInput);
+            }
+            vertices.push([row[0], row[1], row[2]]);
+        }
+        let face_rows = nested_int_list_arg(arguments, 3)?;
+        let mut faces = Vec::with_capacity(face_rows.len());
+        for row in &face_rows {
+            if row.len() != 4 {
+                return Err(ComputeError::InvalidInput);
+            }
+            let mut face = [0_usize; 4];
+            for (index, value) in row.iter().enumerate() {
+                face[index] = usize::try_from(*value).map_err(|_| ComputeError::InvalidInput)?;
+            }
+            faces.push(face);
+        }
+        let mut rows = Vec::with_capacity(faces.len());
+        for index in 0..faces.len() {
+            let summary = face_summary(seed, detail, index, &vertices, &faces)
+                .map_err(|_| ComputeError::InvalidInput)?;
+            rows.push(summary);
+        }
+        Ok(nested_int_list_json(rows))
+    }
+}
+
+impl Compute for FaceSummaries {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
+/// Pure-compute export `arteries.face_components`.
+///
+/// Arguments: `(seams, land_flags)`. Reply is
+/// `[component_count, largest_component_size]`.
+pub struct FaceComponents;
+
+impl FaceComponents {
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 2 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let seam_rows = nested_int_list_arg(arguments, 0)?;
+        let mut seams = Vec::with_capacity(seam_rows.len());
+        for row in &seam_rows {
+            if row.len() < 4 {
+                return Err(ComputeError::InvalidInput);
+            }
+            seams.push(row.clone());
+        }
+        let land = int_list_arg(arguments, 1)?;
+        Ok(int_list_json(face_components(&seams, &land)))
+    }
+}
+
+impl Compute for FaceComponents {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
 /// Pure-compute export `arteries.worldgen`.
 ///
 /// Arguments: `(seed, width, height, row_start, row_count)`.
@@ -1048,6 +1136,20 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
         ],
         "List<Int>",
         PlanetSummaryKernel,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "face_summaries",
+        &["Int", "Int", "List<List<Int>>", "List<List<Int>>"],
+        "List<List<Int>>",
+        FaceSummaries,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "face_components",
+        &["List<List<Int>>", "List<Int>"],
+        "List<Int>",
+        FaceComponents,
     )?;
     grants.register_compute(
         "arteries",

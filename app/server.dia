@@ -1289,6 +1289,23 @@ fn seam_rows() -> List<List<Int>>:
     let s = rt_seam(i)
     [s.face, s.edge, s.neighbor, s.neighbor_edge, s.au, s.bu, s.cu, s.av, s.bv, s.cv]
 
+export fn region_map(seed: Int, detail: Int) -> Result<RegionMap, DataError>:
+  let vertices = planet_vertices()
+  let faces = planet_faces()
+  let rows = host.compute<List<List<Int>>>("arteries", "face_summaries", seed, detail, vertices, faces)?
+  let tiles = for i in indices(len(rows)):
+    let r = match list_get(rows, i):
+      Some(row) => row
+      None => []
+    FaceTile(face: nth_int(r, 0), water: nth_int(r, 1), land: nth_int(r, 2), climate: nth_int(r, 3))
+  let land_flags = for t in tiles:
+    match t.land > t.water:
+      true => 1
+      false => 0
+  let summary = host.compute<List<Int>>("arteries", "face_components", seam_rows(), land_flags)?
+  let land = total(land_flags)
+  Ok(RegionMap(tiles: tiles, land: land, ocean: len(tiles) - land, continents: nth_int(summary, 0), largest: nth_int(summary, 1)))
+
 export fn face_neighbors() -> Result<List<List<Int>>, DataError>:
   host.compute<List<List<Int>>>("arteries", "face_neighbors", seam_rows())
 
