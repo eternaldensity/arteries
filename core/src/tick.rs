@@ -55,6 +55,8 @@ pub struct TickRoute {
     pub allow: [i64; GOOD_COUNT],
     pub good_fee: [i64; GOOD_COUNT],
     pub pipeline: Vec<i64>,
+    /// Units dispatched during the last trade pass, per direction and good.
+    pub flow: [[i64; GOOD_COUNT]; 2],
 }
 
 /// Number of integers in one compact route row: `a`, `b`, `fee`, `traffic`,
@@ -100,6 +102,7 @@ pub fn trade(state: &mut TickState, days: i64, scale: i64) {
     }
     for route in &mut state.routes {
         route.traffic = 0;
+        route.flow = [[0; GOOD_COUNT]; 2];
         if route.pipeline.len() != PIPELINE_LEN {
             route.pipeline = vec![0; PIPELINE_LEN];
         }
@@ -179,8 +182,10 @@ pub fn trade(state: &mut TickState, days: i64, scale: i64) {
             for pair in source.path.windows(2) {
                 if let Some(slot) = flow_slot(state, pair[0], pair[1]) {
                     let fee = flow_fee(&state.routes[slot / 2], good);
+                    let dir = slot % 2;
                     let route = &mut state.routes[slot / 2];
                     route.traffic = route.traffic.saturating_add(units);
+                    route.flow[dir][good] = route.flow[dir][good].saturating_add(units);
                     remaining[slot] = (remaining[slot] - units).max(0);
                     income = income.saturating_add(units.saturating_mul(fee));
                 }
@@ -635,6 +640,7 @@ mod tests {
             allow: [1; GOOD_COUNT],
             good_fee: [0; GOOD_COUNT],
             pipeline: vec![0; PIPELINE_LEN],
+            flow: [[0; GOOD_COUNT]; 2],
         }
     }
 
@@ -770,6 +776,8 @@ mod tests {
         );
         assert_eq!(state.towns[1].stock, [2, 27, 9, 0, 0, 0, 0, 0]);
         assert_eq!(state.routes[0].traffic, 2);
+        let flow_total: i64 = state.routes[0].flow.iter().flatten().sum();
+        assert_eq!(flow_total, state.routes[0].traffic);
     }
 
     #[test]
@@ -845,6 +853,7 @@ mod tests {
             allow,
             good_fee,
             pipeline: vec![0; PIPELINE_LEN],
+            flow: [[0; GOOD_COUNT]; 2],
         }
     }
 

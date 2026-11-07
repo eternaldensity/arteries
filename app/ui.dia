@@ -1027,8 +1027,11 @@ export component Root:
                   <div class={"usage " + usage_class(r)}><span></span></div>
                   <span class="usage-text">{r.traffic}/{r.capacity} used</span>
                 </div>
+                <when test={route_has_flow(r)}>
+                  <p class="helper">Flow: {route_cargo_text(r)}</p>
+                </when>
                 <when test={in_transit(r) > 0}>
-                  <p class="helper">In transit: {int_text(in_transit(r))} units{route_cargo_text(r)}</p>
+                  <p class="helper">In transit: {int_text(in_transit(r))} units</p>
                 </when>
                 <p class="helper">{route_dependency_text(world, r)}</p>
 

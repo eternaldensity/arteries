@@ -29,7 +29,9 @@ server does not provide TLS. The database must already exist. Arteries declares
 a compute export, so it must be served by `arteries-runner`: `diamond serve` has
 no way to register compute kernels. `runserv.example.sh` builds the project,
 initializes a fresh database (or applies the supported additive schema
-migrations), creates the development account, and starts the runner.
+migrations), creates the development account, and starts the runner. Very old
+databases (schema v5 or earlier) may refuse the current migration chain; use a
+fresh database in that case.
 
 At more than 20 settlements, sign-in opens a **compact scale overlay** instead
 of loading the whole world. The overlay pulls `load_compact`, runs the market,

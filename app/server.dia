@@ -180,6 +180,7 @@ type RouteRow:
   b_ord: Int = 0
   rules: Text = ""
   pipeline: Text = ""
+  flow: Text = ""
 
 type NewRouteRow:
   world: WorldId
@@ -200,6 +201,7 @@ type NewRouteRow:
   b_ord: Int = 0
   rules: Text = ""
   pipeline: Text = ""
+  flow: Text = ""
 
 type ProjectRow:
   id: ProjectId
@@ -319,6 +321,7 @@ type EditRouteRow:
   b_ord: Int = 0
   rules: Text = ""
   pipeline: Text = ""
+  flow: Text = ""
 
 type EditProjectRow:
   ord: Int
@@ -543,7 +546,7 @@ fn stored_plan(world: World, from: Text, to: Text, bend: Int, waypoints: Text) -
     false => route_plan(world, from, to, bend)
 
 fn route_from_row(world: World, row: RouteRow) -> Route:
-  Route(id: row.key, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, plan: stored_plan(world, row.a, row.b, row.bend, row.waypoints), fee: row.fee, traffic: row.traffic, capacity: row.capacity, upkeep: row.upkeep, rules: decode_link_rules(row.rules), pipeline: decode_pipeline(row.pipeline))
+  Route(id: row.key, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, plan: stored_plan(world, row.a, row.b, row.bend, row.waypoints), fee: row.fee, traffic: row.traffic, capacity: row.capacity, upkeep: row.upkeep, rules: decode_link_rules(row.rules), pipeline: decode_pipeline(row.pipeline), flow: decode_flow(row.flow))
 
 fn project_from_row(world: World, row: ProjectRow) -> Project:
   Project(id: row.key, kind: row.kind, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, route_id: row.route_id, plan: stored_plan(world, row.a, row.b, row.bend, row.waypoints), start_tick: row.start_tick, ready_tick: row.ready_tick)
@@ -658,10 +661,10 @@ fn edit_site_row(x: Site, ord: Int) -> EditSiteRow:
   EditSiteRow(ord: ord, key: x.id, name: x.name, x: x.x, y: x.y, terrain: x.terrain, resource: x.resource, richness: x.richness, founded: x.founded)
 
 fn new_route_row(x: Route, world: WorldId, ord: Int, towns: List<Town>) -> NewRouteRow:
-  NewRouteRow(world: world, ord: ord, key: x.id, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, bend: x.plan.bend, fee: x.fee, traffic: x.traffic, capacity: x.capacity, upkeep: x.upkeep, waypoints: encode_plan(x.plan), a_ord: town_position(towns, x.a), b_ord: town_position(towns, x.b), rules: encode_link_rules(x.rules), pipeline: encode_pipeline(x.pipeline))
+  NewRouteRow(world: world, ord: ord, key: x.id, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, bend: x.plan.bend, fee: x.fee, traffic: x.traffic, capacity: x.capacity, upkeep: x.upkeep, waypoints: encode_plan(x.plan), a_ord: town_position(towns, x.a), b_ord: town_position(towns, x.b), rules: encode_link_rules(x.rules), pipeline: encode_pipeline(x.pipeline), flow: encode_flow(x.flow))
 
 fn edit_route_row(x: Route, ord: Int, towns: List<Town>) -> EditRouteRow:
-  EditRouteRow(ord: ord, key: x.id, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, bend: x.plan.bend, fee: x.fee, traffic: x.traffic, capacity: x.capacity, upkeep: x.upkeep, waypoints: encode_plan(x.plan), a_ord: town_position(towns, x.a), b_ord: town_position(towns, x.b), rules: encode_link_rules(x.rules), pipeline: encode_pipeline(x.pipeline))
+  EditRouteRow(ord: ord, key: x.id, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, bend: x.plan.bend, fee: x.fee, traffic: x.traffic, capacity: x.capacity, upkeep: x.upkeep, waypoints: encode_plan(x.plan), a_ord: town_position(towns, x.a), b_ord: town_position(towns, x.b), rules: encode_link_rules(x.rules), pipeline: encode_pipeline(x.pipeline), flow: encode_flow(x.flow))
 
 fn new_project_row(x: Project, world: WorldId, ord: Int) -> NewProjectRow:
   NewProjectRow(world: world, ord: ord, key: x.id, kind: x.kind, a: x.a, b: x.b, a_name: x.a_name, b_name: x.b_name, mode: x.mode, route_id: x.route_id, bend: x.plan.bend, start_tick: x.start_tick, ready_tick: x.ready_tick, waypoints: encode_plan(x.plan))
@@ -840,7 +843,7 @@ fn compact_town_edit(row: TownRow, values: List<Int>) -> EditTownRow:
   EditTownRow(ord: row.ord, key: row.key, name: row.name, x: row.x, y: row.y, terrain: row.terrain, pop: nth_int(values, 0), prosperity: nth_int(values, 1), research: nth_int(values, 2), endow0: endow0, endow1: endow1, endow2: endow2, endow3: endow3, endow4: endow4, endow5: endow5, endow6: endow6, endow7: endow7, stock0: nth_int(values, stock_base), stock1: nth_int(values, stock_base + 1), stock2: nth_int(values, stock_base + 2), stock3: nth_int(values, stock_base + 3), stock4: nth_int(values, stock_base + 4), stock5: nth_int(values, stock_base + 5), stock6: nth_int(values, stock_base + 6), stock7: nth_int(values, stock_base + 7))
 
 fn compact_route_edit(row: RouteRow, values: List<Int>) -> EditRouteRow:
-  EditRouteRow(ord: row.ord, key: row.key, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, bend: row.bend, fee: row.fee, traffic: nth_int(values, 0), capacity: row.capacity, upkeep: row.upkeep, waypoints: row.waypoints, a_ord: row.a_ord, b_ord: row.b_ord, rules: row.rules, pipeline: row.pipeline)
+  EditRouteRow(ord: row.ord, key: row.key, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, bend: row.bend, fee: row.fee, traffic: nth_int(values, 0), capacity: row.capacity, upkeep: row.upkeep, waypoints: row.waypoints, a_ord: row.a_ord, b_ord: row.b_ord, rules: row.rules, pipeline: row.pipeline, flow: encode_flow(flow_from_result(values)))
 
 fn save_compact_towns_small(rows: List<TownRow>, values: List<List<Int>>, start: Int, end: Int) -> Result<Bool, DataError>:
   match start >= end:

@@ -975,6 +975,7 @@ fn parse_tick_state(
             allow,
             good_fee,
             pipeline,
+            flow: [[0; GOOD_COUNT]; 2],
         });
     }
     Ok(TickState {
@@ -996,6 +997,9 @@ fn tick_state_json(state: &TickState) -> Json {
     for route in &state.routes {
         let mut row = vec![route.traffic];
         row.extend(route.pipeline.iter().copied());
+        for good in 0..GOOD_COUNT {
+            row.push(route.flow[0][good].saturating_add(route.flow[1][good]));
+        }
         result.push(row);
     }
     nested_int_list_json(result)

@@ -97,6 +97,8 @@ const trafficOf = (text) => Number((text.match(/(\d+)\/\d+ used/) || [])[1] || 0
       .locator('.route-card .helper', { hasText: /Sole link|Alternate path/ })
       .count();
     assert(dependencyLines >= 2, `expected dependency lines on both cards, got ${dependencyLines}`);
+    const flowLines = await page.locator('.route-card .helper', { hasText: 'Flow:' }).count();
+    assert(flowLines > 0, 'route cards did not show the persisted per-good flow');
 
     // The second link is the only connection to Greenvale.
     const soleCard = page.locator('.route-card').nth(1);
@@ -166,6 +168,20 @@ const trafficOf = (text) => Number((text.match(/(\d+)\/\d+ used/) || [])[1] || 0
     assert(
       (await card.locator('.rules-row').first().getByRole('button', { name: 'Allowed' }).count()) === 1,
       'grain is no longer allowed after only raising its toll'
+    );
+
+    // Per-good flow is persisted, so it survives a fresh sign-in.
+    await page.getByRole('button', { name: 'Sign out' }).click();
+    await page.waitForTimeout(500);
+    await page.fill('#username', username);
+    await page.fill('#password', password);
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.waitForTimeout(1800);
+    await page.waitForSelector('.route-card', { timeout: 10000 });
+    await page.waitForTimeout(600);
+    assert(
+      (await page.locator('.route-card .helper', { hasText: 'Flow:' }).count()) > 0,
+      'per-good flow did not survive reload'
     );
 
     assert(errors.length === 0, 'browser errors: ' + errors.join(' | '));
