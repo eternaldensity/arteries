@@ -1024,7 +1024,7 @@ button.tiny { padding: 2px 8px; font-size: 13px; border-radius: 6px; }
 .globe {
   display: flex;
   flex-direction: column;
-  width: 210px;
+  width: 168px;
   gap: 0;
   margin: 12px auto 4px;
   padding: 8px;
@@ -1058,6 +1058,10 @@ button.tiny { padding: 2px 8px; font-size: 13px; border-radius: 6px; }
   border-color: rgba(94, 234, 212, .35);
   color: var(--text);
 }
+.region-cell.region-lane {
+  box-shadow: inset 0 0 0 2px #f2c14e;
+}
+
 .region-cell.region-plains {
   background: rgba(143, 191, 106, .16);
   border-color: rgba(143, 191, 106, .42);

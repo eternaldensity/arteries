@@ -96,9 +96,28 @@ export type RegionMap:
   continents: Int
   largest: Int
 
+export type RegionMarket:
+  face: Int
+  pop: Int
+  prosperity: Int
+  climate: Int
+
+export type RegionLane:
+  a: Int
+  b: Int
+  traffic: Int
+
+export type RegionTrade:
+  markets: List<RegionMarket>
+  lanes: List<RegionLane>
+  traffic: Int
+
 export type GlobeRow:
   index: Int
   codes: List<Int>
+
+export fn empty_region_trade() -> RegionTrade:
+  RegionTrade(markets: [], lanes: [], traffic: 0)
 
 export fn empty_region_map() -> RegionMap:
   RegionMap(tiles: [], land: 0, ocean: 0, continents: 0, largest: 0)
@@ -2588,6 +2607,90 @@ export fn region_biome_class(code: Int) -> Text:
           false => match code == 7:
             true => "region-marsh"
             false => "region-land"
+
+export fn region_pop(land: Int, water: Int, climate: Int) -> Int:
+  let base = 4 + land / 6 + water / 12
+  match climate == 1:
+    true => base - 1
+    false => base
+
+export fn region_prosperity(land: Int, biome: Int) -> Int:
+  let base = 8 + land / 8
+  match biome == 4:
+    true => base + 1
+    false => base
+
+export fn region_endow(water: Int, biome: Int) -> List<Int>:
+  let grain = match biome == 1:
+    true => 16
+    false => 2
+  let timber = match biome == 2:
+    true => 16
+    false => 0
+  let stone = match biome == 3 or biome == 4:
+    true => 12
+    false => 0
+  let ore = match biome == 4:
+    true => 16
+    false => match biome == 3:
+      true => 8
+      false => 0
+  let fiber = match biome == 2 or biome == 7:
+    true => 10
+    false => 0
+  let fish = 2 + water / 8
+  [grain, timber, stone, ore, fiber, 0, 0, fish]
+
+export fn region_town_row(summary: List<Int>) -> List<Int>:
+  let water = nth_int(summary, 1)
+  let land = nth_int(summary, 2)
+  let climate = nth_int(summary, 3)
+  let biome = nth_int(summary, 4)
+  let endow = region_endow(water, biome)
+  let head = [region_pop(land, water, climate), region_prosperity(land, biome), 0]
+  flatten_ints([head, endow, endow, [climate]], 0, [])
+
+export fn region_lane_row(a: Int, b: Int) -> List<Int>:
+  let base = [a, b, 2, 0, 24, 1, 3]
+  let rules = default_rules()
+  flatten_ints([base, rules.allow, rules.fee], 0, [])
+
+fn region_lane_exists_from(lanes: List<Int>, a: Int, b: Int, k: Int) -> Bool:
+  match k * 2 + 1 >= len(lanes):
+    true => false
+    false =>
+      let x = nth_int(lanes, k * 2)
+      let y = nth_int(lanes, k * 2 + 1)
+      match (x == a and y == b) or (x == b and y == a):
+        true => true
+        false => region_lane_exists_from(lanes, a, b, k + 1)
+
+export fn add_region_lane(lanes: List<Int>, a: Int, b: Int) -> List<Int>:
+  match a == b:
+    true => lanes
+    false => match region_lane_exists_from(lanes, a, b, 0):
+      true => lanes
+      false => list_append(list_append(lanes, a), b)
+
+fn region_touches_from(lanes: List<Int>, i: Int, k: Int) -> Bool:
+  match k * 2 + 1 >= len(lanes):
+    true => false
+    false => match nth_int(lanes, k * 2) == i or nth_int(lanes, k * 2 + 1) == i:
+      true => true
+      false => region_touches_from(lanes, i, k + 1)
+
+export fn region_lane_class(i: Int, lanes: List<Int>) -> Text:
+  match region_touches_from(lanes, i, 0):
+    true => " region-lane"
+    false => ""
+
+export fn region_lane_label(lane: RegionLane) -> Text:
+  int_text(lane.a) + "↔" + int_text(lane.b) + " " + int_text(lane.traffic)
+
+export fn region_lanes_text(lanes: List<RegionLane>) -> Text:
+  let parts = for lane in lanes:
+    region_lane_label(lane)
+  join_text(parts, " · ")
 
 export fn region_climate_count(tiles: List<FaceTile>, zone: Int) -> Int:
   let flags = for t in tiles:

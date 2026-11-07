@@ -1292,10 +1292,39 @@ fn seam_rows() -> List<List<Int>>:
 export fn globe_raster(seed: Int, view: Int) -> Result<List<GlobeRow>, DataError>:
   let vertices = planet_vertices()
   let faces = planet_faces()
-  let codes = host.compute<List<Int>>("arteries", "globe_raster", seed, 30, 30, view, vertices, faces)?
-  let rows = for r in indices(30):
-    GlobeRow(index: r, codes: list_slice(codes, r * 30, 30))
+  let codes = host.compute<List<Int>>("arteries", "globe_raster", seed, 24, 24, view, vertices, faces)?
+  let rows = for r in indices(24):
+    GlobeRow(index: r, codes: list_slice(codes, r * 24, 24))
   Ok(rows)
+
+export fn region_trade(seed: Int, lanes: List<Int>) -> Result<RegionTrade, DataError>:
+  let vertices = planet_vertices()
+  let faces = planet_faces()
+  let summaries = host.compute<List<List<Int>>>("arteries", "face_summaries", seed, 8, vertices, faces)?
+  let town_rows = for i in indices(len(summaries)):
+    let summary = match list_get(summaries, i):
+      Some(row) => row
+      None => []
+    region_town_row(summary)
+  let lane_count = len(lanes) / 2
+  let route_rows = for k in indices(lane_count):
+    region_lane_row(nth_int(lanes, k * 2), nth_int(lanes, k * 2 + 1))
+  let pipeline_texts = for k in indices(lane_count):
+    ""
+  let result = host.compute<List<List<Int>>>("arteries", "trade", 0, town_rows, route_rows, pipeline_texts, 7, 100)?
+  let markets = for i in indices(len(town_rows)):
+    let row = match list_get(town_rows, i):
+      Some(value) => value
+      None => []
+    RegionMarket(face: i, pop: nth_int(row, 0), prosperity: nth_int(row, 1), climate: nth_int(row, 19))
+  let trade_lanes = for k in indices(lane_count):
+    let row = match list_get(result, 1 + len(town_rows) + k):
+      Some(value) => value
+      None => []
+    RegionLane(a: nth_int(lanes, k * 2), b: nth_int(lanes, k * 2 + 1), traffic: nth_int(row, 0))
+  let traffic_values = for lane in trade_lanes:
+    lane.traffic
+  Ok(RegionTrade(markets: markets, lanes: trade_lanes, traffic: total(traffic_values)))
 
 export fn region_map(seed: Int, detail: Int) -> Result<RegionMap, DataError>:
   let vertices = planet_vertices()

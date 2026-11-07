@@ -96,15 +96,45 @@ async function signIn(page) {
     const highlighted = await page.locator('#region-map .region-cell.region-path').count();
     assert(highlighted >= 2, `expected highlighted path, got ${highlighted}`);
 
+    // Open a small inter-region market network and run the flow simulation.
+    await page.getByRole('button', { name: 'Add lane' }).click();
+    await page.waitForTimeout(150);
+    await cells.nth(0).click();
+    await page.waitForTimeout(120);
+    await cells.nth(8).click();
+    await page.waitForTimeout(120);
+    await page.getByRole('button', { name: 'Add lane' }).click();
+    await page.waitForTimeout(150);
+    await cells.nth(5).click();
+    await page.waitForTimeout(120);
+    await cells.nth(12).click();
+    await page.waitForTimeout(120);
+    await page.getByRole('button', { name: 'Add lane' }).click();
+    await page.waitForTimeout(150);
+    await page.getByRole('button', { name: 'Run region trade' }).click();
+    await page.waitForTimeout(2500);
+    const tradeSummary = await page
+      .locator('#region-map .scale-hint', { hasText: 'units dispatched' })
+      .innerText();
+    assert(/3 lanes/.test(tradeSummary), 'lane count wrong: ' + tradeSummary);
+    const units = Number((tradeSummary.match(/(\d+) units dispatched/) || [])[1] || 0);
+    assert(units > 0, 'region trade dispatched no units: ' + tradeSummary);
+    const laneHint = await page
+      .locator('#region-map .scale-hint', { hasText: 'Lane traffic' })
+      .innerText();
+    assert(laneHint.includes('↔'), 'lane traffic has no lane: ' + laneHint);
+    const laneCells = await page.locator('#region-map .region-cell.region-lane').count();
+    assert(laneCells >= 4, `expected lane endpoint cells, got ${laneCells}`);
+
     // Render the orthographic globe: 32x32 cells, some space, both land and
     // water terrain, and the sea-lane faces overlaid where they are visible.
     await page.getByRole('button', { name: 'Globe equator' }).click();
     await page.waitForSelector('#globe-view', { timeout: 10000 });
     await page.waitForTimeout(1500);
     const globeCells = page.locator('#globe-view .globe-cell');
-    assert((await globeCells.count()) === 30 * 30, `expected 900 globe cells, got ${await globeCells.count()}`);
+    assert((await globeCells.count()) === 24 * 24, `expected 576 globe cells, got ${await globeCells.count()}`);
     const space = await page.locator('#globe-view .globe-cell.globe-space').count();
-    assert(space > 0 && space < 30 * 30, `globe has no silhouette: ${space} space cells`);
+    assert(space > 0 && space < 24 * 24, `globe has no silhouette: ${space} space cells`);
     const water = await page
       .locator('#globe-view .globe-cell.globe-water, #globe-view .globe-cell.globe-coast')
       .count();
@@ -122,8 +152,8 @@ async function signIn(page) {
     await page.getByRole('button', { name: 'Globe pole' }).click();
     await page.waitForTimeout(1500);
     assert(
-      (await page.locator('#globe-view .globe-cell').count()) === 30 * 30,
-      'pole view did not render 900 cells'
+      (await page.locator('#globe-view .globe-cell').count()) === 24 * 24,
+      'pole view did not render 576 cells'
     );
 
     assert(errors.length === 0, 'browser errors: ' + errors.join(' | '));

@@ -204,12 +204,6 @@ impl Market {
         let town_rows = nested_int_list_arg(arguments, 1)?;
         let route_rows = nested_int_list_arg(arguments, 2)?;
         let pipeline_texts = text_list_arg(arguments, 3)?;
-        eprintln!(
-            "DEBUG market: towns={} routes={} pipelines={}",
-            town_rows.len(),
-            route_rows.len(),
-            pipeline_texts.len()
-        );
         let days = int_arg(arguments, 4)?;
         let scale = int_arg(arguments, 5)?;
         let mut state = parse_tick_state(money, &town_rows, &route_rows, &pipeline_texts)?;
@@ -239,12 +233,6 @@ impl Trade {
         let town_rows = nested_int_list_arg(arguments, 1)?;
         let route_rows = nested_int_list_arg(arguments, 2)?;
         let pipeline_texts = text_list_arg(arguments, 3)?;
-        eprintln!(
-            "DEBUG market: towns={} routes={} pipelines={}",
-            town_rows.len(),
-            route_rows.len(),
-            pipeline_texts.len()
-        );
         let days = int_arg(arguments, 4)?;
         let scale = int_arg(arguments, 5)?;
         let mut state = parse_tick_state(money, &town_rows, &route_rows, &pipeline_texts)?;

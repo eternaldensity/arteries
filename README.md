@@ -277,7 +277,7 @@ tests/
   ui-smoke.js      real-browser acceptance and exploration driver
   ui-m3.js         site-directed founding and waypoint acceptance
   ui-m4.js         multi-hop flow and link-rules acceptance
-  ui-m5.js         globe region-map, sea-lane, continent, and raster acceptance
+  ui-m5.js         globe region-map, sea-lane, continent, raster, and region-trade acceptance
 ```
 
 `shared.dia` is the whole simulation. Terrain is a deterministic function;
@@ -401,7 +401,7 @@ staged RPCs. The pure-compute half is merged upstream (Diamond PRs #1 and #2,
 This is a prototype, not the full design in
 `transport-economy-game-design.md`:
 
-- one compact region, not a zoomable world of 100–300 settlements;
+- one compact settlement region; globe region markets and sea lanes are a session-scoped trade layer, not yet persisted or populated with per-face settlements;
 - at most three trunk routes and four settlements;
 - no save/load, auto-run, speed control, or scenario selection;
 - no sea/rail variants beyond the four modes, no hubs, no cargo restrictions;
@@ -412,4 +412,4 @@ This is a prototype, not the full design in
   built route, and otherwise stay on the free cell the player named;
 - the three-route/four-settlement caps are runtime-budget constraints.
 
-The natural next steps are a save format, seam-aware hydrology, and inter-region transport on the M5 globe.
+The natural next steps are a save format and settlement-level multi-region maps on the M5 globe.
