@@ -306,7 +306,6 @@ pub fn globe_raster(
                         weights,
                         [screen[0], screen[1], screen[2]],
                         [world[0], world[1], world[2]],
-                        false,
                     )
                 })
                 .or_else(|| {
@@ -315,11 +314,10 @@ pub fn globe_raster(
                             weights,
                             [screen[0], screen[2], screen[3]],
                             [world[0], world[2], world[3]],
-                            true,
                         )
                     })
                 });
-            let (weights, screen_corners, world_corners, second_triangle) = match hit {
+            let (weights, screen_corners, world_corners) = match hit {
                 Some(found) => found,
                 None => continue,
             };
@@ -334,23 +332,19 @@ pub fn globe_raster(
             if depth <= 0 {
                 continue;
             }
-            let (u_num, v_num) = if second_triangle {
-                (weights[1], weights[1] + weights[2])
-            } else {
-                (weights[1] + weights[2], weights[2])
-            };
-            let u = quantize(u_num, weights[3]);
-            let v = quantize(v_num, weights[3]);
-            let z = i64::try_from(weighted_i128(
-                weights,
-                [
-                    i128::from(world_corners[0][2]),
-                    i128::from(world_corners[1][2]),
-                    i128::from(world_corners[2][2]),
-                ],
-            ))
-            .unwrap_or(0);
-            let terrain = crate::planet::classify(seed, face_index, u, v, z);
+            let mut point = [0_i64; 3];
+            for (axis, value) in point.iter_mut().enumerate() {
+                *value = i64::try_from(weighted_i128(
+                    weights,
+                    [
+                        i128::from(world_corners[0][axis]),
+                        i128::from(world_corners[1][axis]),
+                        i128::from(world_corners[2][axis]),
+                    ],
+                ))
+                .unwrap_or(0);
+            }
+            let terrain = crate::planet::classify(seed, point);
             *cell = face_code + terrain;
         }
     }
@@ -387,11 +381,6 @@ fn raster_triangle(
 fn weighted_i128(weights: [i128; 4], values: [i128; 3]) -> i128 {
     let numerator = weights[0] * values[0] + weights[1] * values[1] + weights[2] * values[2];
     numerator / weights[3]
-}
-
-fn quantize(numerator: i128, denominator: i128) -> usize {
-    let scaled = numerator * 16 / denominator;
-    usize::try_from(scaled.clamp(0, 15)).unwrap_or(0)
 }
 
 #[cfg(test)]

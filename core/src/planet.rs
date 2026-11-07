@@ -3,7 +3,8 @@
 //! The caller supplies the fixed-point RT vertices and face indices from the
 //! checked `app/rt_tables.dia` tables, so topology stays single-sourced in
 //! Diamond. Each face is sampled on a `detail × detail` bilinear grid and
-//! classified from a stable integer hash plus latitude.
+//! classified from a continuous world-space value-noise field, so water and
+//! land line up across face seams.
 
 use crate::Terrain;
 
@@ -46,8 +47,7 @@ pub fn generate_faces(
     }
 
     let mut rows = Vec::with_capacity(count);
-    for (offset, face) in faces[start..end].iter().enumerate() {
-        let face_index = start + offset;
+    for face in &faces[start..end] {
         let corners = [
             vertices[face[0]],
             vertices[face[1]],
@@ -58,7 +58,7 @@ pub fn generate_faces(
         for v in 0..detail {
             for u in 0..detail {
                 let point = interpolate(&corners, u, v, detail);
-                row.push(classify(seed, face_index, u, v, point[2]));
+                row.push(classify(seed, point));
             }
         }
         rows.push(row);
@@ -84,36 +84,97 @@ fn interpolate(corners: &[[i64; 3]], u: usize, v: usize, detail: usize) -> [i64;
     point
 }
 
-pub(crate) fn classify(seed: i64, face: usize, u: usize, v: usize, z: i64) -> i64 {
-    let latitude = z.unsigned_abs() * 100 / u64::try_from(PLANET_SCALE).unwrap_or(1);
+pub(crate) fn classify(seed: i64, point: [i64; 3]) -> i64 {
+    let latitude = point[2].unsigned_abs() * 100 / u64::try_from(PLANET_SCALE).unwrap_or(1);
     if latitude > 82 {
         return Terrain::Mountain.code();
     }
-    let mixed = hash(
-        (seed as u64)
-            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
-            .wrapping_add((face as u64).wrapping_mul(0xD1B5_4A32_D192_ED03))
-            .wrapping_add((u as u64).wrapping_mul(0x94D0_49BB_1331_11EB))
-            .wrapping_add((v as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9))
-            .wrapping_add(z.unsigned_abs()),
-    ) % 100;
-    match mixed {
-        0..=31 => Terrain::Water,
-        32..=41 => Terrain::Coast,
-        42..=57 => Terrain::Plains,
-        58..=67 => Terrain::Forest,
-        68..=77 => Terrain::Hills,
-        78..=87 => Terrain::Marsh,
+    let elevation = value_noise(seed, point, 260_000, 3);
+    let moisture = value_noise(seed.wrapping_add(0x51ED_2701), point, 180_000, 3);
+    match elevation {
+        0..=459_999 => Terrain::Water,
+        460_000..=489_999 => Terrain::Coast,
+        490_000..=599_999 => match moisture > 620_000 {
+            true => Terrain::Marsh,
+            false => Terrain::Plains,
+        },
+        600_000..=689_999 => match moisture > 540_000 {
+            true => Terrain::Forest,
+            false => Terrain::Plains,
+        },
+        690_000..=759_999 => Terrain::Hills,
         _ => Terrain::Mountain,
     }
     .code()
 }
 
-fn hash(mut value: u64) -> u64 {
-    value = value.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    value ^ (value >> 31)
+/// Trilinear value noise over the world-space lattice, in `0..=1_000_000`.
+///
+/// Sampling by world position rather than face-local `(u, v)` makes the field
+/// continuous across seams: both faces along an edge evaluate the same
+/// `(x, y, z)` and therefore the same terrain.
+fn value_noise(seed: i64, point: [i64; 3], base_cell: i64, octaves: usize) -> i64 {
+    let mut total = 0_i128;
+    let mut sum_amplitude = 0_i128;
+    let mut amplitude = 1_000_000_i128;
+    let mut cell = base_cell.max(1);
+    for _ in 0..octaves {
+        let mut base = [0_i64; 3];
+        let mut smooth = [0_i128; 3];
+        for axis in 0..3 {
+            let value = i128::from(point[axis]);
+            let size = i128::from(cell);
+            let quotient = value.div_euclid(size);
+            let remainder = value.rem_euclid(size);
+            base[axis] = i64::try_from(quotient).unwrap_or(0);
+            smooth[axis] = smoothstep(remainder * 1_000_000 / size);
+        }
+        let mut corner = 0_i128;
+        for index in 0..8 {
+            let dx = i64::from(index & 1);
+            let dy = i64::from((index >> 1) & 1);
+            let dz = i64::from((index >> 2) & 1);
+            let wx = if dx == 1 {
+                smooth[0]
+            } else {
+                1_000_000 - smooth[0]
+            };
+            let wy = if dy == 1 {
+                smooth[1]
+            } else {
+                1_000_000 - smooth[1]
+            };
+            let wz = if dz == 1 {
+                smooth[2]
+            } else {
+                1_000_000 - smooth[2]
+            };
+            let weight = wx * wy * wz;
+            let lattice = lattice_hash(seed, base[0] + dx, base[1] + dy, base[2] + dz);
+            corner += i128::from(lattice) * weight;
+        }
+        total += (corner / 1_000_000_000_000_000_000_i128) * amplitude;
+        sum_amplitude += amplitude;
+        amplitude /= 2;
+        cell = (cell / 2).max(1);
+    }
+    i64::try_from(total / sum_amplitude).unwrap_or(0)
+}
+
+fn smoothstep(value: i128) -> i128 {
+    value * value * (3_000_000 - 2 * value) / 1_000_000_000_000
+}
+
+fn lattice_hash(seed: i64, x: i64, y: i64, z: i64) -> i64 {
+    let mut mixed = (seed as u64)
+        .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        .wrapping_add((x as u64).wrapping_mul(0xD1B5_4A32_D192_ED03))
+        .wrapping_add((y as u64).wrapping_mul(0x94D0_49BB_1331_11EB))
+        .wrapping_add((z as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9));
+    mixed = (mixed ^ (mixed >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    mixed = (mixed ^ (mixed >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    mixed ^= mixed >> 31;
+    i64::try_from(mixed % 1_000_001).unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -154,6 +215,16 @@ mod tests {
         codes.sort_unstable();
         codes.dedup();
         assert!(codes.len() >= 3, "expected varied terrain, got {codes:?}");
+    }
+
+    #[test]
+    fn noise_is_continuous_across_lattice_cells() {
+        let left = value_noise(7, [259_999, 0, 0], 260_000, 3);
+        let right = value_noise(7, [260_000, 0, 0], 260_000, 3);
+        assert!(
+            (left - right).abs() < 10_000,
+            "noise jumps across a lattice boundary: {left} vs {right}"
+        );
     }
 
     #[test]
