@@ -261,6 +261,7 @@ export component Root:
   state scale_active: Bool = false
   state scale_summary: ScaleSummary = ScaleSummary(seed: 7, tick: 0, money: 0, towns: 0, routes: 0, phase: 0)
   state scale_step: ScaleStep = ScaleStep(phase: 0, cursor: "", tick: 0, money: 0, pop: 0, prosperity: 0, max_research: 0, traffic: 0, finish: 0, status: "Choose Run to start a compact cycle.")
+  state forecast: Forecast = empty_forecast()
   state planet_summary: PlanetSummary = PlanetSummary(seed: 7, detail: 0, faces: 0, cells: 0, checksum: 0)
   state region_from: Int = 0
   state region_to: Int = 1
@@ -494,6 +495,12 @@ export component Root:
     scale_active = scale_step.phase != 0
     scale_summary = ScaleSummary(seed: scale_summary.seed, tick: scale_step.tick, money: scale_step.money, towns: scale_summary.towns, routes: scale_summary.routes, phase: scale_step.phase)
 
+  on forecast_day:
+    forecast = rpc.forecast_market(24, "daily")
+
+  on forecast_week:
+    forecast = rpc.forecast_market(168, "weekly")
+
   on scale_refresh:
     scale_summary = rpc.load_compact()
     scale_step = ScaleStep(phase: scale_summary.phase, cursor: "", tick: scale_summary.tick, money: scale_summary.money, pop: scale_step.pop, prosperity: scale_step.prosperity, max_research: scale_step.max_research, traffic: scale_step.traffic, finish: scale_step.finish, status: "Refreshed.")
@@ -595,6 +602,24 @@ export component Root:
               <span>Finish prosperity <strong>{int_text(scale_step.finish)}</strong></span>
               <span>Max research <strong>{int_text(scale_step.max_research)}</strong></span>
             </div>
+            <div class="actions">
+              <button class="ghost" type="button" on-click={forecast_day}>Forecast 1 day</button>
+              <button class="ghost" type="button" on-click={forecast_week}>Forecast 1 week</button>
+            </div>
+            <when test={forecast.days > 0}>
+              <div class="scale-stats" id="forecast-panel">
+                <span>Treasury <strong>{int_text(forecast.money)}→{int_text(forecast.money_after)}</strong></span>
+                <span>Prosperity <strong>{int_text(forecast.prosperity)}→{int_text(forecast.prosperity_after)}</strong></span>
+                <span>Traffic <strong>{int_text(forecast.traffic)}→{int_text(forecast.traffic_after)}</strong></span>
+              </div>
+              <p class="scale-hint">Market forecast for {int_text(forecast.days)} day(s); no events or upkeep charged.</p>
+              <when test={len(forecast.towns) > 0}>
+                <p class="scale-hint">{forecast_towns_text(forecast.towns)}</p>
+              </when>
+              <when test={len(forecast.routes) > 0}>
+                <p class="scale-hint">Links: {forecast_routes_text(forecast.routes)}</p>
+              </when>
+            </when>
             <p class="scale-hint">Each click advances one bounded chunk. Repeat until the status says Cycle complete; the browser never loads the full frontier.</p>
           </div>
           <div class="scale-planet">

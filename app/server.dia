@@ -1386,7 +1386,7 @@ fn scale_market_step(hours: Int, cadence: Text, cursor: Text, pop: Int, prosperi
   let prosperity2 = match next_phase == 2:
     true => prosperity + other
     false => prosperity
-  let traffic2 = match next_phase == 3:
+  let traffic2 = match next_phase == 3 or next_phase == 1:
     true => traffic + amount
     false => traffic
   let status = match next_phase == 2:
@@ -1451,6 +1451,28 @@ fn market_flow_period(world: World, days: Int, scale: Int) -> Result<World, Data
   let towns1 = flow_apply_towns(towns0, result)
   let routes1 = flow_apply_routes(world.routes, result, len(towns0))
   Ok(World(seed: world.seed, tick: world.tick, money: nth_int(money_row, 0), towns: towns1, sites: world.sites, routes: routes1, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail))
+
+export fn forecast_market(hours: Int, cadence: Text) -> Result<Forecast, DataError>:
+  let state = load_state()?
+  let current = state_game(state, "")
+  let start = current.world.tick
+  let target = start + bounded_hours(hours)
+  let days = settlement_days(start, target, cadence)
+  match days <= 0:
+    true => Ok(Forecast(days: 0, money: current.world.money, money_after: current.world.money, prosperity: total_prosperity(current.world), prosperity_after: total_prosperity(current.world), traffic: 0, traffic_after: 0, towns: [], routes: []))
+    false =>
+      let ready = advance_projects(with_tick(current.world, target), current.projects, 0, [], [])
+      let scale = match current.auto_upkeep:
+        true => 100
+        false => match neglect_ticks(current) >= 2:
+          true => 50
+          false => 100
+      let market = market_flow_period(ready.world, days, scale)?
+      let traffic_before = for route in ready.world.routes:
+        route.traffic
+      let traffic_after = for route in market.routes:
+        route.traffic
+      Ok(Forecast(days: days, money: ready.world.money, money_after: market.money, prosperity: total_prosperity(ready.world), prosperity_after: total_prosperity(market), traffic: total(traffic_before), traffic_after: total(traffic_after), towns: forecast_towns(ready.world.towns, market.towns), routes: forecast_routes(ready.world.routes, market.routes)))
 
 export fn advance_market(hours: Int, cadence: Text) -> Result<Game, DataError>:
   let state = load_state()?

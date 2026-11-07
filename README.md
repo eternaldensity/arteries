@@ -278,6 +278,7 @@ tests/
   ui-m3.js         site-directed founding and waypoint acceptance
   ui-m4.js         multi-hop flow and link-rules acceptance
   ui-m5.js         globe region-map, sea-lane, continent, raster, and region-trade acceptance
+  ui-m6.js         what-if forecast vs deterministic re-simulation
 ```
 
 `shared.dia` is the whole simulation. Terrain is a deterministic function;
@@ -361,6 +362,7 @@ node tests/ui-smoke.js
 node tests/ui-m3.js
 node tests/ui-m4.js
 node tests/ui-m5.js
+node tests/ui-m6.js
 ```
 
 `ui-smoke.js` exercises initial render, settlement and site inspection, three

@@ -112,9 +112,38 @@ export type RegionTrade:
   lanes: List<RegionLane>
   traffic: Int
 
+export type ForecastTown:
+  id: Text
+  name: Text
+  pop: Int
+  pop_after: Int
+  prosperity: Int
+  prosperity_after: Int
+
+export type ForecastRoute:
+  id: Text
+  a_name: Text
+  b_name: Text
+  traffic: Int
+  traffic_after: Int
+
+export type Forecast:
+  days: Int
+  money: Int
+  money_after: Int
+  prosperity: Int
+  prosperity_after: Int
+  traffic: Int
+  traffic_after: Int
+  towns: List<ForecastTown>
+  routes: List<ForecastRoute>
+
 export type GlobeRow:
   index: Int
   codes: List<Int>
+
+export fn empty_forecast() -> Forecast:
+  Forecast(days: 0, money: 0, money_after: 0, prosperity: 0, prosperity_after: 0, traffic: 0, traffic_after: 0, towns: [], routes: [])
 
 export fn empty_region_trade() -> RegionTrade:
   RegionTrade(markets: [], lanes: [], traffic: 0)
@@ -2607,6 +2636,46 @@ export fn region_biome_class(code: Int) -> Text:
           false => match code == 7:
             true => "region-marsh"
             false => "region-land"
+
+export fn forecast_towns(before: List<Town>, after: List<Town>) -> List<ForecastTown>:
+  for i in indices(len(after)):
+    let current = nth_town(after, i)
+    let previous = match list_get(before, i):
+      Some(t) => t
+      None => current
+    ForecastTown(id: current.id, name: current.name, pop: previous.state.pop, pop_after: current.state.pop, prosperity: previous.state.prosperity, prosperity_after: current.state.prosperity)
+
+export fn forecast_routes(before: List<Route>, after: List<Route>) -> List<ForecastRoute>:
+  for i in indices(len(after)):
+    let current = nth_route(after, i)
+    let previous = match list_get(before, i):
+      Some(r) => r
+      None => current
+    ForecastRoute(id: current.id, a_name: current.a_name, b_name: current.b_name, traffic: previous.traffic, traffic_after: current.traffic)
+
+export fn forecast_town_label(town: ForecastTown) -> Text:
+  town.name + " " + int_text(town.pop) + "→" + int_text(town.pop_after) + " pop, " + int_text(town.prosperity) + "→" + int_text(town.prosperity_after) + " prosp."
+
+export fn forecast_towns_text(towns: List<ForecastTown>) -> Text:
+  let shown = list_slice(towns, 0, min_int(len(towns), 6))
+  let parts = for town in shown:
+    forecast_town_label(town)
+  let text = join_text(parts, " · ")
+  match len(towns) > 6:
+    true => text + " · +" + int_text(len(towns) - 6) + " more"
+    false => text
+
+export fn forecast_route_label(route: ForecastRoute) -> Text:
+  route.a_name + "↔" + route.b_name + " " + int_text(route.traffic) + "→" + int_text(route.traffic_after)
+
+export fn forecast_routes_text(routes: List<ForecastRoute>) -> Text:
+  let shown = list_slice(routes, 0, min_int(len(routes), 6))
+  let parts = for route in shown:
+    forecast_route_label(route)
+  let text = join_text(parts, " · ")
+  match len(routes) > 6:
+    true => text + " · +" + int_text(len(routes) - 6) + " more"
+    false => text
 
 export fn region_pop(land: Int, water: Int, climate: Int) -> Int:
   let base = 4 + land / 6 + water / 12
