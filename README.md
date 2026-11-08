@@ -231,10 +231,11 @@ it. The server stores the current-save pointer per account, so signing out and
 back in resumes the world you last selected.
 
 Worlds are stored in the relational schema (storage v11). Expanding the shared
-`Good` enum changes the site-resource constraint, so v9 and v11 need a fresh
-database or an explicit conversion. Version 10 was additive and added
-`world.tech`; version 11 adds the new town endowment/stock columns. A fresh
-database starts with one world.
+`Good` enum changes the site-resource constraint, and the tech state is now a
+packed hex bitset, so saves written before this build need a fresh database or
+an explicit conversion. Version 10 was additive and added `world.tech`;
+version 11 adds the new town endowment/stock columns. A fresh database starts
+with one world.
 
 ### Technology tree
 
