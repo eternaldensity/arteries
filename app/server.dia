@@ -1511,6 +1511,11 @@ export fn advance_market(hours: Int, cadence: Text) -> Result<Game, DataError>:
           let staged = raw_game(market, ready.projects, current.auto_upkeep, current.last_paid_tick, upkeep, current.sel, summary, true)
           save_game_window(staged, 1, state.epoch, days, start)
 
+export fn run_cycle(hours: Int, cadence: Text) -> Result<Game, DataError>:
+  let game1 = advance_market(hours, cadence)?
+  let game2 = advance_finish()?
+  Ok(game2)
+
 export fn advance_finish() -> Result<Game, DataError>:
   let state = load_state()?
   let current = state_game(state, "")

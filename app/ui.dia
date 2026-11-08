@@ -457,6 +457,9 @@ export component Root:
     game = server_apply(game, rpc.advance_market(672, "monthly"))
     game = server_apply(game, rpc.advance_finish())
 
+  on run_cycle(hours: Int, cadence: Text):
+    game = server_apply(game, rpc.run_cycle(hours, cadence))
+
   on new_seed:
     game = server_adopt(rpc.new_seed())
     draft_plan = game.sel.draft
@@ -489,6 +492,10 @@ export component Root:
 
   on refresh_inspect:
     game = game_refresh(game)
+
+  on run_cycle_compact(hours: Int, cadence: Text):
+    game = server_apply(game, rpc.run_cycle(hours, cadence))
+    scale_summary = rpc.load_compact()
 
   on scale_continue:
     scale_step = rpc.advance_scale(24, "daily", scale_req_phase, scale_req_cursor, scale_req_pop, scale_req_prosperity, scale_req_max, scale_req_traffic, scale_req_finish)
@@ -593,6 +600,8 @@ export component Root:
               <div class="actions">
                 <button class="primary" type="button" on-click={scale_continue}>{scale_button}</button>
                 <button class="ghost" type="button" on-click={scale_refresh}>Refresh</button>
+                <button class="ghost" type="button" on-click={run_cycle_compact(168, "weekly")}>Run week</button>
+                <button class="ghost" type="button" on-click={run_cycle_compact(672, "monthly")}>Run month</button>
               </div>
             </div>
             <div class="scale-stats">
@@ -782,6 +791,7 @@ export component Root:
               <button type="button" on-click={step_three_days}>3 days</button>
               <button type="button" on-click={step_week}>1 week</button>
               <button type="button" on-click={step_month}>1 month</button>
+              <button class="primary" type="button" on-click={run_cycle(168, "weekly")}>Run cycle (1 week)</button>
             </div>
           </div>
 

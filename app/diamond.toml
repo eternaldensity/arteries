@@ -34,6 +34,7 @@ imports = ["shared"]
 [rpc]
 load_game = "server.load_game"
 advance_market = "server.advance_market"
+run_cycle = "server.run_cycle"
 forecast_market = "server.forecast_market"
 advance_compact = "server.advance_compact"
 advance_compact_chunk = "server.advance_compact_chunk"
