@@ -24,6 +24,8 @@ export enum Good:
   Tools
   Cloth
   Fish
+  Planks
+  Steel
 
 export enum RouteMode:
   NoRoute
@@ -235,7 +237,7 @@ export type LinkRules:
   fee: List<Int>
 
 export fn default_rules() -> LinkRules:
-  LinkRules(allow: [1, 1, 1, 1, 1, 1, 1, 1], fee: [0, 0, 0, 0, 0, 0, 0, 0])
+  LinkRules(allow: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1], fee: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 
 export fn rule_allows(rules: LinkRules, g: Good) -> Bool:
   nth_int(rules.allow, good_index(g)) > 0
@@ -324,9 +326,10 @@ export fn decode_flow(text: Text) -> List<Int>:
       values
 
 export fn flow_from_result(values: List<Int>) -> List<Int>:
-  match len(values) < 65 + len(goods()):
+  let flow_start = 1 + 4 * len(goods()) * 2
+  match len(values) < flow_start + len(goods()):
     true => []
-    false => list_slice(values, 65, len(goods()))
+    false => list_slice(values, flow_start, len(goods()))
 
 export fn decode_link_rules(text: Text) -> LinkRules:
   match len(text) < len(goods()) * 3:
@@ -350,6 +353,13 @@ export type World:
   tech_road: Bool
   tech_river: Bool
   tech_rail: Bool
+
+export type WorldSummary:
+  id: Text
+  seed: Int
+  tick: Int
+  money: Int
+  towns: Int
 
 export type BuildResult:
   world: World
@@ -785,7 +795,7 @@ fn concat_lists(xs: List<Text>, ys: List<Text>) -> List<Text>:
 # ---------------------------------------------------------------- goods
 
 export fn goods() -> List<Good>:
-  [Grain, Timber, Stone, Ore, Fiber, Tools, Cloth, Fish]
+  [Grain, Timber, Stone, Ore, Fiber, Tools, Cloth, Fish, Planks, Steel]
 
 fn good_index(g: Good) -> Int:
   match g:
@@ -797,6 +807,8 @@ fn good_index(g: Good) -> Int:
     Tools => 5
     Cloth => 6
     Fish => 7
+    Planks => 8
+    Steel => 9
 
 export fn good_name(g: Good) -> Text:
   match g:
@@ -808,6 +820,8 @@ export fn good_name(g: Good) -> Text:
     Tools => "Tools"
     Cloth => "Cloth"
     Fish => "Fish"
+    Planks => "Planks"
+    Steel => "Steel"
 
 export fn good_short(g: Good) -> Text:
   match g:
@@ -819,6 +833,8 @@ export fn good_short(g: Good) -> Text:
     Tools => "TOL"
     Cloth => "CLO"
     Fish => "FSH"
+    Planks => "PLK"
+    Steel => "STL"
 
 export fn stock(t: Town, g: Good) -> Int:
   nth_int(t.state.stock, good_index(g))
@@ -893,6 +909,8 @@ export fn need_of_at(t: Town, climate: Int, g: Good) -> Int:
     Fiber => t.state.pop / 2 + 1
     Tools => t.state.pop / 2 + 1 + tools_extra
     Cloth => t.state.pop / 2 + 1 + cloth_extra
+    Planks => t.state.pop / 4 + 1
+    Steel => t.state.pop / 8 + 1
 
 # Without a known geography, use the temperate baseline.
 export fn need_of(t: Town, g: Good) -> Int:
@@ -1251,7 +1269,7 @@ fn town_endow_for(biome: Int, temp: Int, moist: Int) -> List<Int>:
     false => match biome == 1:
       true => endow_add(endow_add(base, Stone, 2), Ore, 2)
       false => match biome == 2:
-        true => endow_add(endow_add(base, Timber, 4), Fiber, 1)
+        true => endow_add(endow_add(endow_add(endow_add(base, Timber, 4), Fiber, 1), Stone, 1), Ore, 2)
         false => match biome == 3:
           true => endow_add(endow_add(endow_add(base, Fiber, 3), Timber, 2), Grain, 1)
           false => match biome == 4:
@@ -2421,8 +2439,16 @@ export fn inspect_need(iv: InspectView, g: Good) -> Int:
 export fn inspect_endow(iv: InspectView, g: Good) -> Int:
   nth_int(iv.endows, good_index(g))
 
+export fn good_recipe_text(g: Good) -> Text:
+  match g:
+    Planks => "made from Timber"
+    Steel => "made from Ore + Stone"
+    Cloth => "made from Fiber"
+    Tools => "made from Timber + Stone + Ore"
+    _ => "raw resource"
+
 export fn inspect_good_title(iv: InspectView, g: Good) -> Text:
-  good_name(g) + ": " + int_text(inspect_stock(iv, g)) + " stock · need " + int_text(inspect_need(iv, g)) + " · endowment " + int_text(inspect_endow(iv, g))
+  good_name(g) + ": " + int_text(inspect_stock(iv, g)) + " stock · need " + int_text(inspect_need(iv, g)) + " · endowment " + int_text(inspect_endow(iv, g)) + " · " + good_recipe_text(g)
 
 export fn upkeep_signal_text(game: Game) -> Text:
   "Upkeep due: " + int_text(upkeep_due(game)) + " crowns. " + match maintenance_text(game) == "degraded":
@@ -2905,7 +2931,12 @@ export fn region_endow(water: Int, biome: Int) -> List<Int>:
     true => 10
     false => 0
   let fish = 2 + water / 8
-  [grain, timber, stone, ore, fiber, 0, 0, fish]
+  let e0 = replace_int(zeros(len(goods())), good_index(Grain), grain)
+  let e1 = replace_int(e0, good_index(Timber), timber)
+  let e2 = replace_int(e1, good_index(Stone), stone)
+  let e3 = replace_int(e2, good_index(Ore), ore)
+  let e4 = replace_int(e3, good_index(Fiber), fiber)
+  replace_int(e4, good_index(Fish), fish)
 
 export fn region_town_row(summary: List<Int>) -> List<Int>:
   let water = nth_int(summary, 1)
@@ -4411,7 +4442,7 @@ export fn empty_game() -> Game:
 export fn with_tick(world: World, tick: Int) -> World:
   World(seed: world.seed, tick: tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
 
-fn period_good(t: Town, i: Int, days: Int, can_tools: Bool, can_cloth: Bool, grain_eaten: Int, fish_eaten: Int, cloth_used: Int) -> Int:
+fn period_good(t: Town, i: Int, days: Int, can_tools: Bool, can_cloth: Bool, can_planks: Bool, can_steel: Bool, grain_eaten: Int, fish_eaten: Int, cloth_used: Int) -> Int:
   let grain_at = good_index(Grain)
   let timber_at = good_index(Timber)
   let stone_at = good_index(Stone)
@@ -4420,16 +4451,40 @@ fn period_good(t: Town, i: Int, days: Int, can_tools: Bool, can_cloth: Bool, gra
   let tools_at = good_index(Tools)
   let cloth_at = good_index(Cloth)
   let fish_at = good_index(Fish)
+  let planks_at = good_index(Planks)
+  let steel_at = good_index(Steel)
+  let tools_flag = match can_tools:
+    true => 1
+    false => 0
+  let cloth_flag = match can_cloth:
+    true => 1
+    false => 0
+  let planks_flag = match can_planks:
+    true => 1
+    false => 0
+  let steel_flag = match can_steel:
+    true => 1
+    false => 0
+  let consumed = match i == timber_at:
+    true => tools_flag + planks_flag
+    false => match i == stone_at:
+      true => tools_flag + steel_flag
+      false => match i == ore_at:
+        true => tools_flag + steel_flag
+        false => match i == fiber_at:
+          true => cloth_flag
+          false => 0
+  let produced = match i == tools_at:
+    true => tools_flag
+    false => match i == cloth_at:
+      true => cloth_flag
+      false => match i == planks_at:
+        true => planks_flag
+        false => match i == steel_at:
+          true => steel_flag
+          false => 0
   let raw = nth_int(t.state.stock, i) + endowment(t, nth_good(i)) * days
-  let prod_value = match can_tools and (i == timber_at or i == stone_at or i == ore_at):
-    true => raw - days
-    false => match can_tools and i == tools_at:
-      true => raw + days
-      false => match can_cloth and i == fiber_at:
-        true => raw - days
-        false => match can_cloth and i == cloth_at:
-          true => raw + days
-          false => raw
+  let prod_value = raw + (produced - consumed) * days
   match i == grain_at:
     true => max_int(prod_value - grain_eaten, 0)
     false => match i == fish_at:
@@ -4450,7 +4505,15 @@ fn period_after(t: Town, days: Int) -> List<Int>:
   let stone_base = nth_int(t.state.stock, stone_at) + endowment(t, Stone) * days
   let ore_base = nth_int(t.state.stock, ore_at) + endowment(t, Ore) * days
   let fiber_base = nth_int(t.state.stock, fiber_at) + endowment(t, Fiber) * days
-  let can_tools = timber_base >= days and stone_base >= days and ore_base >= days
+  let can_planks = timber_base >= days
+  let can_steel = stone_base >= days and ore_base >= days
+  let timber_need = match can_planks:
+    true => 2 * days
+    false => days
+  let metal_need = match can_steel:
+    true => 2 * days
+    false => days
+  let can_tools = timber_base >= timber_need and stone_base >= metal_need and ore_base >= metal_need
   let can_cloth = fiber_base >= days
   let grain_prod = nth_int(t.state.stock, grain_at) + endowment(t, Grain) * days
   let fish_prod = nth_int(t.state.stock, fish_at) + endowment(t, Fish) * days
@@ -4461,7 +4524,7 @@ fn period_after(t: Town, days: Int) -> List<Int>:
   let fish_eaten = min_int(fish_prod, (t.state.pop / 3 + 1) * days)
   let cloth_used = min_int(cloth_prod, (t.state.pop / 4) * days)
   for i in indices(len(goods())):
-    period_good(t, i, days, can_tools, can_cloth, grain_eaten, fish_eaten, cloth_used)
+    period_good(t, i, days, can_tools, can_cloth, can_planks, can_steel, grain_eaten, fish_eaten, cloth_used)
 
 fn growth_stock(after: List<Int>) -> List<Int>:
   let grain_at = good_index(Grain)

@@ -29,9 +29,10 @@ server does not provide TLS. The database must already exist. Arteries declares
 a compute export, so it must be served by `arteries-runner`: `diamond serve` has
 no way to register compute kernels. `runserv.example.sh` builds the project,
 initializes a fresh database (or applies the supported additive schema
-migrations), creates the development account, and starts the runner. Very old
-databases (schema v5 or earlier) may refuse the current migration chain; use a
-fresh database in that case.
+migrations), creates the development account, and starts the runner. A pre-v9
+save must be moved with a fresh database or an explicit conversion; expanding
+the `Good` enum changes a site-resource constraint that the additive migrator
+cannot rewrite.
 
 At more than 20 settlements, sign-in opens a **compact scale overlay** instead
 of loading the whole world. The overlay pulls `load_compact`, runs the market,
@@ -108,7 +109,7 @@ Routes are not fixed links. Click two settlements to survey one:
   flows toward the cheapest deficit path, paying every link's toll plus the
   good's surcharge and one transfer penalty per intermediate settlement, with
   each direction's capacity shared across goods;
-- every link has a **Rules** desk: allow or block each of the eight goods, and
+- every link has a **Rules** desk: allow or block each of the ten goods, and
   add a per-good surcharge on top of the base toll. Blocked goods never enter
   the link, and a surcharge high enough to cover the deficit sends the flow
   down a different path; both are persisted with the route and applied by the
@@ -146,8 +147,9 @@ Routes can be upgraded through the transport eras:
 Each cycle a settlement:
 
 - extracts its natural endowments;
-- runs simple production chains (tools from timber + stone + ore, cloth from
-  fiber);
+- runs production chains: planks from timber, steel from ore + stone, cloth
+  from fiber, and tools from timber + stone + ore. Planks and steel claim their
+  raw inputs before tools, so a timber-and-ore town cannot overdraw its stock;
 - consumes food and cloth;
 - gains or loses prosperity from food, variety, and comfort;
 - accumulates research from population, variety, and prosperity;
@@ -211,6 +213,21 @@ bounded evaluation budget:
 
 Dismantle a route to free a slot. The UI explains both caps when you reach them.
 
+### Saved worlds (save slots)
+
+Each world is an independent authoritative save. **New world** generates a new
+seed and adds it to the list instead of replacing the world you are playing.
+The topbar's **Worlds** button lists every save with its seed, settlement count,
+treasury, and current day; selecting one makes it the current world and reloads
+it. The server stores the current-save pointer per account, so signing out and
+back in resumes the world you last selected.
+
+Worlds are stored in the relational schema (storage v9). Version 9 adds the two
+processed goods to the shared `Good` enum, which changes the site-resource
+constraint; Diamond's additive migrator cannot rewrite that constraint, so move
+a pre-v9 save with a fresh database or an explicit conversion. A fresh database
+starts with one world.
+
 ## Using the interface
 
 - **Frontier survey** — click any settlement or site to inspect it. Use
@@ -236,6 +253,9 @@ Dismantle a route to free a slot. The UI explains both caps when you reach them.
   time; newly started projects appear in the Network panel and open when their
   countdown completes. There is intentionally no auto-run or speed control in
   this prototype.
+- **Worlds** — open the save-slot list. **New world** always adds a new save;
+  selecting an entry switches the authoritative current world without deleting
+  the others.
 
 ## Architecture
 
@@ -258,7 +278,7 @@ core/
   src/main.rs      terrain + worldgen table exporter
 runner/
   Cargo.toml       arteries-runner: serves an Arteries project with compute
-  src/lib.rs       kernels (terrain_region, noise, worldgen, pathfind, pathfind_features, route_cost, market, trade, finish, planet, face graph, globe raster)
+  src/lib.rs       kernels (terrain_region, noise, worldgen, pathfind, pathfind_features, route_cost, market, trade, region_trade, finish, planet, face graph, globe raster)
   src/main.rs      serve binary, requires DIAMOND_POSTGRES_URL
   tests/           validate_compute + end-to-end dispatch against probe projects
 tools/
@@ -281,6 +301,8 @@ tests/
   ui-m4.js         multi-hop flow, link rules, flow overlay, and dismantle-warning acceptance
   ui-m5.js         globe region-map, sea-lane, continent, raster, and region-trade acceptance
   ui-m6.js         what-if forecast vs deterministic re-simulation
+  ui-saves.js      save-slot creation, switching, and persistence across reload
+  ui-production.js planks and steel consume raw inputs and appear after a cycle
 ```
 
 `shared.dia` is the whole simulation. Terrain is a deterministic function;
@@ -365,6 +387,8 @@ node tests/ui-m3.js
 node tests/ui-m4.js
 node tests/ui-m5.js
 node tests/ui-m6.js
+node tests/ui-saves.js
+node tests/ui-production.js
 ```
 
 `ui-smoke.js` exercises initial render, settlement and site inspection, three
@@ -375,8 +399,12 @@ whose plan grid changes with every edit, per-row move and remove, free-cell
 placement, a built corridor whose length reflects the staged waypoints, and an
 identical reload. `ui-m4.js` covers a two-link chain that carries trade, blocking
 every good on a busy link (the next tick leaves it idle), restoring the flow, and
-a persisted per-good surcharge. All three fail on page errors, console errors,
-missing UI state, or unexpected cycle failures.
+a persisted per-good surcharge. `ui-m5.js` covers the region map, sea lanes,
+continents, globe raster, and region trade; `ui-m6.js` compares the what-if
+forecast with a real re-simulation; `ui-saves.js` creates and switches worlds;
+and `ui-production.js` runs a fresh week and requires Planks and Steel to appear
+from consumed inputs. They fail on page errors, console errors, missing UI state,
+or unexpected cycle failures.
 
 ## Scale and the Diamond evaluation budget
 
@@ -407,7 +435,8 @@ This is a prototype, not the full design in
 
 - one compact settlement region; globe region markets and sea lanes are a session-scoped trade layer, not yet persisted or populated with per-face settlements;
 - at most three trunk routes and four settlements;
-- no save/load, auto-run, speed control, or scenario selection;
+- save slots keep all worlds in one account; deleting a save is not exposed yet;
+- no workflow-based auto-run, speed control, or scenario selection;
 - no sea/rail variants beyond the four modes, no hubs, no cargo restrictions;
 - economy and research are deliberately simplified;
 - events are deterministic and limited to harvest/storm/caravan plus annual
@@ -416,4 +445,4 @@ This is a prototype, not the full design in
   built route, and otherwise stay on the free cell the player named;
 - the three-route/four-settlement caps are runtime-budget constraints.
 
-The natural next steps are a save format and settlement-level multi-region maps on the M5 globe.
+The natural next steps are settlement-level multi-region maps on the M5 globe, scenario selection, and workflow-based auto-run.

@@ -7,6 +7,7 @@
 
 type UserId = Id<"user">
 type WorldId = Id<"world">
+type CurrentWorldId = Id<"current_world">
 type TownId = Id<"town">
 type SiteId = Id<"site">
 type RouteId = Id<"route">
@@ -36,6 +37,17 @@ type WorldRow:
   draft_from: Text = ""
   draft_to: Text = ""
   draft_via: Text = ""
+
+type CurrentWorldRow:
+  id: CurrentWorldId
+  owner: UserId @created_by_principal
+  world: WorldId
+
+type NewCurrentWorldRow:
+  world: WorldId
+
+type EditCurrentWorldRow:
+  world: WorldId
 
 type NewWorldRow:
   seed: Int
@@ -96,6 +108,8 @@ type TownRow:
   endow5: Int
   endow6: Int
   endow7: Int
+  endow8: Int = 0
+  endow9: Int = 0
   stock0: Int
   stock1: Int
   stock2: Int
@@ -104,6 +118,8 @@ type TownRow:
   stock5: Int
   stock6: Int
   stock7: Int
+  stock8: Int = 0
+  stock9: Int = 0
 
 type NewTownRow:
   world: WorldId
@@ -124,6 +140,8 @@ type NewTownRow:
   endow5: Int
   endow6: Int
   endow7: Int
+  endow8: Int
+  endow9: Int
   stock0: Int
   stock1: Int
   stock2: Int
@@ -132,6 +150,8 @@ type NewTownRow:
   stock5: Int
   stock6: Int
   stock7: Int
+  stock8: Int
+  stock9: Int
 
 type SiteRow:
   id: SiteId
@@ -283,6 +303,8 @@ type EditTownRow:
   endow5: Int
   endow6: Int
   endow7: Int
+  endow8: Int
+  endow9: Int
   stock0: Int
   stock1: Int
   stock2: Int
@@ -291,6 +313,8 @@ type EditTownRow:
   stock5: Int
   stock6: Int
   stock7: Int
+  stock8: Int
+  stock9: Int
 
 type EditSiteRow:
   ord: Int
@@ -360,6 +384,7 @@ type TradePage:
 # ---------------------------------------------------------------- resources
 
 resource Worlds: WorldRow
+resource CurrentWorlds: CurrentWorldRow
 resource Towns: TownRow
 resource Sites: SiteRow
 resource Routes: RouteRow
@@ -368,6 +393,14 @@ resource Logs: LogRow
 resource History: HistoryRow
 
 policy Worlds:
+  read(row, by principal):
+    principal.is_user(row.owner)
+  create(row, by principal):
+    principal.is_user(row.owner)
+  update(before, after, by principal):
+    before.owner == after.owner and principal.is_user(before.owner)
+
+policy CurrentWorlds:
   read(row, by principal):
     principal.is_user(row.owner)
   create(row, by principal):
@@ -438,7 +471,7 @@ policy History:
 # ---------------------------------------------------------------- row mapping
 
 fn town_from_row(row: TownRow) -> Town:
-  Town(id: row.key, name: row.name, x: row.x, y: row.y, terrain: row.terrain, endow: [row.endow0, row.endow1, row.endow2, row.endow3, row.endow4, row.endow5, row.endow6, row.endow7], state: TownState(pop: row.pop, prosperity: row.prosperity, research: row.research, stock: [row.stock0, row.stock1, row.stock2, row.stock3, row.stock4, row.stock5, row.stock6, row.stock7]))
+  Town(id: row.key, name: row.name, x: row.x, y: row.y, terrain: row.terrain, endow: [row.endow0, row.endow1, row.endow2, row.endow3, row.endow4, row.endow5, row.endow6, row.endow7, row.endow8, row.endow9], state: TownState(pop: row.pop, prosperity: row.prosperity, research: row.research, stock: [row.stock0, row.stock1, row.stock2, row.stock3, row.stock4, row.stock5, row.stock6, row.stock7, row.stock8, row.stock9]))
 
 fn site_from_row(row: SiteRow) -> Site:
   Site(id: row.key, name: row.name, x: row.x, y: row.y, terrain: row.terrain, resource: row.resource, richness: row.richness, founded: row.founded)
@@ -595,19 +628,63 @@ fn ensure_world_version(row: WorldRow) -> Result<WorldRow, DataError>:
         None => Err("World regeneration failed.")
         Some(next) => Ok(next)
 
-fn load_state() -> Result<Loaded, DataError>:
-  let rows = worlds.select(limit: 1)?
+fn find_world_index(rows: List<WorldRow>, id: WorldId, i: Int) -> Int:
+  match list_get(rows, i):
+    None => -1
+    Some(r) => match r.id == id:
+      true => i
+      false => find_world_index(rows, id, i + 1)
+
+fn world_at(rows: List<WorldRow>, i: Int) -> Result<WorldRow, DataError>:
+  match list_get(rows, i):
+    Some(r) => Ok(r)
+    None => Err("World not found.")
+
+fn ensure_current_world(world_id: WorldId) -> Result<Bool, DataError>:
+  let rows = currentworlds.select(limit: 1)?
   match list_get(rows, 0):
+    Some(cw) =>
+      let _ = currentworlds.update(cw.id, EditCurrentWorldRow(world: world_id))?
+      Ok(true)
+    None =>
+      let _ = currentworlds.create(NewCurrentWorldRow(world: world_id))?
+      Ok(true)
+
+fn create_world(game: Game, epoch: Int) -> Result<WorldId, DataError>:
+  let created = worlds.create(NewWorldRow(seed: game.world.seed, generation_version: generation_version(), tick: game.world.tick, money: game.world.money, tech_road: game.world.tech_road, tech_river: game.world.tech_river, tech_rail: game.world.tech_rail, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: 0, epoch: epoch, settle_days: 0, settle_from: 0, draft_from: "", draft_to: "", draft_via: ""))?
+  save_children(created.id, game)?
+  let log_base = logs.count(world: created.id, epoch: epoch)?
+  save_logs(game.world.log, created.id, epoch, log_base, 0)?
+  let history_base = history.count(world: created.id, epoch: epoch)?
+  save_history(game.world.history, created.id, epoch, history_base, 0)?
+  Ok(created.id)
+
+fn load_state() -> Result<Loaded, DataError>:
+  let all = worlds.select(limit: 100)?
+  match list_get(all, 0):
     None =>
       let world = new_world(7)
       let fresh = raw_game(world, [], false, 0, 0, initial_selection(world), "New world generated. Connect complementary settlements to start the economy.", true)
-      save_game(fresh, 0, 0)?
-      let saved_rows = worlds.select(limit: 1)?
-      let id = match list_get(saved_rows, 0):
-        Some(row) => row.id
-        None => WorldId("missing")
+      let id = create_world(fresh, 0)?
+      let _ = ensure_current_world(id)?
       Ok(Loaded(id: id, world: World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: [], history: [], tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail), projects: [], auto_upkeep: false, last_paid_tick: 0, upkeep_per_cycle: 0, phase: 0, epoch: 0, settle_days: 0, settle_from: 0))
-    Some(row) => load_world(ensure_world_version(row)?)
+    Some(first) =>
+      let current_rows = currentworlds.select(limit: 1)?
+      let idx = match list_get(current_rows, 0):
+        Some(cw) => find_world_index(all, cw.world, 0)
+        None => 0
+      let i = match idx < 0:
+        true => 0
+        false => idx
+      let row = match list_get(all, i):
+        Some(r) => r
+        None => first
+      let _ = match list_get(current_rows, 0):
+        Some(_) => Ok(true)
+        None => ensure_current_world(row.id)
+      let ensured = ensure_world_version(row)?
+      load_world(ensured)
+
 
 export fn load_game() -> Result<Game, DataError>:
   let loaded = load_state()?
@@ -647,12 +724,12 @@ fn clear_projects(rows: List<ProjectRow>, i: Int) -> Result<Bool, DataError>:
 fn new_town_row(t: Town, world: WorldId, ord: Int) -> NewTownRow:
   let e = t.endow
   let s = t.state.stock
-  NewTownRow(world: world, ord: ord, key: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, endow0: nth_int(e, 0), endow1: nth_int(e, 1), endow2: nth_int(e, 2), endow3: nth_int(e, 3), endow4: nth_int(e, 4), endow5: nth_int(e, 5), endow6: nth_int(e, 6), endow7: nth_int(e, 7), stock0: nth_int(s, 0), stock1: nth_int(s, 1), stock2: nth_int(s, 2), stock3: nth_int(s, 3), stock4: nth_int(s, 4), stock5: nth_int(s, 5), stock6: nth_int(s, 6), stock7: nth_int(s, 7))
+  NewTownRow(world: world, ord: ord, key: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, endow0: nth_int(e, 0), endow1: nth_int(e, 1), endow2: nth_int(e, 2), endow3: nth_int(e, 3), endow4: nth_int(e, 4), endow5: nth_int(e, 5), endow6: nth_int(e, 6), endow7: nth_int(e, 7), endow8: nth_int(e, 8), endow9: nth_int(e, 9), stock0: nth_int(s, 0), stock1: nth_int(s, 1), stock2: nth_int(s, 2), stock3: nth_int(s, 3), stock4: nth_int(s, 4), stock5: nth_int(s, 5), stock6: nth_int(s, 6), stock7: nth_int(s, 7), stock8: nth_int(s, 8), stock9: nth_int(s, 9))
 
 fn edit_town_row(t: Town, ord: Int) -> EditTownRow:
   let e = t.endow
   let s = t.state.stock
-  EditTownRow(ord: ord, key: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, endow0: nth_int(e, 0), endow1: nth_int(e, 1), endow2: nth_int(e, 2), endow3: nth_int(e, 3), endow4: nth_int(e, 4), endow5: nth_int(e, 5), endow6: nth_int(e, 6), endow7: nth_int(e, 7), stock0: nth_int(s, 0), stock1: nth_int(s, 1), stock2: nth_int(s, 2), stock3: nth_int(s, 3), stock4: nth_int(s, 4), stock5: nth_int(s, 5), stock6: nth_int(s, 6), stock7: nth_int(s, 7))
+  EditTownRow(ord: ord, key: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, endow0: nth_int(e, 0), endow1: nth_int(e, 1), endow2: nth_int(e, 2), endow3: nth_int(e, 3), endow4: nth_int(e, 4), endow5: nth_int(e, 5), endow6: nth_int(e, 6), endow7: nth_int(e, 7), endow8: nth_int(e, 8), endow9: nth_int(e, 9), stock0: nth_int(s, 0), stock1: nth_int(s, 1), stock2: nth_int(s, 2), stock3: nth_int(s, 3), stock4: nth_int(s, 4), stock5: nth_int(s, 5), stock6: nth_int(s, 6), stock7: nth_int(s, 7), stock8: nth_int(s, 8), stock9: nth_int(s, 9))
 
 fn new_site_row(x: Site, world: WorldId, ord: Int) -> NewSiteRow:
   NewSiteRow(world: world, ord: ord, key: x.id, name: x.name, x: x.x, y: x.y, terrain: x.terrain, resource: x.resource, richness: x.richness, founded: x.founded)
@@ -804,7 +881,7 @@ fn town_ord_index(rows: List<TownRow>, ord: Int) -> Int:
   town_ord_index_range(rows, ord, 0, len(rows))
 
 fn town_state_row(row: TownRow, seed: Int) -> List<Int>:
-  [row.pop, row.prosperity, row.research, row.endow0, row.endow1, row.endow2, row.endow3, row.endow4, row.endow5, row.endow6, row.endow7, row.stock0, row.stock1, row.stock2, row.stock3, row.stock4, row.stock5, row.stock6, row.stock7, town_climate(seed, row.x, row.y)]
+  [row.pop, row.prosperity, row.research, row.endow0, row.endow1, row.endow2, row.endow3, row.endow4, row.endow5, row.endow6, row.endow7, row.endow8, row.endow9, row.stock0, row.stock1, row.stock2, row.stock3, row.stock4, row.stock5, row.stock6, row.stock7, row.stock8, row.stock9, town_climate(seed, row.x, row.y)]
 
 fn route_state_row(row: RouteRow, a: Int, b: Int) -> List<Int>:
   let rules = decode_link_rules(row.rules)
@@ -812,9 +889,9 @@ fn route_state_row(row: RouteRow, a: Int, b: Int) -> List<Int>:
   concat_ints(concat_ints(concat_ints(base, rules.allow), rules.fee), decode_pipeline(row.pipeline))
 
 fn compact_town_edit(row: TownRow, values: List<Int>) -> EditTownRow:
-  let has_endow = len(values) > 11
+  let has_endow = len(values) > 13
   let stock_base = match has_endow:
-    true => 11
+    true => 13
     false => 3
   let endow0 = match has_endow:
     true => nth_int(values, 3)
@@ -840,7 +917,13 @@ fn compact_town_edit(row: TownRow, values: List<Int>) -> EditTownRow:
   let endow7 = match has_endow:
     true => nth_int(values, 10)
     false => row.endow7
-  EditTownRow(ord: row.ord, key: row.key, name: row.name, x: row.x, y: row.y, terrain: row.terrain, pop: nth_int(values, 0), prosperity: nth_int(values, 1), research: nth_int(values, 2), endow0: endow0, endow1: endow1, endow2: endow2, endow3: endow3, endow4: endow4, endow5: endow5, endow6: endow6, endow7: endow7, stock0: nth_int(values, stock_base), stock1: nth_int(values, stock_base + 1), stock2: nth_int(values, stock_base + 2), stock3: nth_int(values, stock_base + 3), stock4: nth_int(values, stock_base + 4), stock5: nth_int(values, stock_base + 5), stock6: nth_int(values, stock_base + 6), stock7: nth_int(values, stock_base + 7))
+  let endow8 = match has_endow:
+    true => nth_int(values, 11)
+    false => row.endow8
+  let endow9 = match has_endow:
+    true => nth_int(values, 12)
+    false => row.endow9
+  EditTownRow(ord: row.ord, key: row.key, name: row.name, x: row.x, y: row.y, terrain: row.terrain, pop: nth_int(values, 0), prosperity: nth_int(values, 1), research: nth_int(values, 2), endow0: endow0, endow1: endow1, endow2: endow2, endow3: endow3, endow4: endow4, endow5: endow5, endow6: endow6, endow7: endow7, endow8: endow8, endow9: endow9, stock0: nth_int(values, stock_base), stock1: nth_int(values, stock_base + 1), stock2: nth_int(values, stock_base + 2), stock3: nth_int(values, stock_base + 3), stock4: nth_int(values, stock_base + 4), stock5: nth_int(values, stock_base + 5), stock6: nth_int(values, stock_base + 6), stock7: nth_int(values, stock_base + 7), stock8: nth_int(values, stock_base + 8), stock9: nth_int(values, stock_base + 9))
 
 fn compact_route_edit(row: RouteRow, values: List<Int>) -> EditRouteRow:
   EditRouteRow(ord: row.ord, key: row.key, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, bend: row.bend, fee: row.fee, traffic: nth_int(values, 0), capacity: row.capacity, upkeep: row.upkeep, waypoints: row.waypoints, a_ord: row.a_ord, b_ord: row.b_ord, rules: row.rules, pipeline: row.pipeline, flow: encode_flow(flow_from_result(values)))
@@ -943,19 +1026,34 @@ fn draft_or_empty(value: Text, keep: Bool) -> Text:
     true => value
     false => ""
 
+fn world_edit_row(row: WorldRow, game: Game, phase: Int, epoch: Int, settle_days: Int, settle_from: Int) -> EditWorldRow:
+  EditWorldRow(seed: game.world.seed, generation_version: generation_version(), tick: game.world.tick, money: game.world.money, tech_road: game.world.tech_road, tech_river: game.world.tech_river, tech_rail: game.world.tech_rail, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: phase, epoch: epoch, settle_days: settle_days, settle_from: settle_from, draft_from: draft_or_empty(row.draft_from, epoch == row.epoch), draft_to: draft_or_empty(row.draft_to, epoch == row.epoch), draft_via: draft_or_empty(row.draft_via, epoch == row.epoch))
+
 fn save_game_window(game: Game, phase: Int, epoch: Int, settle_days: Int, settle_from: Int) -> Result<Game, DataError>:
-  let rows = worlds.select(limit: 1)?
-  match list_get(rows, 0):
+  let all = worlds.select(limit: 100)?
+  match list_get(all, 0):
     None =>
       let created = worlds.create(NewWorldRow(seed: game.world.seed, generation_version: generation_version(), tick: game.world.tick, money: game.world.money, tech_road: game.world.tech_road, tech_river: game.world.tech_river, tech_rail: game.world.tech_rail, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: phase, epoch: epoch, settle_days: settle_days, settle_from: settle_from, draft_from: "", draft_to: "", draft_via: ""))?
+      let _ = ensure_current_world(created.id)?
       save_children(created.id, game)?
       let log_base = logs.count(world: created.id, epoch: epoch)?
       save_logs(game.world.log, created.id, epoch, log_base, 0)?
       let history_base = history.count(world: created.id, epoch: epoch)?
       save_history(game.world.history, created.id, epoch, history_base, 0)?
       attach_streams(created.id, epoch, game)
-    Some(row) =>
-      let updated = worlds.update(row.id, EditWorldRow(seed: game.world.seed, generation_version: generation_version(), tick: game.world.tick, money: game.world.money, tech_road: game.world.tech_road, tech_river: game.world.tech_river, tech_rail: game.world.tech_rail, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: phase, epoch: epoch, settle_days: settle_days, settle_from: settle_from, draft_from: draft_or_empty(row.draft_from, epoch == row.epoch), draft_to: draft_or_empty(row.draft_to, epoch == row.epoch), draft_via: draft_or_empty(row.draft_via, epoch == row.epoch)))?
+    Some(first) =>
+      let current_rows = currentworlds.select(limit: 1)?
+      let idx = match list_get(current_rows, 0):
+        Some(cw) => find_world_index(all, cw.world, 0)
+        None => 0
+      let i = match idx < 0:
+        true => 0
+        false => idx
+      let row = match list_get(all, i):
+        Some(r) => r
+        None => first
+      let _ = ensure_current_world(row.id)?
+      let updated = worlds.update(row.id, world_edit_row(row, game, phase, epoch, settle_days, settle_from))?
       save_children(row.id, game)?
       let log_base = logs.count(world: row.id, epoch: epoch)?
       save_logs(game.world.log, row.id, epoch, log_base, 0)?
@@ -1304,26 +1402,21 @@ export fn region_trade(seed: Int, lanes: List<Int>) -> Result<RegionTrade, DataE
   let vertices = planet_vertices()
   let faces = planet_faces()
   let summaries = host.compute<List<List<Int>>>("arteries", "face_summaries", seed, 8, vertices, faces)?
-  let town_rows = for i in indices(len(summaries)):
+  let lane_count = len(lanes) / 2
+  let lane_rows = host.compute<List<List<Int>>>("arteries", "region_trade", summaries, lanes, 7, 100)?
+  let markets = for i in indices(len(summaries)):
     let summary = match list_get(summaries, i):
       Some(row) => row
-      None => []
-    region_town_row(summary)
-  let lane_count = len(lanes) / 2
-  let route_rows = for k in indices(lane_count):
-    region_lane_row(nth_int(lanes, k * 2), nth_int(lanes, k * 2 + 1))
-  let pipeline_texts = for k in indices(lane_count):
-    ""
-  let result = host.compute<List<List<Int>>>("arteries", "trade", 0, town_rows, route_rows, pipeline_texts, 7, 100)?
-  let markets = for i in indices(len(town_rows)):
-    let row = match list_get(town_rows, i):
-      Some(value) => value
-      None => []
-    RegionMarket(face: i, pop: nth_int(row, 0), prosperity: nth_int(row, 1), climate: nth_int(row, 19))
+      None => [0, 0, 0, 0, 0]
+    let water = nth_int(summary, 1)
+    let land = nth_int(summary, 2)
+    let climate = nth_int(summary, 3)
+    let biome = nth_int(summary, 4)
+    RegionMarket(face: i, pop: region_pop(land, water, climate), prosperity: region_prosperity(land, biome), climate: climate)
   let trade_lanes = for k in indices(lane_count):
-    let row = match list_get(result, 1 + len(town_rows) + k):
+    let row = match list_get(lane_rows, k):
       Some(value) => value
-      None => []
+      None => [0]
     RegionLane(a: nth_int(lanes, k * 2), b: nth_int(lanes, k * 2 + 1), traffic: nth_int(row, 0))
   let traffic_values = for lane in trade_lanes:
     lane.traffic
@@ -1435,24 +1528,25 @@ export fn advance_scale(hours: Int, cadence: Text, phase: Int, cursor: Text, pop
             let summary = load_compact()?
             Ok(ScaleStep(phase: summary.phase, cursor: "", tick: summary.tick, money: summary.money, pop: pop, prosperity: prosperity, max_research: max_research, traffic: traffic, finish: finish, status: "Idle"))
 
-# Whole-world market phase through the Rust flow kernel. `market_period` in
-# shared.dia stays as the readable reference implementation for the fixtures; a
-# Dijkstra-style pass is far too heavy for the interpreter, so the app path runs
-# the same algorithm in `arteries.trade`.
+# Whole-world production and market phase through the Rust kernel. The
+# readable Diamond production helpers stay as fixtures, but a Dijkstra-style
+# trade pass is far too heavy for the interpreter, so the app path runs both
+# production and trade in `arteries.market`.
 fn market_flow_period(world: World, days: Int, scale: Int) -> Result<World, DataError>:
-  let towns0 = flow_advance_towns(world, days)
-  let town_values = for t in towns0:
+  let town_values = for t in world.towns:
     trade_town_row(t, world.seed)
   let route_values = for r in world.routes:
-    trade_route_row(towns0, r)
+    trade_route_row(world.towns, r)
   let pipeline_values = for r in world.routes:
     encode_pipeline(r.pipeline)
-  let result = host.compute<List<List<Int>>>("arteries", "trade", world.money, town_values, route_values, pipeline_values, days, scale)?
+  # Run production and trade together in Rust. The interpreter only carries
+  # the compact rows, so a larger goods list does not inflate managed values.
+  let result = host.compute<List<List<Int>>>("arteries", "market", world.money, town_values, route_values, pipeline_values, days, scale)?
   let money_row = match list_get(result, 0):
     Some(values) => values
     None => []
-  let towns1 = flow_apply_towns(towns0, result)
-  let routes1 = flow_apply_routes(world.routes, result, len(towns0))
+  let towns1 = flow_apply_towns(world.towns, result)
+  let routes1 = flow_apply_routes(world.routes, result, len(world.towns))
   Ok(World(seed: world.seed, tick: world.tick, money: nth_int(money_row, 0), towns: towns1, sites: world.sites, routes: routes1, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail))
 
 export fn forecast_market(hours: Int, cadence: Text) -> Result<Forecast, DataError>:
@@ -1712,8 +1806,26 @@ export fn toggle_auto() -> Result<Game, DataError>:
   let game = game_toggle_auto(current)
   save_game(game, 0, state.epoch)
 
+export fn list_worlds() -> Result<List<WorldSummary>, DataError>:
+  let rows = worlds.select(limit: 100)?
+  let summaries = for r in rows:
+    WorldSummary(id: id_text(r.id), seed: r.seed, tick: r.tick, money: r.money, towns: towns.count(world: r.id)?)
+  Ok(summaries)
+
+export fn switch_world(id: Text) -> Result<Game, DataError>:
+  let rows = worlds.select(limit: 100)?
+  let idx = find_world_index(rows, WorldId(id), 0)
+  match idx < 0:
+    true => Err("World not found.")
+    false =>
+      let target = world_at(rows, idx)?
+      let _ = ensure_current_world(target.id)?
+      load_game()
+
 export fn new_seed() -> Result<Game, DataError>:
   let state = load_state()?
   let current = state_game(state, "")
   let game = game_new_seed(current)
-  save_game(game, 0, state.epoch + 1)
+  let id = create_world(game, state.epoch + 1)?
+  let _ = ensure_current_world(id)?
+  attach_streams(id, state.epoch + 1, game)

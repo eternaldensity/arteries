@@ -275,6 +275,8 @@ export component Root:
   state worldgen: WorldgenSummary = empty_worldgen_summary()
   state show_preview: Bool = false
   state draft_plan: RoutePlan = empty_plan()
+  state worlds: List<WorldSummary> = []
+  state worlds_open: Bool = false
 
   # Root re-evaluates every derived on each step of each handler, while the
   # template is only evaluated when it renders. Values the handlers never read
@@ -462,7 +464,30 @@ export component Root:
 
   on new_seed:
     game = server_adopt(rpc.new_seed())
+    scale_summary = rpc.load_compact()
+    scale_mode = scale_summary.towns > 20
     draft_plan = game.sel.draft
+    worlds = rpc.list_worlds()
+    pending_dismantle = ""
+    rules_open = ""
+    show_preview = false
+    scale_active = false
+
+  on worlds_toggle:
+    worlds = rpc.list_worlds()
+    worlds_open = not worlds_open
+
+  on world_switch(id: Text):
+    game = server_adopt(rpc.switch_world(id))
+    scale_summary = rpc.load_compact()
+    scale_mode = scale_summary.towns > 20
+    draft_plan = game.sel.draft
+    worlds = rpc.list_worlds()
+    worlds_open = false
+    pending_dismantle = ""
+    rules_open = ""
+    show_preview = false
+    scale_active = false
 
   on upgrade(id: Text):
     game = server_apply(game, rpc.order_upgrade(id))
@@ -577,6 +602,8 @@ export component Root:
               <h1>Compact frontier</h1>
               <p>Server-authoritative chunks without loading the whole world into the browser.</p>
             </div>
+            <button class="ghost" type="button" on-click={worlds_toggle}>Worlds</button>
+            <button class="ghost" type="button" on-click={new_seed}>New world</button>
             <when test={scale_summary.towns <= 20}>
               <button class="ghost" type="button" on-click={scale_exit}>Exit scale view</button>
             </when>
@@ -584,6 +611,20 @@ export component Root:
               <button class="ghost" type="button" on-click={sign_out}>Sign out</button>
             </when>
           </header>
+          <when test={worlds_open}>
+            <section class="card world-panel">
+              <div class="card-head">
+                <h2>Saved worlds</h2>
+                <button class="ghost tiny" type="button" on-click={worlds_toggle}>Close</button>
+              </div>
+              <each items={worlds} as="w" key={w.id}>
+                <button class="world-row" type="button" on-click={world_switch(w.id)}>
+                  <strong>World {w.seed}</strong>
+                  <span>{w.towns} settlements · {w.money} treasury · day {w.tick}</span>
+                </button>
+              </each>
+            </section>
+          </when>
           <div class="scale-grid">
             <div><span>Tick</span><strong>{int_text(scale_summary.tick)}</strong></div>
             <div><span>Crowns</span><strong>{int_text(scale_summary.money)}</strong></div>
@@ -744,10 +785,27 @@ export component Root:
             <strong class={money_class(world)}>{world.money}</strong>
           </div>
           <button class="ghost" type="button" on-click={new_seed}>New world</button>
+          <button class="ghost" type="button" on-click={worlds_toggle}>Worlds</button>
           <button class="ghost" type="button" on-click={scale_enter}>Scale view</button>
           <button class="ghost" type="button" on-click={sign_out}>Sign out</button>
         </div>
       </header>
+
+      <when test={worlds_open}>
+        <section class="card world-panel">
+          <div class="card-head">
+            <h2>Saved worlds</h2>
+            <button class="ghost tiny" type="button" on-click={worlds_toggle}>Close</button>
+          </div>
+          <p class="helper">Each world is an independent authoritative save. Switching reloads the selected world.</p>
+          <each items={worlds} as="w" key={w.id}>
+            <button class="world-row" type="button" on-click={world_switch(w.id)}>
+              <strong>World {w.seed}</strong>
+              <span>{w.towns} settlements · {w.money} treasury · day {w.tick}</span>
+            </button>
+          </each>
+        </section>
+      </when>
 
       <section class="stats">
         <article class="stat">

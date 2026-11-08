@@ -8,9 +8,9 @@
 
 use arteries_core::{
     face_components, face_neighbors, face_path, face_summary, fbm, finish_towns, generate_faces,
-    generate_world, globe_raster, market, pathfind, pathfind_features, region_text, route_cost,
-    route_cost_features, trade, FeatureGrid, Grid, GridPoint, TickRoute, TickState, TickTown,
-    TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED, PIPELINE_LEN, TOWN_ROW_LEN,
+    generate_world, globe_raster, market, pathfind, pathfind_features, region_text, region_trade,
+    route_cost, route_cost_features, trade, FeatureGrid, Grid, GridPoint, TickRoute, TickState,
+    TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED, PIPELINE_LEN, TOWN_ROW_LEN,
 };
 use diamond::{Compute, ComputeContext, ComputeError, RuntimeGrants};
 use serde_json::Value as Json;
@@ -242,6 +242,44 @@ impl Trade {
 }
 
 impl Compute for Trade {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
+/// Pure-compute export `arteries.region_trade`.
+///
+/// Arguments: `(summaries, lanes, days, scale)`. Summaries are
+/// `face_summaries` rows and lanes is a flat list of face-index pairs.
+///
+/// Reply: one `[traffic]` row per lane.
+pub struct RegionTrade;
+
+impl RegionTrade {
+    /// Validate wire arguments and run the synthetic region flow.
+    ///
+    /// # Errors
+    /// Returns [`ComputeError::InvalidInput`] for malformed rows, odd lane
+    /// lists, or out-of-range face indices.
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 4 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let summaries = nested_int_list_arg(arguments, 0)?;
+        let lanes = int_list_arg(arguments, 1)?;
+        let days = int_arg(arguments, 2)?;
+        let scale = int_arg(arguments, 3)?;
+        let rows = region_trade(&summaries, &lanes, days, scale)
+            .map_err(|_| ComputeError::InvalidInput)?;
+        Ok(nested_int_list_json(rows))
+    }
+}
+
+impl Compute for RegionTrade {
     fn call(
         &self,
         _context: &ComputeContext<'_>,
@@ -1148,6 +1186,13 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
         ],
         "List<List<Int>>",
         Trade,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "region_trade",
+        &["List<List<Int>>", "List<Int>", "Int", "Int"],
+        "List<List<Int>>",
+        RegionTrade,
     )?;
     grants.register_compute(
         "arteries",

@@ -118,11 +118,11 @@ const trafficOf = (text) => Number((text.match(/(\d+)\/\d+ used/) || [])[1] || 0
     const desk = card.locator('.rules-desk');
     assert((await desk.count()) === 1, 'rules desk did not open');
     const rows = desk.locator('.rules-row');
-    assert((await rows.count()) === 8, `expected 8 good rows, got ${await rows.count()}`);
+    assert((await rows.count()) === 10, `expected 10 good rows, got ${await rows.count()}`);
 
     // Block every good on the busy link. The next market tick must leave it
     // idle; letting goods back in must restore the flow.
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 10; i++) {
       await rows.nth(i).getByRole('button', { name: 'Allowed', exact: true }).click();
       await page.waitForTimeout(320);
     }
@@ -142,7 +142,7 @@ const trafficOf = (text) => Number((text.match(/(\d+)\/\d+ used/) || [])[1] || 0
     }
     assert(reopened > 0, 'flow did not return after allowing goods again');
     assert(
-      (await card.getByRole('button', { name: /Rules ·/ }).innerText()).includes('8/8'),
+      (await card.getByRole('button', { name: /Rules ·/ }).innerText()).includes('10/10'),
       'rules label did not return to all-allowed'
     );
 
