@@ -117,6 +117,54 @@ Five branches share four eras. Cross-branch prerequisites are intentional.
 | 4 | Rail | 240 | Roads + Toolmaking + Machining | Steel 6 + Tools 4 + Machinery 2 | unlock Rail |
 | 4 | Sea lanes | 220 | Shipbuilding + River barges | Ship Parts 2 + Planks 4 + Cloth 2 | unlock Sea |
 
+## Side branches
+
+The main spine is intentionally narrow. The side branches are where the tree
+becomes a tree: optional technologies that do not unlock another main-line era
+but improve throughput, efficiency, capacity, or research speed. They still use
+the same rules — research, prerequisites, and a material gate in one settlement.
+
+### Research rate
+
+| Tech | Era | Cost | Prereqs | Material gate | Effect |
+| --- | --- | ---: | --- | --- | --- |
+| Writing | 2 | 50 | Weaving | Cloth 2 + Planks 2 | +10% research |
+| Mathematics | 3 | 100 | Writing + Masonry | Planks 2 + Tools 2 | +15% research |
+| Scientific method | 4 | 200 | Mathematics + Education | Cloth 4 + Tools 4 + Machinery 1 | +25% research |
+
+These deliberately sit off the production spine. A player who wants faster
+research has to connect a textile/construction settlement to a tool-producing
+one, then retain that material mix long enough to discover the branch. Research
+speed becomes a routing reward, not a free global multiplier.
+
+### Production efficiency
+
+| Tech | Era | Cost | Prereqs | Material gate | Effect |
+| --- | --- | ---: | --- | --- | --- |
+| Sawmill gearing | 2 | 50 | Carpentry | Timber 4 + Planks 2 | +25% Planks |
+| Bloomery | 2 | 55 | Smelting | Ore 4 + Coal 2 | +25% Steel |
+| Loom speed | 2 | 50 | Weaving | Fiber 4 + Planks 2 | +25% Cloth |
+| Standardized parts | 3 | 120 | Toolmaking | Steel 4 + Tools 2 | +25% Tools and Machinery |
+| Irrigation | 3 | 100 | Crop rotation + Masonry | Grain 6 + Bricks 2 | +1 Grain and +1 Fish/day |
+
+These are optional leaves. They reward a player who commits a settlement to a
+single production identity, but they are not bottlenecks for the main tree.
+
+### Transport, throughput, and trade
+
+| Tech | Era | Cost | Prereqs | Material gate | Effect |
+| --- | --- | ---: | --- | --- | --- |
+| Bulk handling | 3 | 120 | Roads | Planks 4 + Tools 2 | +15% route capacity |
+| Logistics | 4 | 180 | Bulk handling + Mathematics | Tools 2 + Machinery 1 | +20% throughput, less congestion |
+| Rail signaling | 4 | 160 | Rail + Mathematics | Steel 4 + Tools 2 | +20% rail capacity |
+| Harbor cranes | 4 | 160 | Shipbuilding | Ship Parts 2 + Steel 2 | +25% sea-lane capacity |
+| Customs house | 3 | 90 | Roads + Weaving | Cloth 2 + Tools 2 | +10% toll income |
+
+The transport leaves are where the tree folds back into the map. Research-rate
+Writing/Mathematics make the transport leaves cheaper to reach; logistics then
+makes the next research push faster. That feedback loop is the intended
+mid-game engine.
+
 ## Example: how routing guides the tree
 
 Start with a forest town (Timber) and a stone/ore town.
@@ -135,6 +183,12 @@ Start with a forest town (Timber) and a stone/ore town.
 
 No single settlement can do all of that alone. The player is building a
 research network by choosing which goods meet where.
+
+The side branches deepen the same idea: the fast-research path needs Cloth,
+Planks, Tools, and Machinery to meet; the fast-freight path needs Planks, Tools,
+and Machinery; the efficient-production path needs the relevant raw and processed
+inputs. The player is always choosing which combination of specialisations to
+wire together.
 
 ## Implementation shape
 

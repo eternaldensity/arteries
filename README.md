@@ -232,8 +232,8 @@ with one world.
 ### Technology tree
 
 See [`docs/tech-tree.svg`](docs/tech-tree.svg) for the current transport spine.
-The proposed advanced tree — including per-settlement material gates and the
-production crossroads — is in
+The proposed advanced tree — including per-settlement material gates, production
+crossroads, and research/throughput side branches — is in
 [`docs/tech-production-tree.md`](docs/tech-production-tree.md) and illustrated
 in [`docs/tech-production-tree.svg`](docs/tech-production-tree.svg).
 

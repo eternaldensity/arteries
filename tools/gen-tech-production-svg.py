@@ -2,7 +2,7 @@
 """Generate the proposed advanced tech+production diagram."""
 from pathlib import Path
 
-W, H = 1800, 1260
+W, H = 1800, 1700
 cols = [210, 610, 1010, 1410]
 rows = [225, 383, 541, 699, 857]
 CW, CH = 350, 140
@@ -97,7 +97,7 @@ svg = []
 svg.append(f'<?xml version="1.0" encoding="UTF-8"?>')
 svg.append(f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" role="img" aria-labelledby="title desc">')
 svg.append('  <title id="title">Arteries advanced tech and production tree</title>')
-svg.append('  <desc id="desc">A proposed five-branch technology DAG where each discovery requires research, prerequisite technologies, and a specific combination of goods present in a settlement. Routing goods together is how the player guides technological progress.</desc>')
+svg.append('  <desc id="desc">A proposed five-branch technology DAG with research, production, and transport side branches. Each discovery requires research, prerequisite technologies, and a specific combination of goods present in a settlement. Routing goods together is how the player guides technological progress.</desc>')
 svg.append('''  <defs>
     <radialGradient id="bgA" cx="12%" cy="7%" r="58%">
       <stop offset="0%" stop-color="#173252" stop-opacity="0.60"/>
@@ -136,6 +136,9 @@ svg.append('''  <style>
     .body { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 11px; fill: #c6d3e6; }
     .muted { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 10px; fill: #8297b6; }
     .code { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace; font-size: 9.8px; fill: #b9cce5; }
+    .side-title { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 15px; font-weight: 650; fill: #f4f7fc; }
+    .side-line { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace; font-size: 9.3px; fill: #a7b8d1; }
+    .side-effect { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace; font-size: 9.3px; fill: #7fd0c0; }
     .footer { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 11px; fill: #637897; }
   </style>''')
 svg.append(f'  <rect class="bg" width="{W}" height="{H}"/>')
@@ -143,8 +146,8 @@ svg.append(f'  <rect width="{W}" height="{H}" fill="url(#bgA)"/>')
 svg.append(f'  <rect width="{W}" height="{H}" fill="url(#bgB)"/>')
 svg.append('  <text class="eyebrow" x="64" y="58">ARTERIES · TECHNOLOGY</text>')
 svg.append('  <text class="h1" x="64" y="96">Advanced tech + production tree</text>')
-svg.append('  <text class="sub" x="64" y="124">The player guides discovery by routing goods into the same settlement.</text>')
-svg.append('  <text class="meta" x="1736" y="62" text-anchor="end">5 branches · 4 eras · 19 discoveries</text>')
+svg.append('  <text class="sub" x="64" y="124">The player guides discovery by routing goods into the same settlement. Side branches tune research, production, and throughput.</text>')
+svg.append('  <text class="meta" x="1736" y="62" text-anchor="end">5 main branches · 13 side branches</text>')
 svg.append('  <text class="meta" x="1736" y="84" text-anchor="end">tech + material gate + research</text>')
 
 # Era header / grid
@@ -165,27 +168,45 @@ for branch, col, title, cost, gate_lines, effect, after, is_start in techs:
 for branch, from_col, to_col in arrows:
     svg.append(arrow_line(branch, from_col, to_col))
 
-# Bottom panels
-svg.append('  <rect class="panel" x="40" y="1025" width="560" height="195" rx="12"/>')
-svg.append('  <text class="panel-title" x="60" y="1053">PRODUCTION CHAIN</text>')
-production = [
-    "Timber → Planks",
-    "Clay + Stone → Bricks",
-    "Ore + Stone → Steel",
-    "Fiber → Cloth",
-    "Fiber + Planks → Rope",
-    "Planks + Steel → Tools",
-    "Steel + Tools → Machinery",
-    "Planks + Cloth + Rope → Ship Parts",
-    "Steel + Machinery + Tools → Engines",
-    "Grain + Stone → Flour",
-    "Grain + Fish → growth",
-]
-for index, line in enumerate(production):
-    svg.append(f'  <text class="code" x="60" y="{1079 + index*13}">{esc(line)}</text>')
+# Side-branch gallery
+svg.append('  <line class="timeline" x1="40" y1="1018" x2="1760" y2="1018"/>')
+svg.append('  <text class="eyebrow" x="40" y="1050">SIDE BRANCHES · PERFORMANCE, THROUGHPUT &amp; RESEARCH</text>')
 
-svg.append('  <rect class="panel" x="620" y="1025" width="560" height="195" rx="12"/>')
-svg.append('  <text class="panel-title" x="640" y="1053">ROUTING → DISCOVERY</text>')
+side_groups = [
+    ("RESEARCH RATE", "#8fb6e0", 40, [
+        ("Writing", "E2 · 50r", "after Weaving", "Cloth 2 + Planks 2", "+10% research"),
+        ("Mathematics", "E3 · 100r", "after Writing + Masonry", "Planks 2 + Tools 2", "+15% research"),
+        ("Scientific method", "E4 · 200r", "after Mathematics + Education", "Cloth 4 + Tools 4 + Machinery 1", "+25% research"),
+    ]),
+    ("PRODUCTION EFFICIENCY", "#e0ac5c", 620, [
+        ("Sawmill gearing", "E2 · 50r", "after Carpentry", "Timber 4 + Planks 2", "+25% Planks"),
+        ("Bloomery", "E2 · 55r", "after Smelting", "Ore 4 + Coal 2", "+25% Steel"),
+        ("Loom speed", "E2 · 50r", "after Weaving", "Fiber 4 + Planks 2", "+25% Cloth"),
+        ("Standardized parts", "E3 · 120r", "after Toolmaking", "Steel 4 + Tools 2", "+25% Tools/Machinery"),
+        ("Irrigation", "E3 · 100r", "after Crop rotation + Masonry", "Grain 6 + Bricks 2", "+1 Grain +1 Fish"),
+    ]),
+    ("TRANSPORT & TRADE", "#6f90ba", 1200, [
+        ("Bulk handling", "E3 · 120r", "after Roads", "Planks 4 + Tools 2", "+15% route capacity"),
+        ("Logistics", "E4 · 180r", "after Bulk handling + Mathematics", "Tools 2 + Machinery 1", "+20% throughput"),
+        ("Rail signaling", "E4 · 160r", "after Rail + Mathematics", "Steel 4 + Tools 2", "+20% rail capacity"),
+        ("Harbor cranes", "E4 · 160r", "after Shipbuilding", "Ship Parts 2 + Steel 2", "+25% sea capacity"),
+        ("Customs house", "E3 · 90r", "after Roads + Weaving", "Cloth 2 + Tools 2", "+10% toll income"),
+    ]),
+]
+for title, color, x, cards in side_groups:
+    svg.append(f'  <text class="branch" x="{x}" y="1074">{esc(title)}</text>')
+    for index, (name, meta, after, gate, effect) in enumerate(cards):
+        y = 1088 + index * 78
+        svg.append(f'  <rect class="card" x="{x}" y="{y}" width="560" height="66" rx="10"/>')
+        svg.append(f'  <line x1="{x+14}" y1="{y+2}" x2="{x+546}" y2="{y+2}" stroke="{color}" stroke-width="3" stroke-linecap="round"/>')
+        svg.append(f'  <text class="side-title" x="{x+16}" y="{y+22}">{esc(name)}</text>')
+        svg.append(f'  <text class="meta" x="{x+544}" y="{y+22}" text-anchor="end">{esc(meta)}</text>')
+        svg.append(f'  <text class="side-line" x="{x+16}" y="{y+40}">{esc(after)} · {esc(gate)}</text>')
+        svg.append(f'  <text class="side-effect" x="{x+16}" y="{y+57}">EFFECT  {esc(effect)}</text>')
+
+# Bottom panels
+svg.append('  <rect class="panel" x="40" y="1485" width="560" height="170" rx="12"/>')
+svg.append('  <text class="panel-title" x="60" y="1513">ROUTING → DISCOVERY</text>')
 routing = [
     "1  Route goods",
     "2  settle together",
@@ -196,12 +217,12 @@ routing = [
     "7  new goods reach new gates",
 ]
 for index, line in enumerate(routing):
-    svg.append(f'  <text class="code" x="640" y="{1077 + index*14}">{esc(line)}</text>')
-svg.append('  <text class="muted" x="640" y="1188">Forest town + Ore/Stone → Carpentry + Smelting</text>')
-svg.append('  <text class="muted" x="640" y="1206">→ Planks + Steel → Toolmaking → Machining → Rail</text>')
+    svg.append(f'  <text class="code" x="60" y="{1537 + index*13}">{esc(line)}</text>')
+svg.append('  <text class="muted" x="60" y="1633">Forest + Ore/Stone → Carpentry + Smelting</text>')
+svg.append('  <text class="muted" x="60" y="1647">→ Planks + Steel → Toolmaking → Machining → Rail</text>')
 
-svg.append('  <rect class="panel" x="1200" y="1025" width="560" height="195" rx="12"/>')
-svg.append('  <text class="panel-title" x="1220" y="1053">DISCOVERY GATE</text>')
+svg.append('  <rect class="panel" x="620" y="1485" width="560" height="170" rx="12"/>')
+svg.append('  <text class="panel-title" x="640" y="1513">DISCOVERY GATE</text>')
 gate_lines = [
     "research ≥ cost",
     "AND prerequisites known here",
@@ -209,19 +230,25 @@ gate_lines = [
     "for at least one market day",
 ]
 for index, line in enumerate(gate_lines):
-    svg.append(f'  <text class="code" x="1220" y="{1077 + index*14}">{esc(line)}</text>')
-legend = [
-    "GATE  goods that must meet in one place",
-    "EFFECT  recipe, mode, or production boost",
-    "AFTER  prerequisite technologies",
-    "arrows show same-branch chains",
-]
-for index, line in enumerate(legend):
-    svg.append(f'  <text class="muted" x="1220" y="{1143 + index*14}">{esc(line)}</text>')
-svg.append('  <text class="muted" x="1220" y="1203">No tech unlocks from research alone.</text>')
-svg.append('  <text class="muted" x="1220" y="1219">Branch colour = production family.</text>')
+    svg.append(f'  <text class="code" x="640" y="{1537 + index*14}">{esc(line)}</text>')
+svg.append('  <text class="muted" x="640" y="1615">No tech unlocks from research alone.</text>')
+svg.append('  <text class="muted" x="640" y="1631">Side branches still need the same gate.</text>')
+svg.append('  <text class="muted" x="640" y="1647">Research-side bonuses compound the loop.</text>')
 
-svg.append('  <text class="footer" x="64" y="1242">Arteries prototype · proposed advanced tree · routing choices assemble the research environment</text>')
+svg.append('  <rect class="panel" x="1200" y="1485" width="560" height="170" rx="12"/>')
+svg.append('  <text class="panel-title" x="1220" y="1513">SIDE-BRANCH TYPES</text>')
+side_legend = [
+    "RESEARCH  Writing · Mathematics · Scientific method",
+    "PRODUCTION  Sawmills · Bloomery · Looms · Tooling · Irrigation",
+    "TRANSPORT  Bulk handling · Logistics · Rail/Harbor · Customs",
+    "Each is optional; each changes the next research or transport step.",
+]
+for index, line in enumerate(side_legend):
+    svg.append(f'  <text class="muted" x="1220" y="{1540 + index*17}">{esc(line)}</text>')
+svg.append('  <text class="muted" x="1220" y="1631">GATE goods together · AFTER tech prereqs</text>')
+svg.append('  <text class="muted" x="1220" y="1647">EFFECT recipe, mode, or throughput boost</text>')
+
+svg.append('  <text class="footer" x="64" y="1683">Arteries prototype · proposed advanced tree · routing choices assemble the research environment</text>')
 svg.append('</svg>')
 ROOT = Path(__file__).resolve().parent.parent
 (ROOT / "docs/tech-production-tree.svg").write_text("\n".join(svg) + "\n")

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1260" viewBox="0 0 1800 1260" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1700" viewBox="0 0 1800 1700" role="img" aria-labelledby="title desc">
   <title id="title">Arteries advanced tech and production tree</title>
-  <desc id="desc">A proposed five-branch technology DAG where each discovery requires research, prerequisite technologies, and a specific combination of goods present in a settlement. Routing goods together is how the player guides technological progress.</desc>
+  <desc id="desc">A proposed five-branch technology DAG with research, production, and transport side branches. Each discovery requires research, prerequisite technologies, and a specific combination of goods present in a settlement. Routing goods together is how the player guides technological progress.</desc>
   <defs>
     <radialGradient id="bgA" cx="12%" cy="7%" r="58%">
       <stop offset="0%" stop-color="#173252" stop-opacity="0.60"/>
@@ -40,15 +40,18 @@
     .body { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 11px; fill: #c6d3e6; }
     .muted { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 10px; fill: #8297b6; }
     .code { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace; font-size: 9.8px; fill: #b9cce5; }
+    .side-title { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 15px; font-weight: 650; fill: #f4f7fc; }
+    .side-line { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace; font-size: 9.3px; fill: #a7b8d1; }
+    .side-effect { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace; font-size: 9.3px; fill: #7fd0c0; }
     .footer { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 11px; fill: #637897; }
   </style>
-  <rect class="bg" width="1800" height="1260"/>
-  <rect width="1800" height="1260" fill="url(#bgA)"/>
-  <rect width="1800" height="1260" fill="url(#bgB)"/>
+  <rect class="bg" width="1800" height="1700"/>
+  <rect width="1800" height="1700" fill="url(#bgA)"/>
+  <rect width="1800" height="1700" fill="url(#bgB)"/>
   <text class="eyebrow" x="64" y="58">ARTERIES · TECHNOLOGY</text>
   <text class="h1" x="64" y="96">Advanced tech + production tree</text>
-  <text class="sub" x="64" y="124">The player guides discovery by routing goods into the same settlement.</text>
-  <text class="meta" x="1736" y="62" text-anchor="end">5 branches · 4 eras · 19 discoveries</text>
+  <text class="sub" x="64" y="124">The player guides discovery by routing goods into the same settlement. Side branches tune research, production, and throughput.</text>
+  <text class="meta" x="1736" y="62" text-anchor="end">5 main branches · 13 side branches</text>
   <text class="meta" x="1736" y="84" text-anchor="end">tech + material gate + research</text>
   <line class="timeline" x1="40" y1="190" x2="1760" y2="190"/>
   <text class="era" x="385" y="176" text-anchor="middle">ERA 1 · FOUNDATION</text>
@@ -269,41 +272,116 @@
   <line x1="565" y1="927" x2="605" y2="927" stroke="#6f90ba" stroke-width="1.6" marker-end="url(#arrow)"/>
   <line x1="965" y1="927" x2="1005" y2="927" stroke="#6f90ba" stroke-width="1.6" marker-end="url(#arrow)"/>
   <line x1="1365" y1="927" x2="1405" y2="927" stroke="#6f90ba" stroke-width="1.6" marker-end="url(#arrow)"/>
-  <rect class="panel" x="40" y="1025" width="560" height="195" rx="12"/>
-  <text class="panel-title" x="60" y="1053">PRODUCTION CHAIN</text>
-  <text class="code" x="60" y="1079">Timber → Planks</text>
-  <text class="code" x="60" y="1092">Clay + Stone → Bricks</text>
-  <text class="code" x="60" y="1105">Ore + Stone → Steel</text>
-  <text class="code" x="60" y="1118">Fiber → Cloth</text>
-  <text class="code" x="60" y="1131">Fiber + Planks → Rope</text>
-  <text class="code" x="60" y="1144">Planks + Steel → Tools</text>
-  <text class="code" x="60" y="1157">Steel + Tools → Machinery</text>
-  <text class="code" x="60" y="1170">Planks + Cloth + Rope → Ship Parts</text>
-  <text class="code" x="60" y="1183">Steel + Machinery + Tools → Engines</text>
-  <text class="code" x="60" y="1196">Grain + Stone → Flour</text>
-  <text class="code" x="60" y="1209">Grain + Fish → growth</text>
-  <rect class="panel" x="620" y="1025" width="560" height="195" rx="12"/>
-  <text class="panel-title" x="640" y="1053">ROUTING → DISCOVERY</text>
-  <text class="code" x="640" y="1077">1  Route goods</text>
-  <text class="code" x="640" y="1091">2  settle together</text>
-  <text class="code" x="640" y="1105">3  expose materials</text>
-  <text class="code" x="640" y="1119">4  research + prereqs</text>
-  <text class="code" x="640" y="1133">5  discover</text>
-  <text class="code" x="640" y="1147">6  unlock recipe/effect</text>
-  <text class="code" x="640" y="1161">7  new goods reach new gates</text>
-  <text class="muted" x="640" y="1188">Forest town + Ore/Stone → Carpentry + Smelting</text>
-  <text class="muted" x="640" y="1206">→ Planks + Steel → Toolmaking → Machining → Rail</text>
-  <rect class="panel" x="1200" y="1025" width="560" height="195" rx="12"/>
-  <text class="panel-title" x="1220" y="1053">DISCOVERY GATE</text>
-  <text class="code" x="1220" y="1077">research ≥ cost</text>
-  <text class="code" x="1220" y="1091">AND prerequisites known here</text>
-  <text class="code" x="1220" y="1105">AND goods present together</text>
-  <text class="code" x="1220" y="1119">for at least one market day</text>
-  <text class="muted" x="1220" y="1143">GATE  goods that must meet in one place</text>
-  <text class="muted" x="1220" y="1157">EFFECT  recipe, mode, or production boost</text>
-  <text class="muted" x="1220" y="1171">AFTER  prerequisite technologies</text>
-  <text class="muted" x="1220" y="1185">arrows show same-branch chains</text>
-  <text class="muted" x="1220" y="1203">No tech unlocks from research alone.</text>
-  <text class="muted" x="1220" y="1219">Branch colour = production family.</text>
-  <text class="footer" x="64" y="1242">Arteries prototype · proposed advanced tree · routing choices assemble the research environment</text>
+  <line class="timeline" x1="40" y1="1018" x2="1760" y2="1018"/>
+  <text class="eyebrow" x="40" y="1050">SIDE BRANCHES · PERFORMANCE, THROUGHPUT &amp; RESEARCH</text>
+  <text class="branch" x="40" y="1074">RESEARCH RATE</text>
+  <rect class="card" x="40" y="1088" width="560" height="66" rx="10"/>
+  <line x1="54" y1="1090" x2="586" y2="1090" stroke="#8fb6e0" stroke-width="3" stroke-linecap="round"/>
+  <text class="side-title" x="56" y="1110">Writing</text>
+  <text class="meta" x="584" y="1110" text-anchor="end">E2 · 50r</text>
+  <text class="side-line" x="56" y="1128">after Weaving · Cloth 2 + Planks 2</text>
+  <text class="side-effect" x="56" y="1145">EFFECT  +10% research</text>
+  <rect class="card" x="40" y="1166" width="560" height="66" rx="10"/>
+  <line x1="54" y1="1168" x2="586" y2="1168" stroke="#8fb6e0" stroke-width="3" stroke-linecap="round"/>
+  <text class="side-title" x="56" y="1188">Mathematics</text>
+  <text class="meta" x="584" y="1188" text-anchor="end">E3 · 100r</text>
+  <text class="side-line" x="56" y="1206">after Writing + Masonry · Planks 2 + Tools 2</text>
+  <text class="side-effect" x="56" y="1223">EFFECT  +15% research</text>
+  <rect class="card" x="40" y="1244" width="560" height="66" rx="10"/>
+  <line x1="54" y1="1246" x2="586" y2="1246" stroke="#8fb6e0" stroke-width="3" stroke-linecap="round"/>
+  <text class="side-title" x="56" y="1266">Scientific method</text>
+  <text class="meta" x="584" y="1266" text-anchor="end">E4 · 200r</text>
+  <text class="side-line" x="56" y="1284">after Mathematics + Education · Cloth 4 + Tools 4 + Machinery 1</text>
+  <text class="side-effect" x="56" y="1301">EFFECT  +25% research</text>
+  <text class="branch" x="620" y="1074">PRODUCTION EFFICIENCY</text>
+  <rect class="card" x="620" y="1088" width="560" height="66" rx="10"/>
+  <line x1="634" y1="1090" x2="1166" y2="1090" stroke="#e0ac5c" stroke-width="3" stroke-linecap="round"/>
+  <text class="side-title" x="636" y="1110">Sawmill gearing</text>
+  <text class="meta" x="1164" y="1110" text-anchor="end">E2 · 50r</text>
+  <text class="side-line" x="636" y="1128">after Carpentry · Timber 4 + Planks 2</text>
+  <text class="side-effect" x="636" y="1145">EFFECT  +25% Planks</text>
+  <rect class="card" x="620" y="1166" width="560" height="66" rx="10"/>
+  <line x1="634" y1="1168" x2="1166" y2="1168" stroke="#e0ac5c" stroke-width="3" stroke-linecap="round"/>
+  <text class="side-title" x="636" y="1188">Bloomery</text>
+  <text class="meta" x="1164" y="1188" text-anchor="end">E2 · 55r</text>
+  <text class="side-line" x="636" y="1206">after Smelting · Ore 4 + Coal 2</text>
+  <text class="side-effect" x="636" y="1223">EFFECT  +25% Steel</text>
+  <rect class="card" x="620" y="1244" width="560" height="66" rx="10"/>
+  <line x1="634" y1="1246" x2="1166" y2="1246" stroke="#e0ac5c" stroke-width="3" stroke-linecap="round"/>
+  <text class="side-title" x="636" y="1266">Loom speed</text>
+  <text class="meta" x="1164" y="1266" text-anchor="end">E2 · 50r</text>
+  <text class="side-line" x="636" y="1284">after Weaving · Fiber 4 + Planks 2</text>
+  <text class="side-effect" x="636" y="1301">EFFECT  +25% Cloth</text>
+  <rect class="card" x="620" y="1322" width="560" height="66" rx="10"/>
+  <line x1="634" y1="1324" x2="1166" y2="1324" stroke="#e0ac5c" stroke-width="3" stroke-linecap="round"/>
+  <text class="side-title" x="636" y="1344">Standardized parts</text>
+  <text class="meta" x="1164" y="1344" text-anchor="end">E3 · 120r</text>
+  <text class="side-line" x="636" y="1362">after Toolmaking · Steel 4 + Tools 2</text>
+  <text class="side-effect" x="636" y="1379">EFFECT  +25% Tools/Machinery</text>
+  <rect class="card" x="620" y="1400" width="560" height="66" rx="10"/>
+  <line x1="634" y1="1402" x2="1166" y2="1402" stroke="#e0ac5c" stroke-width="3" stroke-linecap="round"/>
+  <text class="side-title" x="636" y="1422">Irrigation</text>
+  <text class="meta" x="1164" y="1422" text-anchor="end">E3 · 100r</text>
+  <text class="side-line" x="636" y="1440">after Crop rotation + Masonry · Grain 6 + Bricks 2</text>
+  <text class="side-effect" x="636" y="1457">EFFECT  +1 Grain +1 Fish</text>
+  <text class="branch" x="1200" y="1074">TRANSPORT &amp; TRADE</text>
+  <rect class="card" x="1200" y="1088" width="560" height="66" rx="10"/>
+  <line x1="1214" y1="1090" x2="1746" y2="1090" stroke="#6f90ba" stroke-width="3" stroke-linecap="round"/>
+  <text class="side-title" x="1216" y="1110">Bulk handling</text>
+  <text class="meta" x="1744" y="1110" text-anchor="end">E3 · 120r</text>
+  <text class="side-line" x="1216" y="1128">after Roads · Planks 4 + Tools 2</text>
+  <text class="side-effect" x="1216" y="1145">EFFECT  +15% route capacity</text>
+  <rect class="card" x="1200" y="1166" width="560" height="66" rx="10"/>
+  <line x1="1214" y1="1168" x2="1746" y2="1168" stroke="#6f90ba" stroke-width="3" stroke-linecap="round"/>
+  <text class="side-title" x="1216" y="1188">Logistics</text>
+  <text class="meta" x="1744" y="1188" text-anchor="end">E4 · 180r</text>
+  <text class="side-line" x="1216" y="1206">after Bulk handling + Mathematics · Tools 2 + Machinery 1</text>
+  <text class="side-effect" x="1216" y="1223">EFFECT  +20% throughput</text>
+  <rect class="card" x="1200" y="1244" width="560" height="66" rx="10"/>
+  <line x1="1214" y1="1246" x2="1746" y2="1246" stroke="#6f90ba" stroke-width="3" stroke-linecap="round"/>
+  <text class="side-title" x="1216" y="1266">Rail signaling</text>
+  <text class="meta" x="1744" y="1266" text-anchor="end">E4 · 160r</text>
+  <text class="side-line" x="1216" y="1284">after Rail + Mathematics · Steel 4 + Tools 2</text>
+  <text class="side-effect" x="1216" y="1301">EFFECT  +20% rail capacity</text>
+  <rect class="card" x="1200" y="1322" width="560" height="66" rx="10"/>
+  <line x1="1214" y1="1324" x2="1746" y2="1324" stroke="#6f90ba" stroke-width="3" stroke-linecap="round"/>
+  <text class="side-title" x="1216" y="1344">Harbor cranes</text>
+  <text class="meta" x="1744" y="1344" text-anchor="end">E4 · 160r</text>
+  <text class="side-line" x="1216" y="1362">after Shipbuilding · Ship Parts 2 + Steel 2</text>
+  <text class="side-effect" x="1216" y="1379">EFFECT  +25% sea capacity</text>
+  <rect class="card" x="1200" y="1400" width="560" height="66" rx="10"/>
+  <line x1="1214" y1="1402" x2="1746" y2="1402" stroke="#6f90ba" stroke-width="3" stroke-linecap="round"/>
+  <text class="side-title" x="1216" y="1422">Customs house</text>
+  <text class="meta" x="1744" y="1422" text-anchor="end">E3 · 90r</text>
+  <text class="side-line" x="1216" y="1440">after Roads + Weaving · Cloth 2 + Tools 2</text>
+  <text class="side-effect" x="1216" y="1457">EFFECT  +10% toll income</text>
+  <rect class="panel" x="40" y="1485" width="560" height="170" rx="12"/>
+  <text class="panel-title" x="60" y="1513">ROUTING → DISCOVERY</text>
+  <text class="code" x="60" y="1537">1  Route goods</text>
+  <text class="code" x="60" y="1550">2  settle together</text>
+  <text class="code" x="60" y="1563">3  expose materials</text>
+  <text class="code" x="60" y="1576">4  research + prereqs</text>
+  <text class="code" x="60" y="1589">5  discover</text>
+  <text class="code" x="60" y="1602">6  unlock recipe/effect</text>
+  <text class="code" x="60" y="1615">7  new goods reach new gates</text>
+  <text class="muted" x="60" y="1633">Forest + Ore/Stone → Carpentry + Smelting</text>
+  <text class="muted" x="60" y="1647">→ Planks + Steel → Toolmaking → Machining → Rail</text>
+  <rect class="panel" x="620" y="1485" width="560" height="170" rx="12"/>
+  <text class="panel-title" x="640" y="1513">DISCOVERY GATE</text>
+  <text class="code" x="640" y="1537">research ≥ cost</text>
+  <text class="code" x="640" y="1551">AND prerequisites known here</text>
+  <text class="code" x="640" y="1565">AND goods present together</text>
+  <text class="code" x="640" y="1579">for at least one market day</text>
+  <text class="muted" x="640" y="1615">No tech unlocks from research alone.</text>
+  <text class="muted" x="640" y="1631">Side branches still need the same gate.</text>
+  <text class="muted" x="640" y="1647">Research-side bonuses compound the loop.</text>
+  <rect class="panel" x="1200" y="1485" width="560" height="170" rx="12"/>
+  <text class="panel-title" x="1220" y="1513">SIDE-BRANCH TYPES</text>
+  <text class="muted" x="1220" y="1540">RESEARCH  Writing · Mathematics · Scientific method</text>
+  <text class="muted" x="1220" y="1557">PRODUCTION  Sawmills · Bloomery · Looms · Tooling · Irrigation</text>
+  <text class="muted" x="1220" y="1574">TRANSPORT  Bulk handling · Logistics · Rail/Harbor · Customs</text>
+  <text class="muted" x="1220" y="1591">Each is optional; each changes the next research or transport step.</text>
+  <text class="muted" x="1220" y="1631">GATE goods together · AFTER tech prereqs</text>
+  <text class="muted" x="1220" y="1647">EFFECT recipe, mode, or throughput boost</text>
+  <text class="footer" x="64" y="1683">Arteries prototype · proposed advanced tree · routing choices assemble the research environment</text>
 </svg>
