@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="840" viewBox="0 0 1440 840" role="img" aria-labelledby="title desc">
+  <title id="title">Arteries current technology tree</title>
+  <desc id="desc">The current data-driven tech tree: Pack routes at the start, then Roads at 45 research, River barges at 110 research, and Rail at 220 research. Each tech stores a compact bitset state and unlocks route upgrades through catalog effects.</desc>
+
+  <defs>
+    <radialGradient id="bgA" cx="14%" cy="8%" r="58%">
+      <stop offset="0%" stop-color="#173252" stop-opacity="0.60"/>
+      <stop offset="100%" stop-color="#173252" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="bgB" cx="92%" cy="22%" r="52%">
+      <stop offset="0%" stop-color="#4a3218" stop-opacity="0.42"/>
+      <stop offset="100%" stop-color="#4a3218" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="9" stdDeviation="15" flood-color="#000000" flood-opacity="0.38"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#7188aa"/>
+    </marker>
+  </defs>
+
+  <style>
+    .bg { fill: #070d17; }
+    .eyebrow { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 12px; font-weight: 650; letter-spacing: 2.6px; fill: #7890b2; }
+    .h1 { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 31px; font-weight: 700; fill: #f4f7fc; letter-spacing: -0.4px; }
+    .sub { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 14px; fill: #9aabc5; }
+    .meta { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace; font-size: 11px; fill: #8fa5c4; }
+    .era { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 10.5px; font-weight: 650; letter-spacing: 1.8px; fill: #8ea5c4; }
+    .card { fill: #0f1a2b; stroke: #2a405e; stroke-width: 1.2; filter: url(#shadow); }
+    .start { fill: #0c1727; stroke: #36506f; stroke-width: 1.2; stroke-dasharray: 7 6; filter: url(#shadow); }
+    .top-blue { stroke: #6f90ba; stroke-width: 4; stroke-linecap: round; }
+    .top-amber { stroke: #e0ac5c; stroke-width: 4; stroke-linecap: round; }
+    .top-teal { stroke: #69c3b3; stroke-width: 4; stroke-linecap: round; }
+    .top-rose { stroke: #e07a8a; stroke-width: 4; stroke-linecap: round; }
+    .card-title { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 24px; font-weight: 650; fill: #f4f7fc; }
+    .card-sub { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 12px; fill: #8fa5c4; }
+    .body { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 13px; fill: #c6d3e6; }
+    .muted { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 11.5px; fill: #8297b6; }
+    .cost { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace; font-size: 26px; font-weight: 600; fill: #f0c47b; }
+    .cost-unit { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1.2px; fill: #9c8863; }
+    .chip { fill: #142238; stroke: #2d4768; stroke-width: 1; }
+    .chip-text { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace; font-size: 10.5px; fill: #b9cce5; }
+    .effect { fill: #121d2e; stroke: #31506f; stroke-width: 1; }
+    .effect-text { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace; font-size: 10.5px; fill: #7fd0c0; }
+    .divider { stroke: #223650; stroke-width: 1; }
+    .timeline { stroke: #2a405e; stroke-width: 1.4; stroke-dasharray: 5 6; }
+    .requires { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 1.4px; fill: #6f86a8; }
+    .panel { fill: #0c1523; stroke: #253b57; stroke-width: 1; }
+    .panel-title { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 11px; font-weight: 650; letter-spacing: 1.8px; fill: #8ea5c4; }
+    .code { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace; font-size: 11.5px; fill: #b9cce5; }
+    .code-accent { fill: #e0ac5c; }
+    .bits { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace; font-size: 22px; letter-spacing: 3px; fill: #7fd0c0; }
+    .footer { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 11px; fill: #637897; }
+  </style>
+
+  <rect class="bg" width="1440" height="840"/>
+  <rect width="1440" height="840" fill="url(#bgA)"/>
+  <rect width="1440" height="840" fill="url(#bgB)"/>
+
+  <text class="eyebrow" x="64" y="58">ARTERIES · TECHNOLOGY</text>
+  <text class="h1" x="64" y="96">Current tech tree</text>
+  <text class="sub" x="64" y="124">A linear transport spine backed by a data-driven, chunked catalog.</text>
+  <text class="meta" x="1376" y="62" text-anchor="end">3 technologies · 4 eras</text>
+  <text class="meta" x="1376" y="84" text-anchor="end">catalog: app/tech_tables.dia</text>
+
+  <!-- Era timeline -->
+  <line class="timeline" x1="70" y1="202" x2="1370" y2="202"/>
+  <circle cx="190" cy="202" r="5" fill="#6f90ba"/>
+  <circle cx="530" cy="202" r="5" fill="#e0ac5c"/>
+  <circle cx="870" cy="202" r="5" fill="#69c3b3"/>
+  <circle cx="1210" cy="202" r="5" fill="#e07a8a"/>
+
+  <text class="era" x="190" y="180" text-anchor="middle">ERA 1 · START</text>
+  <text class="era" x="530" y="180" text-anchor="middle">ERA 2 · ROADS</text>
+  <text class="era" x="870" y="180" text-anchor="middle">ERA 3 · RIVERS</text>
+  <text class="era" x="1210" y="180" text-anchor="middle">ERA 4 · RAILS</text>
+
+  <!-- Start node -->
+  <rect class="start" x="50" y="250" width="280" height="292" rx="16"/>
+  <line class="top-blue" x1="70" y1="252" x2="310" y2="252"/>
+  <text class="card-title" x="76" y="316">Pack routes</text>
+  <text class="card-sub" x="76" y="342">Always available</text>
+  <text class="body" x="76" y="382">The starting route mode.</text>
+  <text class="body" x="76" y="402">Path links carry low volumes</text>
+  <text class="body" x="76" y="422">and unlock the road upgrade</text>
+  <text class="body" x="76" y="442">chain once research begins.</text>
+  <rect class="chip" x="76" y="480" width="160" height="24" rx="7"/>
+  <text class="chip-text" x="88" y="496">mode: Path · tier 0</text>
+  <text class="muted" x="76" y="524">no research cost</text>
+
+  <!-- Roads -->
+  <rect class="card" x="390" y="250" width="280" height="292" rx="16"/>
+  <line class="top-amber" x1="410" y1="252" x2="650" y2="252"/>
+  <text class="card-title" x="416" y="316">Roads</text>
+  <text class="card-sub" x="416" y="342">Improved carts</text>
+  <text class="cost" x="416" y="382">45</text>
+  <text class="cost-unit" x="468" y="380">RESEARCH</text>
+  <rect class="effect" x="416" y="402" width="214" height="24" rx="7"/>
+  <text class="effect-text" x="428" y="418">unlock_road</text>
+  <text class="body" x="416" y="456">Upgrades pack routes to</text>
+  <text class="body" x="416" y="476">cart roads, raising capacity</text>
+  <text class="body" x="416" y="496">and construction speed.</text>
+  <text class="muted" x="416" y="524">requires: —</text>
+
+  <!-- River barges -->
+  <rect class="card" x="730" y="250" width="280" height="292" rx="16"/>
+  <line class="top-teal" x1="750" y1="252" x2="990" y2="252"/>
+  <text class="card-title" x="756" y="316">River barges</text>
+  <text class="card-sub" x="756" y="342">River navigation</text>
+  <text class="cost" x="756" y="382">110</text>
+  <text class="cost-unit" x="822" y="380">RESEARCH</text>
+  <rect class="effect" x="756" y="402" width="214" height="24" rx="7"/>
+  <text class="effect-text" x="768" y="418">unlock_river</text>
+  <text class="body" x="756" y="456">Upgrades roads to river</text>
+  <text class="body" x="756" y="476">barges: bulk capacity and</text>
+  <text class="body" x="756" y="496">cheaper long-haul freight.</text>
+  <text class="muted" x="756" y="524">requires: Roads</text>
+
+  <!-- Rail -->
+  <rect class="card" x="1070" y="250" width="280" height="292" rx="16"/>
+  <line class="top-rose" x1="1090" y1="252" x2="1330" y2="252"/>
+  <text class="card-title" x="1096" y="316">Rail</text>
+  <text class="card-sub" x="1096" y="342">Steam power</text>
+  <text class="cost" x="1096" y="382">220</text>
+  <text class="cost-unit" x="1162" y="380">RESEARCH</text>
+  <rect class="effect" x="1096" y="402" width="214" height="24" rx="7"/>
+  <text class="effect-text" x="1108" y="418">unlock_rail</text>
+  <text class="body" x="1096" y="456">Upgrades river links to rail:</text>
+  <text class="body" x="1096" y="476">the highest capacity and</text>
+  <text class="body" x="1096" y="496">fastest overland mode.</text>
+  <text class="muted" x="1096" y="524">requires: River barges</text>
+
+  <!-- Prerequisite arrows -->
+  <line x1="330" y1="396" x2="382" y2="396" stroke="#7188aa" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="670" y1="396" x2="722" y2="396" stroke="#7188aa" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="1010" y1="396" x2="1062" y2="396" stroke="#7188aa" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Bottom architecture strip -->
+  <rect class="panel" x="50" y="602" width="420" height="170" rx="12"/>
+  <text class="panel-title" x="70" y="632">CATALOG ROW</text>
+  <text class="code" x="70" y="660">[<tspan class="code-accent">"0"</tspan>, "Roads", "2", "45",</text>
+  <text class="code" x="70" y="682">  "", "unlock_road", "..."]</text>
+  <text class="muted" x="70" y="712">id · name · era · cost · prerequisites</text>
+  <text class="muted" x="70" y="730">effect · description</text>
+  <text class="muted" x="70" y="754">Catalog order is topological.</text>
+
+  <rect class="panel" x="490" y="602" width="420" height="170" rx="12"/>
+  <text class="panel-title" x="510" y="632">WORLD STATE</text>
+  <text class="code" x="510" y="660">world.tech = "111"</text>
+  <text class="bits" x="510" y="694">1   1   1</text>
+  <text class="muted" x="510" y="718">Roads   Barges   Rail</text>
+  <text class="muted" x="510" y="742">One character per catalog row.</text>
+  <text class="muted" x="510" y="760">Adding a tech adds no DB column.</text>
+
+  <rect class="panel" x="930" y="602" width="420" height="170" rx="12"/>
+  <text class="panel-title" x="950" y="632">DISCOVERY RULE</text>
+  <text class="code" x="950" y="660">research ≥ cost</text>
+  <text class="code" x="950" y="682">AND prerequisites discovered</text>
+  <text class="muted" x="950" y="712">Evaluated from the best town's research</text>
+  <text class="muted" x="950" y="730">at each finish phase. Catalog order is</text>
+  <text class="muted" x="950" y="748">topological, so chains unlock in order.</text>
+
+  <text class="footer" x="64" y="812">Arteries prototype · current transport spine · adding a tech is a catalog edit, not a schema change</text>
+</svg>

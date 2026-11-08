@@ -231,6 +231,8 @@ with one world.
 
 ### Technology tree
 
+See [`docs/tech-tree.svg`](docs/tech-tree.svg) for the current transport spine.
+
 Technology is data-driven rather than a trio of booleans. The catalog lives in
 `app/tech_tables.dia` as compact field rows:
 
