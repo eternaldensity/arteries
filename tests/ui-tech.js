@@ -2,7 +2,7 @@
 /*
  * Real-browser acceptance test for the data-driven tech tree.
  *
- * A fresh world starts at 0/3 techs. Running a month should discover every
+ * A fresh world starts at 0/5 techs. Running a month should discover every
  * transport tech, advance the era, and persist the bitset across a reload.
  */
 const playwrightPath = process.env.PLAYWRIGHT_CORE || 'playwright-core';
@@ -46,7 +46,7 @@ function assert(condition, message) {
   await page.goto(url);
   await signIn();
   const before = await summary();
-  assert(before.footer.includes('0/3 techs'), `expected no techs at start: ${before.footer}`);
+  assert(before.footer.includes('0/5 techs'), `expected no techs at start: ${before.footer}`);
   assert(
     before.technology.includes('Roads at 45 research'),
     `expected Roads as next tech: ${before.technology}`
@@ -55,7 +55,7 @@ function assert(condition, message) {
   await page.getByRole('button', { name: '1 month', exact: true }).click();
   await page.waitForTimeout(1800);
   const after = await summary();
-  assert(after.footer.includes('3/3 techs'), `expected all techs after a month: ${after.footer}`);
+  assert(after.footer.includes('5/5 techs'), `expected all techs after a month: ${after.footer}`);
   assert(after.footer.includes('Era 4 · Rails'), `expected Rail era: ${after.footer}`);
   assert(
     after.technology.includes('All technologies discovered'),
@@ -65,7 +65,7 @@ function assert(condition, message) {
   await page.reload();
   await signIn();
   const resumed = await summary();
-  assert(resumed.footer.includes('3/3 techs'), `tech state did not persist: ${resumed.footer}`);
+  assert(resumed.footer.includes('5/5 techs'), `tech state did not persist: ${resumed.footer}`);
   assert(errors.length === 0, 'browser errors: ' + errors.join('; '));
 
   console.log('PASS: data-driven tech tree unlocks and persists');

@@ -815,6 +815,9 @@ export fn tech_unlocks_mode(state: Text, mode: RouteMode) -> Bool:
     Rail => tech_effect_index_where(state, "unlock_rail", true) >= 0
     _ => false
 
+export fn tech_has_effect(state: Text, effect: Text) -> Bool:
+  tech_effect_index_where(state, effect, true) >= 0
+
 fn tech_cost_by_effect(effect: Text) -> Int:
   let idx = tech_effect_index_where("", effect, false)
   match idx < 0:
@@ -3473,18 +3476,35 @@ fn drop_route(routes: List<Route>, id: Text, i: Int, acc: List<Route>) -> List<R
         true => drop_route(routes, id, i + 1, acc)
         false => drop_route(routes, id, i + 1, list_append(acc, current))
 
+export fn upgrade_planks(world: World, mode: RouteMode) -> Int:
+  let base = match mode:
+    Path => 2
+    Road => 4
+    _ => 0
+  match base > 0 and tech_has_effect(world.tech, "discount_planks"):
+    true => max_int(1, base / 2)
+    false => base
+
+export fn upgrade_steel(world: World, mode: RouteMode) -> Int:
+  let base = match mode:
+    River => 4
+    _ => 0
+  match base > 0 and tech_has_effect(world.tech, "discount_steel"):
+    true => max_int(1, base / 2)
+    false => base
+
 export fn can_upgrade(world: World, route: Route) -> Bool:
   match route.mode:
-    Path => tech_unlocks_mode(world.tech, Road) and world.money >= 35 and combined_stock(world, route.a, route.b, Stone) >= 2
-    Road => tech_unlocks_mode(world.tech, River) and world.money >= 60 and combined_stock(world, route.a, route.b, Timber) >= 4
-    River => tech_unlocks_mode(world.tech, Rail) and world.money >= 90 and combined_stock(world, route.a, route.b, Stone) >= 4 and combined_stock(world, route.a, route.b, Tools) >= 2
+    Path => tech_unlocks_mode(world.tech, Road) and world.money >= 35 and combined_stock(world, route.a, route.b, Stone) >= 2 and combined_stock(world, route.a, route.b, Planks) >= upgrade_planks(world, Path)
+    Road => tech_unlocks_mode(world.tech, River) and world.money >= 60 and combined_stock(world, route.a, route.b, Timber) >= 4 and combined_stock(world, route.a, route.b, Planks) >= upgrade_planks(world, Road)
+    River => tech_unlocks_mode(world.tech, Rail) and world.money >= 90 and combined_stock(world, route.a, route.b, Steel) >= upgrade_steel(world, River) and combined_stock(world, route.a, route.b, Tools) >= 2
     _ => false
 
 export fn upgrade_cost_text(route: Route) -> Text:
   match route.mode:
-    Path => "35 crowns + 2 stone"
-    Road => "60 crowns + 4 timber"
-    River => "90 crowns + 4 stone + 2 tools"
+    Path => "35 crowns + 2 stone + 2 planks"
+    Road => "60 crowns + 4 timber + 4 planks"
+    River => "90 crowns + 4 steel + 2 tools"
     _ => "fully upgraded"
 
 export fn upgrade_route(world: World, id: Text) -> BuildResult:
@@ -3493,38 +3513,46 @@ export fn upgrade_route(world: World, id: Text) -> BuildResult:
     true => BuildResult(world: world, ok: false, message: "Route not found.", from: "", to: "")
     false => match can_upgrade(world, r):
       false => BuildResult(world: world, ok: false, message: "Not enough technology, crowns, or materials to upgrade " + r.a_name + " to " + r.b_name + ".", from: "", to: "")
-      true =>
-        let next_mode = match r.mode:
-          Path => Road
-          Road => River
-          River => Rail
-          _ => Rail
-        let cost = match r.mode:
-          Path => 35
-          Road => 60
-          River => 90
-          _ => 0
-        let pay_good_kind = match r.mode:
-          Path => Stone
-          Road => Timber
-          River => Stone
-          _ => Stone
-        let pay_good_amount = match r.mode:
-          Path => 2
-          Road => 4
-          River => 4
-          _ => 0
-        let paid = pay_good(world, r.a, r.b, pay_good_kind, pay_good_amount)
-        let w1 = with_towns(world, paid)
-        let w2 = match r.mode:
-          River => with_towns(w1, pay_good(w1, r.a, r.b, Tools, 2))
-          _ => w1
-        let upgraded = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: next_mode, plan: r.plan, fee: r.fee, traffic: r.traffic, capacity: route_capacity(next_mode, r.plan), upkeep: route_upkeep(next_mode, r.plan), rules: r.rules, pipeline: r.pipeline, flow: r.flow)
-        let w3 = with_routes(w2, replace_route(w2.routes, upgraded))
-        let w4 = with_resources(w3, w3.money - cost, w3.log)
-        let w5 = record(w4, r.a_name + " to " + r.b_name + " upgraded to " + route_text(next_mode) + ".")
-        BuildResult(world: w5, ok: true, message: "Route upgraded to " + route_text(next_mode) + ".", from: "", to: "")
+      true => upgrade_apply(world, r)
 
+fn upgrade_apply(world: World, r: Route) -> BuildResult:
+  let next_mode = match r.mode:
+    Path => Road
+    Road => River
+    River => Rail
+    _ => Rail
+  let cost = match r.mode:
+    Path => 35
+    Road => 60
+    River => 90
+    _ => 0
+  let pay_good_kind = match r.mode:
+    Path => Stone
+    Road => Timber
+    River => Steel
+    _ => Stone
+  let pay_good_amount = match r.mode:
+    Path => 2
+    Road => 4
+    River => upgrade_steel(world, River)
+    _ => 0
+  let planks_cost = match r.mode:
+    Path => upgrade_planks(world, Path)
+    Road => upgrade_planks(world, Road)
+    _ => 0
+  let paid = pay_good(world, r.a, r.b, pay_good_kind, pay_good_amount)
+  let w1 = with_towns(world, paid)
+  let w2 = match planks_cost > 0:
+    true => with_towns(w1, pay_good(w1, r.a, r.b, Planks, planks_cost))
+    false => w1
+  let w3 = match r.mode:
+    River => with_towns(w2, pay_good(w2, r.a, r.b, Tools, 2))
+    _ => w2
+  let upgraded = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: next_mode, plan: r.plan, fee: r.fee, traffic: r.traffic, capacity: route_capacity(next_mode, r.plan), upkeep: route_upkeep(next_mode, r.plan), rules: r.rules, pipeline: r.pipeline, flow: r.flow)
+  let w4 = with_routes(w3, replace_route(w3.routes, upgraded))
+  let w5 = with_resources(w4, w4.money - cost, w4.log)
+  let w6 = record(w5, r.a_name + " to " + r.b_name + " upgraded to " + route_text(next_mode) + ".")
+  BuildResult(world: w6, ok: true, message: "Route upgraded to " + route_text(next_mode) + ".", from: "", to: "")
 export fn demolish_route(world: World, id: Text) -> BuildResult:
   let r = route_by_id(world.routes, id, 0)
   match r.id == "":

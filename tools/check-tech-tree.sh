@@ -55,7 +55,7 @@ cat "$ROOT/tools/tech_tree_main.dia" >> "$GEN"
 
 "$DIAMOND" check "$GEN" >/dev/null
 RESULT=$("$DIAMOND" run "$GEN")
-EXPECTED='3|0,1,2,3|1|1,4|3/3 techs|3|0,1,2,-1|All technologies discovered'
+EXPECTED='5|0,1,3,5|1|1,4|5/5 techs|3|0,1,3,-1|All technologies discovered'
 if [ "$RESULT" = "$EXPECTED" ]; then
   echo "tech catalog and bitset unlocks match the expected path"
 else

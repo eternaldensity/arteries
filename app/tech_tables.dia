@@ -12,7 +12,7 @@
 # `tech_rows_N` plus a dispatch case in `catalog_row_at`.
 
 export fn tech_rows_0() -> List<List<Text>>:
-  [["0", "Roads", "2", "45", "", "unlock_road", "Improved carts. Roads can now be upgraded."], ["1", "River barges", "3", "110", "0", "unlock_river", "River navigation. Barges can now be upgraded."], ["2", "Rail", "4", "220", "1", "unlock_rail", "Steam power. Rail can now be upgraded."]]
+  [["0", "Roads", "2", "45", "", "unlock_road", "Improved carts. Roads can now be upgraded."], ["1", "Carpentry", "2", "60", "", "discount_planks", "Sawmills and framing. Road and barge upgrades need fewer planks."], ["2", "River barges", "3", "110", "0,1", "unlock_river", "River navigation. Barges can now be upgraded."], ["3", "Metallurgy", "3", "140", "0", "discount_steel", "Smelting and steelworking. Rail upgrades need less steel."], ["4", "Rail", "4", "220", "2,3", "unlock_rail", "Steam power. Rail can now be upgraded."]]
 
 export fn tech_rows_1() -> List<List<Text>>:
   []
@@ -38,7 +38,7 @@ fn chunk_width() -> Int:
   10
 
 export fn catalog_row_count() -> Int:
-  3
+  5
 
 export fn catalog_row_at(i: Int) -> List<Text>:
   let chunk = i / chunk_width()

@@ -255,6 +255,12 @@ picks it up. The current implementation discovers techs automatically from the
 best town's research. Per-town research allocation and branching choices can be
 layered on the same catalog/state without changing storage again.
 
+The current tree branches and meets production: **Roads** and **Carpentry** are
+independent era-2 openings, **River barges** requires both, **Metallurgy** opens
+from Roads, and **Rail** requires River barges + Metallurgy. Route upgrades now
+consume produced goods — roads need planks, barges need more planks, and rail
+needs steel. Carpentry and Metallurgy halve those material requirements.
+
 ## Using the interface
 
 - **Frontier survey** — click any settlement or site to inspect it. Use
@@ -436,7 +442,7 @@ a persisted per-good surcharge. `ui-m5.js` covers the region map, sea lanes,
 continents, globe raster, and region trade; `ui-m6.js` compares the what-if
 forecast with a real re-simulation; `ui-saves.js` creates and switches worlds;
 `ui-production.js` runs a fresh week and requires Planks and Steel to appear from
-consumed inputs; and `ui-tech.js` requires the 0/3 → 3/3 tech path, Rail era, and
+consumed inputs; and `ui-tech.js` requires the 0/5 → 5/5 tech path, Rail era, and
 reload persistence. They fail on page errors, console errors, missing UI state,
 or unexpected cycle failures.
 
