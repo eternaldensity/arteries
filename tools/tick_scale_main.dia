@@ -15,12 +15,12 @@ fn scale_routes(towns: List<Town>, count: Int) -> List<Route>:
 fn scale_world(seed: Int, towns: Int, routes: Int) -> World:
   let base = new_world(seed)
   let made = scale_towns(base.towns, towns)
-  World(seed: seed, tick: 0, money: 160, towns: made, sites: [], routes: scale_routes(made, routes), log: [], history: [], tech_road: false, tech_river: false, tech_rail: false)
+  World(seed: seed, tick: 0, money: 160, towns: made, sites: [], routes: scale_routes(made, routes), log: [], history: [], tech: empty_tech_state())
 
 fn main() -> Text:
   let world = scale_world(7, __SETTLEMENTS__, 3)
   # Trade now runs in the Rust flow kernel, so the pure-Diamond staged tick that
   # remains is production plus finish. This probe measures exactly that part.
-  let produced = World(seed: world.seed, tick: world.tick, money: world.money, towns: flow_advance_towns(world, 28), sites: world.sites, routes: world.routes, log: [], history: [], tech_road: false, tech_river: false, tech_rail: false)
+  let produced = World(seed: world.seed, tick: world.tick, money: world.money, towns: flow_advance_towns(world, 28), sites: world.sites, routes: world.routes, log: [], history: [], tech: empty_tech_state())
   let finished = finish_period(produced, 28, 0)
   "ok|" + int_text(finished.tick) + "|" + int_text(finished.money) + "|" + int_text(total_pop(finished))

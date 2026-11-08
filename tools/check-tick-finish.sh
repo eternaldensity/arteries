@@ -15,6 +15,7 @@ GEN="$TMP/tick_finish.dia"
 
 sed 's/^export //' "$ROOT/app/rt_tables.dia" > "$GEN"
 sed 's/^export //' "$ROOT/app/worldgen_tables.dia" >> "$GEN"
+sed 's/^export //' "$ROOT/app/tech_tables.dia" >> "$GEN"
 sed 's/^export //' "$ROOT/app/shared.dia" >> "$GEN"
 cat "$ROOT/tools/tick_finish_main.dia" >> "$GEN"
 

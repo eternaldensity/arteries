@@ -826,12 +826,12 @@ export component Root:
         <article class="stat">
           <span class="stat-label">Routes</span>
           <strong>{routes_count}</strong>
-          <span class="stat-sub">{tech_summary(world)} unlocked</span>
+          <span class="stat-sub">active links</span>
         </article>
         <article class="stat wide">
           <div class="stat-head"><span class="stat-label">Technology</span><span class="mono">{tech_progress(world)}%</span></div>
           <div class={"track " + progress_class(world)}><span></span></div>
-          <span class="stat-sub">{tech_next_text(world)}</span>
+          <span class="stat-sub">{tech_summary(world)} · {tech_next_text(world)}</span>
         </article>
       </section>
 
@@ -932,7 +932,7 @@ export component Root:
                   </each>
                                     <p class="helper">Water crossings become bridges; they add cost, lower capacity, and lengthen construction.</p>
                   <when test={show_preview}>
-                    <use component="SurveyPreviewPanel" from={sel.from} to={sel.to} plan={draft_plan} road={world.tech_road} river={world.tech_river} rail={world.tech_rail} on-choose={use_corridor}></use>
+                    <use component="SurveyPreviewPanel" from={sel.from} to={sel.to} plan={draft_plan} road={tech_unlocks_mode(world.tech, Road)} river={tech_unlocks_mode(world.tech, River)} rail={tech_unlocks_mode(world.tech, Rail)} on-choose={use_corridor}></use>
                   </when>
                   <p class="blocker">{build_check.reason}</p>
                   <div class="actions">

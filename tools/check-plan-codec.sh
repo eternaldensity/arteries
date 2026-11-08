@@ -17,6 +17,7 @@ GEN="$TMP/plan_codec.dia"
 
 sed 's/^export //' "$ROOT/app/rt_tables.dia" > "$GEN"
 sed 's/^export //' "$ROOT/app/worldgen_tables.dia" >> "$GEN"
+sed 's/^export //' "$ROOT/app/tech_tables.dia" >> "$GEN"
 sed 's/^export //' "$ROOT/app/shared.dia" >> "$GEN"
 cat "$ROOT/tools/plan_codec_main.dia" >> "$GEN"
 

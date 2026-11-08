@@ -30,6 +30,7 @@ GEN="$TMP/tick_scale.dia"
 
 sed 's/^export //' "$ROOT/app/rt_tables.dia" > "$GEN"
 sed 's/^export //' "$ROOT/app/worldgen_tables.dia" >> "$GEN"
+sed 's/^export //' "$ROOT/app/tech_tables.dia" >> "$GEN"
 sed 's/^export //' "$ROOT/app/shared.dia" >> "$GEN"
 sed "s/__SETTLEMENTS__/$SETTLEMENTS/" "$ROOT/tools/tick_scale_main.dia" >> "$GEN"
 

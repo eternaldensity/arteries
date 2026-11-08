@@ -21,11 +21,11 @@ fn case_line(world: World, days: Int, from: Int) -> Text:
   let result = finish_period(world, days, from)
   let t0 = nth_town(result.towns, 0)
   let t1 = nth_town(result.towns, 1)
-  int_text(result.money) + "|" + flag_text(result.tech_road) + "," + flag_text(result.tech_river) + "," + flag_text(result.tech_rail) + "|" + town_line(t0) + "|" + town_line(t1) + "|" + int_text(len(result.history)) + "," + int_text(total(result.history))
+  int_text(result.money) + "|" + flag_text(tech_unlocks_mode(result.tech, Road)) + "," + flag_text(tech_unlocks_mode(result.tech, River)) + "," + flag_text(tech_unlocks_mode(result.tech, Rail)) + "|" + town_line(t0) + "|" + town_line(t1) + "|" + int_text(len(result.history)) + "," + int_text(total(result.history))
 
 fn main() -> Text:
   let base = new_world(7)
   let a = finish_town(nth_town(base.towns, 0), [4, 0, 0, 0, 1, 0, 0, 0], [16, 4, 4, 4, 2, 0, 0, 4], 4, 6)
   let b = finish_town(nth_town(base.towns, 1), [0, 3, 1, 0, 0, 0, 0, 0], [8, 6, 2, 0, 0, 0, 0, 0], 4, 6)
-  let world = World(seed: 7, tick: 0, money: 160, towns: [a, b], sites: [], routes: [], log: [], history: [], tech_road: false, tech_river: false, tech_rail: false)
+  let world = World(seed: 7, tick: 0, money: 160, towns: [a, b], sites: [], routes: [], log: [], history: [], tech: empty_tech_state())
   case_line(world, 28, 0) + "||" + case_line(world, 1, 336 * hours_per_day())

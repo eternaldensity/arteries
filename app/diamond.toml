@@ -7,10 +7,14 @@ component = "Root"
 provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<CurrentWorlds>", "DbWrite<CurrentWorlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>", "Compute<arteries.region_trade>", "Compute<arteries.planet>", "Compute<arteries.planet_summary>", "Compute<arteries.face_neighbors>", "Compute<arteries.face_path>", "Compute<arteries.face_summaries>", "Compute<arteries.face_components>", "Compute<arteries.globe_raster>", "Compute<arteries.worldgen>", "Compute<arteries.worldgen_summary>", "Compute<arteries.pathfind_features>", "Compute<arteries.noise>", "Compute<arteries.route_cost_features>"]
 styles = ["app.css"]
 
+[modules.tech_tables]
+path = "tech_tables.dia"
+target = "shared"
+
 [modules.shared]
 path = "shared.dia"
 target = "shared"
-imports = ["rt_tables", "worldgen_tables"]
+imports = ["rt_tables", "worldgen_tables", "tech_tables"]
 
 [modules.rt_tables]
 path = "rt_tables.dia"
@@ -72,7 +76,7 @@ switch_world = "server.switch_world"
 
 [storage]
 profile = "relational-v1"
-version = 9
+version = 10
 
 [storage.resources.Worlds]
 scope = "id"

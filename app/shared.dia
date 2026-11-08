@@ -350,9 +350,7 @@ export type World:
   routes: List<Route>
   log: List<Text>
   history: List<Int>
-  tech_road: Bool
-  tech_river: Bool
-  tech_rail: Bool
+  tech: Text
 
 export type WorldSummary:
   id: Text
@@ -613,14 +611,247 @@ export fn max_projects() -> Int:
 export fn map_count() -> Int:
   16
 
+# ---------------------------------------------------------------- technology
+#
+# The catalog lives in tech_tables.dia. State is a compact bitset Text indexed
+# by catalog order (one character per tech). Adding a tech is a data change:
+# append a row with prerequisites and an effect, and the unlock/progress/gating
+# code below picks it up. Catalog order must be topological.
+
+export fn tech_row_count() -> Int:
+  catalog_row_count()
+
+export fn tech_row_at(i: Int) -> List<Text>:
+  catalog_row_at(i)
+
+fn tech_field_at(i: Int, field: Int) -> Text:
+  nth_text(tech_row_at(i), field)
+
+fn tech_id_row(row: List<Text>) -> Int:
+  int_of(nth_text(row, 0))
+
+fn tech_name_row(row: List<Text>) -> Text:
+  nth_text(row, 1)
+
+fn tech_era_row(row: List<Text>) -> Int:
+  int_of(nth_text(row, 2))
+
+fn tech_cost_row(row: List<Text>) -> Int:
+  int_of(nth_text(row, 3))
+
+fn tech_effect_row(row: List<Text>) -> Text:
+  nth_text(row, 5)
+
+fn tech_description_row(row: List<Text>) -> Text:
+  nth_text(row, 6)
+
+export fn tech_name_at(i: Int) -> Text:
+  tech_field_at(i, 1)
+
+export fn tech_era_at(i: Int) -> Int:
+  int_of(tech_field_at(i, 2))
+
+export fn tech_cost_at(i: Int) -> Int:
+  int_of(tech_field_at(i, 3))
+
+fn tech_prereqs_at(i: Int) -> Text:
+  tech_field_at(i, 4)
+
+fn tech_effect_at(i: Int) -> Text:
+  tech_field_at(i, 5)
+
+fn tech_description_at(i: Int) -> Text:
+  tech_field_at(i, 6)
+
+export fn empty_tech_state() -> Text:
+  ""
+
+export fn tech_has(state: Text, id: Int) -> Bool:
+  match id < 0 or id >= len(state):
+    true => false
+    false => text_slice(state, id, 1) == "1"
+
+fn tech_discover(state: Text, id: Int) -> Text:
+  let n = max_int(len(state), id + 1)
+  let bits = for i in indices(n):
+    match i == id:
+      true => "1"
+      false => match i < len(state):
+        true => text_slice(state, i, 1)
+        false => "0"
+  join_text(bits, "")
+
+fn tech_discover_effect(state: Text, effect: Text) -> Text:
+  let idx = tech_effect_index_where("", effect, false)
+  match idx < 0:
+    true => state
+    false => tech_discover(state, idx)
+
+export fn tech_from_legacy(tech: Text, road: Bool, river: Bool, rail: Bool) -> Text:
+  match tech != "":
+    true => tech
+    false =>
+      let s0 = empty_tech_state()
+      let s1 = match road:
+        true => tech_discover_effect(s0, "unlock_road")
+        false => s0
+      let s2 = match river:
+        true => tech_discover_effect(s1, "unlock_river")
+        false => s1
+      match rail:
+        true => tech_discover_effect(s2, "unlock_rail")
+        false => s2
+
+fn tech_comma_at(text: Text, i: Int) -> Int:
+  match i >= len(text):
+    true => len(text)
+    false => match text_slice(text, i, 1) == ",":
+      true => i
+      false => tech_comma_at(text, i + 1)
+
+fn tech_prereqs_ok_from(state: Text, text: Text, start: Int) -> Bool:
+  match start >= len(text):
+    true => true
+    false =>
+      let end = tech_comma_at(text, start)
+      match end > start and tech_has(state, int_of(text_slice(text, start, end - start))):
+        true => tech_prereqs_ok_from(state, text, end + 1)
+        false => false
+
+fn tech_prereqs_ok(state: Text, id: Int) -> Bool:
+  tech_prereqs_ok_from(state, tech_prereqs_at(id), 0)
+
+fn tech_prereqs_ok_row(state: Text, row: List<Text>) -> Bool:
+  tech_prereqs_ok_from(state, nth_text(row, 4), 0)
+
+fn max_int_range(xs: List<Int>, start: Int, count: Int) -> Int:
+  match count <= 0:
+    true => 0
+    false => match count == 1:
+      true => nth_int(xs, start)
+      false =>
+        let half = count / 2
+        max_int(max_int_range(xs, start, half), max_int_range(xs, start + half, count - half))
+
+fn first_nonnegative_range(xs: List<Int>, start: Int, count: Int) -> Int:
+  match count <= 0:
+    true => -1
+    false => match count == 1:
+      true => match nth_int(xs, start) >= 0:
+        true => nth_int(xs, start)
+        false => -1
+      false =>
+        let half = count / 2
+        let left = first_nonnegative_range(xs, start, half)
+        match left >= 0:
+          true => left
+          false => first_nonnegative_range(xs, start + half, count - half)
+
+fn tech_pass_chunk(state: Text, research: Int, chunk: List<List<Text>>) -> Text:
+  let bits = for row in chunk:
+    let id = tech_id_row(row)
+    match tech_has(state, id):
+      true => "1"
+      false => match tech_cost_row(row) <= research and tech_prereqs_ok_row(state, row):
+        true => "1"
+        false => "0"
+  join_text(bits, "")
+
+fn tech_pass(chunks: List<List<List<Text>>>, state: Text, research: Int) -> Text:
+  let chunk_bits = for chunk in chunks:
+    tech_pass_chunk(state, research, chunk)
+  join_text(chunk_bits, "")
+
+fn tech_advance_passes(chunks: List<List<List<Text>>>, state: Text, research: Int, remaining: Int) -> Text:
+  match remaining <= 0:
+    true => state
+    false =>
+      let next = tech_pass(chunks, state, research)
+      match next == state:
+        true => next
+        false => tech_advance_passes(chunks, next, research, remaining - 1)
+
+export fn tech_advance(state: Text, research: Int) -> Text:
+  tech_advance_passes(catalog_chunks(), state, research, 48)
+
+fn tech_messages_chunk(before: Text, after: Text, chunk: List<List<Text>>) -> Text:
+  let parts = for row in chunk:
+    let id = tech_id_row(row)
+    match tech_has(after, id) and not tech_has(before, id):
+      true => "Discovery: " + tech_name_row(row) + ". " + tech_description_row(row) + " "
+      false => ""
+  join_text(parts, "")
+
+export fn tech_discovery_messages(before: Text, after: Text) -> List<Text>:
+  let chunks = catalog_chunks()
+  let parts = for chunk in chunks:
+    tech_messages_chunk(before, after, chunk)
+  let text = join_text(parts, "")
+  match text == "":
+    true => []
+    false => [text]
+
+fn tech_effect_candidate_chunk(state: Text, effect: Text, require_discovered: Bool, chunk: List<List<Text>>) -> Int:
+  let candidates = for row in chunk:
+    let id = tech_id_row(row)
+    let discovered = match require_discovered:
+      true => tech_has(state, id)
+      false => true
+    match discovered and tech_effect_row(row) == effect:
+      true => id
+      false => -1
+  first_nonnegative_range(candidates, 0, len(candidates))
+
+fn tech_effect_index_where(state: Text, effect: Text, require_discovered: Bool) -> Int:
+  let chunks = catalog_chunks()
+  let per_chunk = for chunk in chunks:
+    tech_effect_candidate_chunk(state, effect, require_discovered, chunk)
+  first_nonnegative_range(per_chunk, 0, len(per_chunk))
+
+export fn tech_unlocks_mode(state: Text, mode: RouteMode) -> Bool:
+  match mode:
+    Road => tech_effect_index_where(state, "unlock_road", true) >= 0
+    River => tech_effect_index_where(state, "unlock_river", true) >= 0
+    Rail => tech_effect_index_where(state, "unlock_rail", true) >= 0
+    _ => false
+
+fn tech_cost_by_effect(effect: Text) -> Int:
+  let idx = tech_effect_index_where("", effect, false)
+  match idx < 0:
+    true => 1
+    false => tech_cost_at(idx)
+
 export fn road_research() -> Int:
-  45
+  tech_cost_by_effect("unlock_road")
 
 export fn river_research() -> Int:
-  110
+  tech_cost_by_effect("unlock_river")
 
 export fn rail_research() -> Int:
-  220
+  tech_cost_by_effect("unlock_rail")
+
+fn tech_next_candidate_chunk(state: Text, available: Bool, chunk: List<List<Text>>) -> Int:
+  let candidates = for row in chunk:
+    let id = tech_id_row(row)
+    let eligible = match available:
+      true => not tech_has(state, id) and tech_prereqs_ok_row(state, row)
+      false => not tech_has(state, id)
+    match eligible:
+      true => id
+      false => -1
+  first_nonnegative_range(candidates, 0, len(candidates))
+
+export fn tech_next_index(state: Text) -> Int:
+  let chunks = catalog_chunks()
+  let available = for chunk in chunks:
+    tech_next_candidate_chunk(state, true, chunk)
+  let found = first_nonnegative_range(available, 0, len(available))
+  match found >= 0:
+    true => found
+    false =>
+      let undiscovered = for chunk in chunks:
+        tech_next_candidate_chunk(state, false, chunk)
+      first_nonnegative_range(undiscovered, 0, len(undiscovered))
 
 export fn era_of_research(research: Int) -> Int:
   match research >= 220:
@@ -640,8 +871,22 @@ export fn era_name(era: Int) -> Text:
         true => "Era 2 · Roads"
         false => "Era 1 · Pack routes"
 
+fn tech_era_chunk(state: Text, chunk: List<List<Text>>) -> Int:
+  let eras = for row in chunk:
+    let id = tech_id_row(row)
+    match tech_has(state, id):
+      true => tech_era_row(row)
+      false => 0
+  max_int_range(eras, 0, len(eras))
+
+fn max_tech_era(state: Text) -> Int:
+  let chunks = catalog_chunks()
+  let per_chunk = for chunk in chunks:
+    tech_era_chunk(state, chunk)
+  max_int_range(per_chunk, 0, len(per_chunk))
+
 export fn world_era(world: World) -> Int:
-  era_of_research(max_research(world.towns, 0))
+  max_int(1, max_tech_era(world.tech))
 
 # ---------------------------------------------------------------- calendar
 
@@ -1484,7 +1729,7 @@ fn make_sites(seed: Int) -> List<Site>:
 
 export fn new_world(seed: Int) -> World:
   let safe_seed = mod_int(seed, map_count())
-  World(seed: safe_seed, tick: 0, money: 160, towns: make_towns(safe_seed), sites: make_sites(safe_seed), routes: [], log: ["Seed " + int_text(safe_seed) + ": a new frontier. Survey a route between two settlements."], history: [], tech_road: false, tech_river: false, tech_rail: false)
+  World(seed: safe_seed, tick: 0, money: 160, towns: make_towns(safe_seed), sites: make_sites(safe_seed), routes: [], log: ["Seed " + int_text(safe_seed) + ": a new frontier. Survey a route between two settlements."], history: [], tech: empty_tech_state())
 
 export fn seed_world(world: World, seed: Int) -> World:
   new_world(seed)
@@ -1575,22 +1820,22 @@ export fn replace_town(towns: List<Town>, t: Town) -> List<Town>:
       false => x
 
 fn with_towns(world: World, towns: List<Town>) -> World:
-  World(seed: world.seed, tick: world.tick, money: world.money, towns: towns, sites: world.sites, routes: world.routes, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+  World(seed: world.seed, tick: world.tick, money: world.money, towns: towns, sites: world.sites, routes: world.routes, log: world.log, history: world.history, tech: world.tech)
 
 fn with_resources(world: World, money: Int, log: List<Text>) -> World:
-  World(seed: world.seed, tick: world.tick, money: money, towns: world.towns, sites: world.sites, routes: world.routes, log: log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+  World(seed: world.seed, tick: world.tick, money: money, towns: world.towns, sites: world.sites, routes: world.routes, log: log, history: world.history, tech: world.tech)
 
 fn set_money(world: World, money: Int) -> World:
-  World(seed: world.seed, tick: world.tick, money: money, towns: world.towns, sites: world.sites, routes: world.routes, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+  World(seed: world.seed, tick: world.tick, money: money, towns: world.towns, sites: world.sites, routes: world.routes, log: world.log, history: world.history, tech: world.tech)
 
 fn with_routes(world: World, routes: List<Route>) -> World:
-  World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: routes, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+  World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: routes, log: world.log, history: world.history, tech: world.tech)
 
 fn with_sites(world: World, sites: List<Site>) -> World:
-  World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: sites, routes: world.routes, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+  World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: sites, routes: world.routes, log: world.log, history: world.history, tech: world.tech)
 
-fn with_tech(world: World, road: Bool, river: Bool, rail: Bool) -> World:
-  World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: world.log, history: world.history, tech_road: road, tech_river: river, tech_rail: rail)
+fn with_tech_state(world: World, tech: Text) -> World:
+  World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: world.log, history: world.history, tech: tech)
 
 fn record(world: World, message: Text) -> World:
   let next = list_append(world.log, message)
@@ -2372,8 +2617,8 @@ export fn survey_badge(sel: Selection) -> Text:
         false => "choose destination"
 
 export fn tech_next_text(world: World) -> Text:
-  match world.tech_rail:
-    true => "All transport eras unlocked"
+  match tech_next_index(world.tech) < 0:
+    true => "All technologies discovered"
     false => next_tech_name(world) + " at " + int_text(next_tech_threshold(world)) + " research"
 
 export fn signal_count(game: Game) -> Int:
@@ -2531,22 +2776,16 @@ export fn max_town_research(world: World) -> Int:
   max_research(world.towns, 0)
 
 export fn next_tech_threshold(world: World) -> Int:
-  match world.tech_rail:
+  let idx = tech_next_index(world.tech)
+  match idx < 0:
     true => 1
-    false => match world.tech_river:
-      true => rail_research()
-      false => match world.tech_road:
-        true => river_research()
-        false => road_research()
+    false => tech_cost_at(idx)
 
 export fn next_tech_name(world: World) -> Text:
-  match world.tech_rail:
-    true => "All transport tech"
-    false => match world.tech_river:
-      true => "Rail"
-      false => match world.tech_road:
-        true => "River barges"
-        false => "Roads"
+  let idx = tech_next_index(world.tech)
+  match idx < 0:
+    true => "All technologies"
+    false => tech_name_at(idx)
 
 export fn tech_progress(world: World) -> Int:
   let best = max_town_research(world)
@@ -3181,7 +3420,7 @@ export fn build_route(world: World, a: Text, b: Text, plan: RoutePlan) -> BuildR
               let route = make_route(paid, a, b, plan)
               let log1 = append_message(world.log, "Built a pack route from " + route.a_name + " to " + route.b_name + " (" + int_text(plan.length) + " leagues).")
               let found = found_target(b, paid, world.sites, log1, plan, 1)
-              let w = World(seed: world.seed, tick: world.tick, money: world.money - plan.money, towns: found.towns, sites: found.sites, routes: list_append(world.routes, route), log: found.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+              let w = World(seed: world.seed, tick: world.tick, money: world.money - plan.money, towns: found.towns, sites: found.sites, routes: list_append(world.routes, route), log: found.log, history: world.history, tech: world.tech)
               BuildResult(world: w, ok: true, message: "Route built. " + route.a_name + " and " + route.b_name + " are connected.", from: "", to: "")
 
 fn empty_route() -> Route:
@@ -3236,9 +3475,9 @@ fn drop_route(routes: List<Route>, id: Text, i: Int, acc: List<Route>) -> List<R
 
 export fn can_upgrade(world: World, route: Route) -> Bool:
   match route.mode:
-    Path => world.tech_road and world.money >= 35 and combined_stock(world, route.a, route.b, Stone) >= 2
-    Road => world.tech_river and world.money >= 60 and combined_stock(world, route.a, route.b, Timber) >= 4
-    River => world.tech_rail and world.money >= 90 and combined_stock(world, route.a, route.b, Stone) >= 4 and combined_stock(world, route.a, route.b, Tools) >= 2
+    Path => tech_unlocks_mode(world.tech, Road) and world.money >= 35 and combined_stock(world, route.a, route.b, Stone) >= 2
+    Road => tech_unlocks_mode(world.tech, River) and world.money >= 60 and combined_stock(world, route.a, route.b, Timber) >= 4
+    River => tech_unlocks_mode(world.tech, Rail) and world.money >= 90 and combined_stock(world, route.a, route.b, Stone) >= 4 and combined_stock(world, route.a, route.b, Tools) >= 2
     _ => false
 
 export fn upgrade_cost_text(route: Route) -> Text:
@@ -3482,13 +3721,13 @@ fn construction_speed(world: World, a: Text, b: Text, mode: RouteMode) -> Int:
     Path => match best >= 50:
       true => 1
       false => 0
-    Road => match world.tech_road:
+    Road => match tech_unlocks_mode(world.tech, Road):
       true => 2
       false => 0
-    River => match world.tech_river:
+    River => match tech_unlocks_mode(world.tech, River):
       true => 2
       false => 0
-    Rail => match world.tech_rail:
+    Rail => match tech_unlocks_mode(world.tech, Rail):
       true => 2
       false => 0
     NoRoute => 0
@@ -3564,7 +3803,7 @@ fn complete_project(world: World, project: Project) -> World:
       let route = Route(id: project.a + "-" + project.b, a: project.a, b: project.b, a_name: project.a_name, b_name: project.b_name, mode: project.mode, plan: project.plan, fee: 1, traffic: 0, capacity: route_capacity(project.mode, project.plan), upkeep: route_upkeep(project.mode, project.plan), rules: default_rules(), pipeline: [], flow: [])
       let log1 = append_message(world.log, "Construction finished: " + project.a_name + " to " + project.b_name + " is open.")
       let found = found_target(project.b, world.towns, world.sites, log1, project.plan, 1)
-      World(seed: world.seed, tick: world.tick, money: world.money, towns: found.towns, sites: found.sites, routes: list_append(world.routes, route), log: found.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+      World(seed: world.seed, tick: world.tick, money: world.money, towns: found.towns, sites: found.sites, routes: list_append(world.routes, route), log: found.log, history: world.history, tech: world.tech)
     false =>
       let r = route_by_id(world.routes, project.route_id, 0)
       match r.id == "":
@@ -3761,29 +4000,16 @@ fn max_research_range(towns: List<Town>, start: Int, count: Int) -> Int:
 fn max_research(towns: List<Town>, i: Int) -> Int:
   max_research_range(towns, i, len(towns) - i)
 
-fn unlock_text(world: World) -> Text:
-  match world.tech_rail:
-    true => "rails"
-    false => match world.tech_river:
-      true => "rivers"
-      false => match world.tech_road:
-        true => "roads"
-        false => "none"
+export fn tech_discovered_count(state: Text) -> Int:
+  let flags = for i in indices(tech_row_count()):
+    match tech_has(state, i):
+      true => 1
+      false => 0
+  total(flags)
 
 export fn tech_summary(world: World) -> Text:
-  unlock_text(world)
+  int_text(tech_discovered_count(world.tech)) + "/" + int_text(tech_row_count()) + " techs"
 
-fn tech_messages(world: World, best: Int) -> List<Text>:
-  let road = world.tech_road or best >= road_research()
-  let river = world.tech_river or best >= river_research()
-  let rail = world.tech_rail or best >= rail_research()
-  match road and not world.tech_road:
-    true => ["Discovery: improved carts. Era 2 begins — roads can now be built."]
-    false => match river and not world.tech_river:
-      true => ["Discovery: river navigation. Era 3 begins — barges can now be built."]
-      false => match rail and not world.tech_rail:
-        true => ["Discovery: steam power. Era 4 begins — rail can now be built."]
-        false => []
 
 fn nth_town(towns: List<Town>, i: Int) -> Town:
   match list_get(towns, i):
@@ -3813,7 +4039,7 @@ fn append_message(log: List<Text>, message: Text) -> List<Text>:
     true => list_slice(next, len(next) - max_log(), max_log())
     false => next
 
-fn append_messages(log: List<Text>, messages: List<Text>, i: Int) -> List<Text>:
+export fn append_messages(log: List<Text>, messages: List<Text>, i: Int) -> List<Text>:
   match list_get(messages, i):
     None => log
     Some(m) => append_messages(append_message(log, m), messages, i + 1)
@@ -4434,13 +4660,13 @@ export fn game_with_plan(game: Game, from: Text, to: Text, plan: RoutePlan) -> G
   Game(world: game.world, sel: survey_selection_plan(from, to, plan), notice: "", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
 
 export fn empty_game() -> Game:
-  let world = World(seed: 7, tick: 0, money: 0, towns: [], sites: [], routes: [], log: [], history: [], tech_road: false, tech_river: false, tech_rail: false)
+  let world = World(seed: 7, tick: 0, money: 0, towns: [], sites: [], routes: [], log: [], history: [], tech: empty_tech_state())
   server_game(world, [], false, 0, 0, empty_selection(), "Sign in to load your world.", true)
 
 # ---------------------------------------------------------------- period settlement
 
 export fn with_tick(world: World, tick: Int) -> World:
-  World(seed: world.seed, tick: tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+  World(seed: world.seed, tick: tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: world.log, history: world.history, tech: world.tech)
 
 fn period_good(t: Town, i: Int, days: Int, can_tools: Bool, can_cloth: Bool, can_planks: Bool, can_steel: Bool, grain_eaten: Int, fish_eaten: Int, cloth_used: Int) -> Int:
   let grain_at = good_index(Grain)
@@ -4597,10 +4823,8 @@ export fn finish_period(world: World, days: Int, from: Int) -> World:
     true => world
     false =>
       let best = max_research(world.towns, 0)
-      let msgs_tech = tech_messages(world, best)
-      let road = world.tech_road or best >= road_research()
-      let river = world.tech_river or best >= river_research()
-      let rail = world.tech_rail or best >= rail_research()
+      let tech = tech_advance(world.tech, best)
+      let msgs_tech = tech_discovery_messages(world.tech, tech)
       let start_day = from / hours_per_day()
       let ev1 = match boundary_in_period(start_day, days, 6):
         true => harvest(world.towns)
@@ -4616,7 +4840,7 @@ export fn finish_period(world: World, days: Int, from: Int) -> World:
         false => EventOutcome(towns: ev3.towns, messages: [])
       let log1 = append_messages(append_messages(append_messages(append_messages(world.log, ev1.messages, 0), ev2.messages, 0), ev3.messages, 0), ev4.messages, 0)
       let log2 = append_messages(log1, msgs_tech, 0)
-      World(seed: world.seed, tick: world.tick, money: world.money, towns: ev4.towns, sites: world.sites, routes: world.routes, log: log2, history: append_history_values(world.history, ev4.towns), tech_road: road, tech_river: river, tech_rail: rail)
+      World(seed: world.seed, tick: world.tick, money: world.money, towns: ev4.towns, sites: world.sites, routes: world.routes, log: log2, history: append_history_values(world.history, ev4.towns), tech: tech)
 
 export fn game_finish_period(game: Game, days: Int, from: Int) -> Game:
   let world_events = finish_period(game.world, days, from)
@@ -4640,10 +4864,8 @@ export fn game_finish_period(game: Game, days: Int, from: Int) -> Game:
 
 export fn finish_stage(world: World) -> World:
   let best = max_research(world.towns, 0)
-  let msgs_tech = tech_messages(world, best)
-  let road = world.tech_road or best >= road_research()
-  let river = world.tech_river or best >= river_research()
-  let rail = world.tech_rail or best >= rail_research()
+  let tech = tech_advance(world.tech, best)
+  let msgs_tech = tech_discovery_messages(world.tech, tech)
   let ev1 = match mod_int(world.tick, 6) == 0:
     true => harvest(world.towns)
     false => EventOutcome(towns: world.towns, messages: [])
@@ -4659,7 +4881,7 @@ export fn finish_stage(world: World) -> World:
     false => EventOutcome(towns: ev3.towns, messages: [])
   let log1 = append_messages(append_messages(append_messages(append_messages(world.log, ev1.messages, 0), ev2.messages, 0), ev3.messages, 0), ev4.messages, 0)
   let log2 = append_messages(log1, msgs_tech, 0)
-  World(seed: world.seed, tick: world.tick + 1, money: world.money, towns: ev4.towns, sites: world.sites, routes: world.routes, log: log2, history: append_history_values(world.history, ev4.towns), tech_road: road, tech_river: river, tech_rail: rail)
+  World(seed: world.seed, tick: world.tick + 1, money: world.money, towns: ev4.towns, sites: world.sites, routes: world.routes, log: log2, history: append_history_values(world.history, ev4.towns), tech: tech)
 
 export fn game_finish(game: Game) -> Game:
   let before = game.world.tick

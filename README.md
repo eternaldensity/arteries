@@ -222,11 +222,36 @@ treasury, and current day; selecting one makes it the current world and reloads
 it. The server stores the current-save pointer per account, so signing out and
 back in resumes the world you last selected.
 
-Worlds are stored in the relational schema (storage v9). Version 9 adds the two
-processed goods to the shared `Good` enum, which changes the site-resource
-constraint; Diamond's additive migrator cannot rewrite that constraint, so move
-a pre-v9 save with a fresh database or an explicit conversion. A fresh database
-starts with one world.
+Worlds are stored in the relational schema (storage v10). Version 9 added the
+two processed goods to the shared `Good` enum, which changed the site-resource
+constraint; that step needs a fresh database or an explicit conversion. Version
+10 is additive: it adds `world.tech` and lazily reconstructs the bitset from the
+legacy transport booleans when an older save is loaded. A fresh database starts
+with one world.
+
+### Technology tree
+
+Technology is data-driven rather than a trio of booleans. The catalog lives in
+`app/tech_tables.dia` as compact field rows:
+
+```text
+[id, name, era, cost, prerequisites, effect, description]
+```
+
+The catalog is split into chunks and exposed through `catalog_row_at`, so it can
+grow past one Diamond expression. A world stores its discoveries as a compact
+bitset `Text` (`world.tech`) indexed by catalog order; there is no schema change
+for each new tech. Discovery is generic: `tech_advance` repeatedly walks the
+catalog and unlocks every tech whose cost is met and whose prerequisites are
+already discovered. Catalog order is topological. Effects currently include
+`unlock_road`, `unlock_river`, and `unlock_rail`; route gating and construction
+speed ask the effect system instead of named flags.
+
+Adding a tech is a data change: append a row, give it an effect and
+prerequisites, and the unlock, progress, era, summary, and route-gating code
+picks it up. The current implementation discovers techs automatically from the
+best town's research. Per-town research allocation and branching choices can be
+layered on the same catalog/state without changing storage again.
 
 ## Using the interface
 
@@ -262,7 +287,8 @@ starts with one world.
 ```text
 app/
   diamond.toml     project manifest and map asset declarations
-  shared.dia       types, procedural terrain, route geometry, economy, game state
+  shared.dia       types, procedural terrain, route geometry, economy, tech tree, game state
+  tech_tables.dia  chunked data catalog: id, name, era, cost, prerequisites, effect
   ui.dia           Root + MapCanvas reactive components
   app.css          map, dashboard, cards, responsive layout
   server.dia       authoritative RPC handlers, route planning, persistence
@@ -295,6 +321,8 @@ tools/
   check-tick-market.sh  run the frozen Rust market fixture
   check-tick-finish.sh  diff the Rust finish kernel against shared.dia
   tick_finish_main.dia  fixed two-town finish fixture for that diff
+  check-tech-tree.sh    validate the tech catalog and bitset unlock path
+  tech_tree_main.dia    fixed tech-tree probe appended by that script
 tests/
   ui-smoke.js      real-browser acceptance driver (routes, ghost plans, queue ETAs, health, upkeep, dismantle)
   ui-m3.js         site-directed founding and waypoint acceptance
@@ -303,6 +331,7 @@ tests/
   ui-m6.js         what-if forecast vs deterministic re-simulation
   ui-saves.js      save-slot creation, switching, and persistence across reload
   ui-production.js planks and steel consume raw inputs and appear after a cycle
+  ui-tech.js       tech unlock, era, summary, and reload persistence
 ```
 
 `shared.dia` is the whole simulation. Terrain is a deterministic function;
@@ -350,6 +379,7 @@ Check the Rust market and finish kernels against Diamond on fixed frontiers:
 ```sh
 ./tools/check-tick-market.sh
 ./tools/check-tick-finish.sh
+./tools/check-tech-tree.sh
 ```
 
 Probe the staged tick's scale limit (default 5 settlements; raise `SETTLEMENTS`
@@ -389,6 +419,7 @@ node tests/ui-m5.js
 node tests/ui-m6.js
 node tests/ui-saves.js
 node tests/ui-production.js
+node tests/ui-tech.js
 ```
 
 `ui-smoke.js` exercises initial render, settlement and site inspection, three
@@ -402,8 +433,9 @@ every good on a busy link (the next tick leaves it idle), restoring the flow, an
 a persisted per-good surcharge. `ui-m5.js` covers the region map, sea lanes,
 continents, globe raster, and region trade; `ui-m6.js` compares the what-if
 forecast with a real re-simulation; `ui-saves.js` creates and switches worlds;
-and `ui-production.js` runs a fresh week and requires Planks and Steel to appear
-from consumed inputs. They fail on page errors, console errors, missing UI state,
+`ui-production.js` runs a fresh week and requires Planks and Steel to appear from
+consumed inputs; and `ui-tech.js` requires the 0/3 → 3/3 tech path, Rail era, and
+reload persistence. They fail on page errors, console errors, missing UI state,
 or unexpected cycle failures.
 
 ## Scale and the Diamond evaluation budget
@@ -439,6 +471,7 @@ This is a prototype, not the full design in
 - no workflow-based auto-run, speed control, or scenario selection;
 - no sea/rail variants beyond the four modes, no hubs, no cargo restrictions;
 - economy and research are deliberately simplified;
+- tech discovery is automatic from best-town research; per-town allocation and branch choices are not in the UI yet;
 - events are deterministic and limited to harvest/storm/caravan plus annual
   deposit depletion;
 - waypoints snap to a town or site within one cell, then to a nearby cell of a

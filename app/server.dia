@@ -27,6 +27,7 @@ type WorldRow:
   tech_road: Bool
   tech_river: Bool
   tech_rail: Bool
+  tech: Text = ""
   auto_upkeep: Bool
   last_paid_tick: Int
   upkeep_per_cycle: Int
@@ -57,6 +58,7 @@ type NewWorldRow:
   tech_road: Bool
   tech_river: Bool
   tech_rail: Bool
+  tech: Text
   auto_upkeep: Bool
   last_paid_tick: Int
   upkeep_per_cycle: Int
@@ -76,6 +78,7 @@ type EditWorldRow:
   tech_road: Bool
   tech_river: Bool
   tech_rail: Bool
+  tech: Text
   auto_upkeep: Bool
   last_paid_tick: Int
   upkeep_per_cycle: Int
@@ -595,7 +598,11 @@ fn load_world(row: WorldRow) -> Result<Loaded, DataError>:
     true =>
       load_world_current(row)
 
+fn row_tech(row: WorldRow) -> Text:
+  tech_from_legacy(row.tech, row.tech_road, row.tech_river, row.tech_rail)
+
 fn load_world_current(row: WorldRow) -> Result<Loaded, DataError>:
+  let tech = row_tech(row)
   let town_rows = towns.page(world: row.id, order: "ord", after: "", limit: 100)?
   let site_rows = sites.page(world: row.id, order: "ord", after: "", limit: 100)?
   let route_rows = routes.page(world: row.id, order: "ord", after: "", limit: 100)?
@@ -605,10 +612,10 @@ fn load_world_current(row: WorldRow) -> Result<Loaded, DataError>:
   let loaded_sites = for r in site_rows:
     site_from_row(r)
   let empty_routes = []
-  let base = World(seed: row.seed, tick: row.tick, money: row.money, towns: loaded_towns, sites: loaded_sites, routes: empty_routes, log: [], history: [], tech_road: row.tech_road, tech_river: row.tech_river, tech_rail: row.tech_rail)
+  let base = World(seed: row.seed, tick: row.tick, money: row.money, towns: loaded_towns, sites: loaded_sites, routes: empty_routes, log: [], history: [], tech: tech)
   let loaded_routes = for r in route_rows:
     route_from_row(base, r)
-  let world = World(seed: base.seed, tick: base.tick, money: base.money, towns: base.towns, sites: base.sites, routes: loaded_routes, log: [], history: [], tech_road: base.tech_road, tech_river: base.tech_river, tech_rail: base.tech_rail)
+  let world = World(seed: base.seed, tick: base.tick, money: base.money, towns: base.towns, sites: base.sites, routes: loaded_routes, log: [], history: [], tech: base.tech)
   let loaded_projects = for r in project_rows:
     project_from_row(world, r)
   Ok(Loaded(id: row.id, world: world, projects: loaded_projects, auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: row.phase, epoch: row.epoch, settle_days: row.settle_days, settle_from: row.settle_from))
@@ -651,7 +658,7 @@ fn ensure_current_world(world_id: WorldId) -> Result<Bool, DataError>:
       Ok(true)
 
 fn create_world(game: Game, epoch: Int) -> Result<WorldId, DataError>:
-  let created = worlds.create(NewWorldRow(seed: game.world.seed, generation_version: generation_version(), tick: game.world.tick, money: game.world.money, tech_road: game.world.tech_road, tech_river: game.world.tech_river, tech_rail: game.world.tech_rail, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: 0, epoch: epoch, settle_days: 0, settle_from: 0, draft_from: "", draft_to: "", draft_via: ""))?
+  let created = worlds.create(NewWorldRow(seed: game.world.seed, generation_version: generation_version(), tick: game.world.tick, money: game.world.money, tech_road: false, tech_river: false, tech_rail: false, tech: game.world.tech, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: 0, epoch: epoch, settle_days: 0, settle_from: 0, draft_from: "", draft_to: "", draft_via: ""))?
   save_children(created.id, game)?
   let log_base = logs.count(world: created.id, epoch: epoch)?
   save_logs(game.world.log, created.id, epoch, log_base, 0)?
@@ -667,7 +674,7 @@ fn load_state() -> Result<Loaded, DataError>:
       let fresh = raw_game(world, [], false, 0, 0, initial_selection(world), "New world generated. Connect complementary settlements to start the economy.", true)
       let id = create_world(fresh, 0)?
       let _ = ensure_current_world(id)?
-      Ok(Loaded(id: id, world: World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: [], history: [], tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail), projects: [], auto_upkeep: false, last_paid_tick: 0, upkeep_per_cycle: 0, phase: 0, epoch: 0, settle_days: 0, settle_from: 0))
+      Ok(Loaded(id: id, world: World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: [], history: [], tech: empty_tech_state()), projects: [], auto_upkeep: false, last_paid_tick: 0, upkeep_per_cycle: 0, phase: 0, epoch: 0, settle_days: 0, settle_from: 0))
     Some(first) =>
       let current_rows = currentworlds.select(limit: 1)?
       let idx = match list_get(current_rows, 0):
@@ -1004,7 +1011,7 @@ fn compact_summary(row: WorldRow, town_rows: List<TownRow>, route_rows: List<Rou
   [row.tick, row.money, total(pops), total(props), total(traffic)]
 
 fn with_streams(world: World, entries: List<Text>, values: List<Int>) -> World:
-  World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: entries, history: values, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail)
+  World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: entries, history: values, tech: world.tech)
 
 fn attach_streams(world: WorldId, epoch: Int, game: Game) -> Result<Game, DataError>:
   let log_rows = logs.page(world: world, epoch: epoch, order: "seq", descending: true, after: "", limit: 12)?
@@ -1027,13 +1034,13 @@ fn draft_or_empty(value: Text, keep: Bool) -> Text:
     false => ""
 
 fn world_edit_row(row: WorldRow, game: Game, phase: Int, epoch: Int, settle_days: Int, settle_from: Int) -> EditWorldRow:
-  EditWorldRow(seed: game.world.seed, generation_version: generation_version(), tick: game.world.tick, money: game.world.money, tech_road: game.world.tech_road, tech_river: game.world.tech_river, tech_rail: game.world.tech_rail, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: phase, epoch: epoch, settle_days: settle_days, settle_from: settle_from, draft_from: draft_or_empty(row.draft_from, epoch == row.epoch), draft_to: draft_or_empty(row.draft_to, epoch == row.epoch), draft_via: draft_or_empty(row.draft_via, epoch == row.epoch))
+  EditWorldRow(seed: game.world.seed, generation_version: generation_version(), tick: game.world.tick, money: game.world.money, tech_road: false, tech_river: false, tech_rail: false, tech: game.world.tech, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: phase, epoch: epoch, settle_days: settle_days, settle_from: settle_from, draft_from: draft_or_empty(row.draft_from, epoch == row.epoch), draft_to: draft_or_empty(row.draft_to, epoch == row.epoch), draft_via: draft_or_empty(row.draft_via, epoch == row.epoch))
 
 fn save_game_window(game: Game, phase: Int, epoch: Int, settle_days: Int, settle_from: Int) -> Result<Game, DataError>:
   let all = worlds.select(limit: 100)?
   match list_get(all, 0):
     None =>
-      let created = worlds.create(NewWorldRow(seed: game.world.seed, generation_version: generation_version(), tick: game.world.tick, money: game.world.money, tech_road: game.world.tech_road, tech_river: game.world.tech_river, tech_rail: game.world.tech_rail, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: phase, epoch: epoch, settle_days: settle_days, settle_from: settle_from, draft_from: "", draft_to: "", draft_via: ""))?
+      let created = worlds.create(NewWorldRow(seed: game.world.seed, generation_version: generation_version(), tick: game.world.tick, money: game.world.money, tech_road: false, tech_river: false, tech_rail: false, tech: game.world.tech, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, phase: phase, epoch: epoch, settle_days: settle_days, settle_from: settle_from, draft_from: "", draft_to: "", draft_via: ""))?
       let _ = ensure_current_world(created.id)?
       save_children(created.id, game)?
       let log_base = logs.count(world: created.id, epoch: epoch)?
@@ -1118,7 +1125,7 @@ fn compact_with_row(row: WorldRow, hours: Int, cadence: Text) -> Result<List<Int
       let updated_routes = list_slice(result, 1 + len(town_rows), len(route_rows))
       save_compact_towns(town_rows, updated_towns, 0, len(town_rows))?
       save_compact_routes(route_rows, updated_routes, 0, len(route_rows))?
-      let updated = worlds.update(row.id, EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: target, money: money, tech_road: row.tech_road, tech_river: row.tech_river, tech_rail: row.tech_rail, auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: 1, epoch: row.epoch, settle_days: days, settle_from: start, draft_from: row.draft_from, draft_to: row.draft_to, draft_via: row.draft_via))?
+      let updated = worlds.update(row.id, EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: target, money: money, tech_road: false, tech_river: false, tech_rail: false, tech: row_tech(row), auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: 1, epoch: row.epoch, settle_days: days, settle_from: start, draft_from: row.draft_from, draft_to: row.draft_to, draft_via: row.draft_via))?
       let pops = for values in updated_towns:
         nth_int(values, 0)
       let props = for values in updated_towns:
@@ -1142,7 +1149,7 @@ export fn advance_compact(hours: Int, cadence: Text) -> Result<List<Int>, DataEr
         None => Ok([loaded.world.tick, loaded.world.money, total_pop(loaded.world), total_prosperity(loaded.world), 0])
 
 fn compact_edit_world(row: WorldRow, tick: Int, money: Int, phase: Int, settle_days: Int, settle_from: Int) -> EditWorldRow:
-  EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: tick, money: money, tech_road: row.tech_road, tech_river: row.tech_river, tech_rail: row.tech_rail, auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: phase, epoch: row.epoch, settle_days: settle_days, settle_from: settle_from, draft_from: row.draft_from, draft_to: row.draft_to, draft_via: row.draft_via)
+  EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: tick, money: money, tech_road: false, tech_river: false, tech_rail: false, tech: row_tech(row), auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: phase, epoch: row.epoch, settle_days: settle_days, settle_from: settle_from, draft_from: row.draft_from, draft_to: row.draft_to, draft_via: row.draft_via)
 
 fn compact_start(row: WorldRow, hours: Int, cadence: Text) -> Result<WorldRow, DataError>:
   let start = row.tick
@@ -1290,23 +1297,10 @@ export fn advance_finish_chunk(after: Text, limit: Int) -> Result<List<Text>, Da
             true => finish_chunk_page(row, after, page_limit)
             false => Ok(["", int_text(row.phase), "0", "0"])
 
-fn finish_road(row: WorldRow, max_research: Int) -> Bool:
-  row.tech_road or max_research >= road_research()
+fn finish_tech_messages(row: WorldRow, max_research: Int) -> List<Text>:
+  let tech = row_tech(row)
+  tech_discovery_messages(tech, tech_advance(tech, max_research))
 
-fn finish_river(row: WorldRow, max_research: Int) -> Bool:
-  row.tech_river or max_research >= river_research()
-
-fn finish_rail(row: WorldRow, max_research: Int) -> Bool:
-  row.tech_rail or max_research >= rail_research()
-
-fn finish_tech_message(row: WorldRow, max_research: Int) -> Text:
-  match finish_road(row, max_research) and not row.tech_road:
-    true => "Discovery: improved carts. Roads can now be built."
-    false => match finish_river(row, max_research) and not row.tech_river:
-      true => "Discovery: river navigation. Barges can now be built."
-      false => match finish_rail(row, max_research) and not row.tech_rail:
-        true => "Discovery: steam power. Rail can now be built."
-        false => ""
 
 fn finish_event_messages(row: WorldRow) -> List<Text>:
   let start_day = row.settle_from / hours_per_day()
@@ -1325,10 +1319,8 @@ fn finish_event_messages(row: WorldRow) -> List<Text>:
 
 fn finish_messages(row: WorldRow, max_research: Int) -> List<Text>:
   let events = finish_event_messages(row)
-  let tech = finish_tech_message(row, max_research)
-  match tech == "":
-    true => events
-    false => list_append(events, tech)
+  let tech = finish_tech_messages(row, max_research)
+  append_messages(events, tech, 0)
 
 fn finish_upkeep(row: WorldRow) -> List<Int>:
   let raw_weeks = row.tick / hours_per_week() - row.settle_from / hours_per_week()
@@ -1349,7 +1341,7 @@ fn finish_apply(row: WorldRow, max_research: Int, total_prosperity: Int) -> Resu
   let history_base = history.count(world: row.id, epoch: row.epoch)?
   save_history([total_prosperity], row.id, row.epoch, history_base, 0)?
   let upkeep = finish_upkeep(row)
-  let updated = worlds.update(row.id, EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: row.tick, money: nth_int(upkeep, 0), tech_road: finish_road(row, max_research), tech_river: finish_river(row, max_research), tech_rail: finish_rail(row, max_research), auto_upkeep: row.auto_upkeep, last_paid_tick: nth_int(upkeep, 1), upkeep_per_cycle: row.upkeep_per_cycle, phase: 0, epoch: row.epoch, settle_days: 0, settle_from: 0, draft_from: row.draft_from, draft_to: row.draft_to, draft_via: row.draft_via))?
+  let updated = worlds.update(row.id, EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: row.tick, money: nth_int(upkeep, 0), tech_road: false, tech_river: false, tech_rail: false, tech: tech_advance(row_tech(row), max_research), auto_upkeep: row.auto_upkeep, last_paid_tick: nth_int(upkeep, 1), upkeep_per_cycle: row.upkeep_per_cycle, phase: 0, epoch: row.epoch, settle_days: 0, settle_from: 0, draft_from: row.draft_from, draft_to: row.draft_to, draft_via: row.draft_via))?
   Ok([int_text(updated.tick), int_text(updated.money), int_text(max_research), int_text(total_prosperity)])
 
 export fn advance_finish_commit(max_research: Int, total_prosperity: Int) -> Result<List<Text>, DataError>:
@@ -1547,7 +1539,7 @@ fn market_flow_period(world: World, days: Int, scale: Int) -> Result<World, Data
     None => []
   let towns1 = flow_apply_towns(world.towns, result)
   let routes1 = flow_apply_routes(world.routes, result, len(world.towns))
-  Ok(World(seed: world.seed, tick: world.tick, money: nth_int(money_row, 0), towns: towns1, sites: world.sites, routes: routes1, log: world.log, history: world.history, tech_road: world.tech_road, tech_river: world.tech_river, tech_rail: world.tech_rail))
+  Ok(World(seed: world.seed, tick: world.tick, money: nth_int(money_row, 0), towns: towns1, sites: world.sites, routes: routes1, log: world.log, history: world.history, tech: world.tech))
 
 export fn forecast_market(hours: Int, cadence: Text) -> Result<Forecast, DataError>:
   let state = load_state()?
@@ -1627,7 +1619,7 @@ fn survey_world(seed: Int, town_rows: List<TownRow>, site_rows: List<SiteRow>) -
     town_from_row(r)
   let sites = for r in site_rows:
     site_from_row(r)
-  World(seed: seed, tick: 0, money: 0, towns: towns, sites: sites, routes: [], log: [], history: [], tech_road: false, tech_river: false, tech_rail: false)
+  World(seed: seed, tick: 0, money: 0, towns: towns, sites: sites, routes: [], log: [], history: [], tech: empty_tech_state())
 
 fn survey_context() -> Result<World, DataError>:
   let rows = worlds.select(limit: 1)?
@@ -1704,7 +1696,7 @@ export fn survey_waypoint_edit(from: Text, to: Text, via: List<Int>) -> Result<W
           Ok(WaypointState(count: len(flat) / 2, ok: saved, via: flat, plan: plan_via(world, from, to, flat)))
 
 fn edit_world_draft(row: WorldRow, from: Text, to: Text, via: Text) -> EditWorldRow:
-  EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: row.tick, money: row.money, tech_road: row.tech_road, tech_river: row.tech_river, tech_rail: row.tech_rail, auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: row.phase, epoch: row.epoch, settle_days: row.settle_days, settle_from: row.settle_from, draft_from: from, draft_to: to, draft_via: via)
+  EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: row.tick, money: row.money, tech_road: false, tech_river: false, tech_rail: false, tech: row_tech(row), auto_upkeep: row.auto_upkeep, last_paid_tick: row.last_paid_tick, upkeep_per_cycle: row.upkeep_per_cycle, phase: row.phase, epoch: row.epoch, settle_days: row.settle_days, settle_from: row.settle_from, draft_from: from, draft_to: to, draft_via: via)
 
 fn save_draft(row: WorldRow, from: Text, to: Text, via: List<Int>) -> Result<Bool, DataError>:
   let updated = worlds.update(row.id, edit_world_draft(row, from, to, encode_waypoints(via)))?
