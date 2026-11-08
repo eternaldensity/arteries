@@ -248,7 +248,7 @@ export component LinkRulesDesk(link: Text, rules: LinkRules):
       <p class="helper">Blocked goods cannot use this link. A surcharge is added to the base toll when routing that good.</p>
     </div>
 
-export component InspectorCard(iv: InspectView, hub: Text):
+export component InspectorCard(iv: InspectView, hub: Text, knowledge: Text):
   output refresh
 
   on do_refresh:
@@ -282,6 +282,9 @@ export component InspectorCard(iv: InspectView, hub: Text):
           </div>
         </div>
         <p class="insight">{iv.insight}</p>
+        <when test={not iv.is_site and knowledge != ""}>
+          <p class="helper">{knowledge}</p>
+        </when>
         <when test={not iv.is_site and hub != ""}>
           <p class="helper">{hub}</p>
         </when>
@@ -877,7 +880,7 @@ export component Root:
         <article class="stat">
           <span class="stat-label">Best research</span>
           <strong>{max_town_research(world)}</strong>
-          <span class="stat-sub">next: {next_tech_name(world)}</span>
+          <span class="stat-sub">next: tech</span>
         </article>
         <article class="stat">
           <span class="stat-label">Routes</span>
@@ -885,9 +888,9 @@ export component Root:
           <span class="stat-sub">active links</span>
         </article>
         <article class="stat wide">
-          <div class="stat-head"><span class="stat-label">Technology</span><span class="mono">{tech_progress(world)}%</span></div>
+          <div class="stat-head"><span class="stat-label">Technology</span><span class="mono">{tech_state_progress(world.tech)}%</span></div>
           <div class={"track " + progress_class(world)}><span></span></div>
-          <span class="stat-sub">{tech_summary(world)} · {tech_next_text(world)}</span>
+          <span class="stat-sub">{tech_state_summary(world.tech)} · material-gated discoveries</span>
         </article>
       </section>
 
@@ -988,7 +991,7 @@ export component Root:
                   </each>
                                     <p class="helper">Water crossings become bridges; they add cost, lower capacity, and lengthen construction.</p>
                   <when test={show_preview}>
-                    <use component="SurveyPreviewPanel" from={sel.from} to={sel.to} plan={draft_plan} road={tech_unlocks_mode(world.tech, Road)} river={tech_unlocks_mode(world.tech, River)} rail={tech_unlocks_mode(world.tech, Rail)} on-choose={use_corridor}></use>
+                    <use component="SurveyPreviewPanel" from={sel.from} to={sel.to} plan={draft_plan} road={tech_state_road(world.tech)} river={tech_state_river(world.tech)} rail={tech_state_rail(world.tech)} on-choose={use_corridor}></use>
                   </when>
                   <p class="blocker">{build_blocker_plan(world, game.projects, sel.from, sel.to, draft_plan, sel.ready)}</p>
                   <div class="actions">
@@ -1029,7 +1032,7 @@ export component Root:
       </div>
 
       <div class="lower">
-        <use component="InspectorCard" iv={inspect_view(world, game.sel.selected)} hub={town_hub_text(world, game.sel.selected)} on-refresh={refresh_inspect}></use>
+        <use component="InspectorCard" iv={inspect_view(world, game.sel.selected)} hub={town_hub_text(world, game.sel.selected)} knowledge={tech_state_summary(world.tech)} on-refresh={refresh_inspect}></use>
         <section class="card routes-card">
           <div class="card-head"><h2>Network</h2><span class="badge">{len(world.routes)} / {max_routes()} routes</span></div>
           <div class="maintenance">
@@ -1127,7 +1130,7 @@ export component Root:
 
       <footer class="footer">
         <span>Arteries prototype · every seed produces a different frontier</span>
-        <span class="mono">seed {world.seed} · {calendar_text(world)} · {era_name(world_era(world))} · {tech_summary(world)}</span>
+        <span class="mono">seed {world.seed} · {calendar_text(world)} · tech tree · {tech_state_summary(world.tech)}</span>
       </footer>
     </main>
     </when>

@@ -1094,8 +1094,8 @@ fn attach_streams(world: WorldId, epoch: Int, game: Game) -> Result<Game, DataEr
   match len(game.world.log) > 0 or len(game.world.history) > 0:
     true => Ok(game)
     false =>
-      let log_rows = logs.page(world: world, epoch: epoch, order: "seq", descending: true, after: "", limit: 12)?
-      let history_rows = history.page(world: world, epoch: epoch, order: "seq", descending: true, after: "", limit: 24)?
+      let log_rows = logs.page(world: world, epoch: epoch, order: "seq", descending: true, after: "", limit: 8)?
+      let history_rows = history.page(world: world, epoch: epoch, order: "seq", descending: true, after: "", limit: 16)?
       let messages = for r in log_rows:
         r.message
       let numbers = for r in history_rows:
@@ -1196,7 +1196,8 @@ fn compact_with_row(row: WorldRow, hours: Int, cadence: Text) -> Result<List<Int
         route_state_row(r, town_row_index(town_rows, r.a), town_row_index(town_rows, r.b))
       let pipeline_values = for r in route_rows:
         r.pipeline
-      let result = host.compute<List<List<Int>>>("arteries", "market", row.money, town_values, route_values, pipeline_values, days, compact_scale(row))?
+      let effects = tech_effects_server(row_tech(row))?
+      let result = host.compute<List<List<Int>>>("arteries", "market", row.money, town_values, route_values, pipeline_values, days, compact_scale(row), effects)?
       let money_row = match list_get(result, 0):
         Some(values) => values
         None => []
@@ -1271,7 +1272,8 @@ fn trade_chunk_page(row: WorldRow, after: Text, limit: Int) -> Result<List<Text>
         town_state_row(t, row.seed)
       let pipeline_values = for r in route_rows:
         r.pipeline
-      let result = host.compute<List<List<Int>>>("arteries", "trade", row.money, town_values, page.routes, pipeline_values, row.settle_days, compact_scale_at(row, row.settle_from))?
+      let effects = tech_effects_server(row_tech(row))?
+      let result = host.compute<List<List<Int>>>("arteries", "trade", row.money, town_values, page.routes, pipeline_values, row.settle_days, compact_scale_at(row, row.settle_from), effects)?
       let money_row = match list_get(result, 0):
         Some(values) => values
         None => []
@@ -1300,7 +1302,8 @@ fn compact_chunk_page(row: WorldRow, after: Text, limit: Int) -> Result<List<Tex
         town_state_row(t, row.seed)
       let no_routes = []
       let no_pipelines = []
-      let result = host.compute<List<List<Int>>>("arteries", "market", row.money, town_values, no_routes, no_pipelines, row.settle_days, compact_scale_at(row, row.settle_from))?
+      let effects = tech_effects_server(row_tech(row))?
+      let result = host.compute<List<List<Int>>>("arteries", "market", row.money, town_values, no_routes, no_pipelines, row.settle_days, compact_scale_at(row, row.settle_from), effects)?
       let money_row = match list_get(result, 0):
         Some(values) => values
         None => []
@@ -1377,9 +1380,29 @@ export fn advance_finish_chunk(after: Text, limit: Int) -> Result<List<Text>, Da
             true => finish_chunk_page(row, after, page_limit)
             false => Ok(["", int_text(row.phase), "0", "0"])
 
-fn finish_tech_messages(row: WorldRow, max_research: Int) -> List<Text>:
-  let tech = row_tech(row)
-  tech_discovery_messages(tech, tech_advance(tech, max_research))
+fn town_stock_values(row: TownRow) -> List<Int>:
+  [row.stock0, row.stock1, row.stock2, row.stock3, row.stock4, row.stock5, row.stock6, row.stock7, row.stock8, row.stock9, row.stock10, row.stock11, row.stock12, row.stock13, row.stock14, row.stock15, row.stock16, row.stock17]
+
+fn best_stock_scan(rows: List<TownRow>, max_research: Int, i: Int) -> List<Int>:
+  match list_get(rows, i):
+    None => []
+    Some(row) => match row.research == max_research:
+      true => town_stock_values(row)
+      false => best_stock_scan(rows, max_research, i + 1)
+
+fn best_stock_server(row: WorldRow, max_research: Int) -> Result<List<Int>, DataError>:
+  let rows = towns.page(world: row.id, order: "ord", after: "", limit: 100)?
+  Ok(best_stock_scan(rows, max_research, 0))
+
+fn finish_tech_messages(row: WorldRow, max_research: Int, stock: List<Int>) -> List<Text>:
+  match max_research <= 0:
+    true => []
+    false =>
+      let tech = row_tech(row)
+      let next = tech_advance_pass_stock(tech, max_research, stock)
+      match next == tech:
+        true => []
+        false => tech_discovery_messages(tech, next)
 
 
 fn finish_event_messages(row: WorldRow) -> List<Text>:
@@ -1397,9 +1420,9 @@ fn finish_event_messages(row: WorldRow) -> List<Text>:
     true => list_append(log2, "A caravan brings timber and stone to the frontier.")
     false => log2
 
-fn finish_messages(row: WorldRow, max_research: Int) -> List<Text>:
+fn finish_messages(row: WorldRow, max_research: Int, stock: List<Int>) -> List<Text>:
   let events = finish_event_messages(row)
-  let tech = finish_tech_messages(row, max_research)
+  let tech = finish_tech_messages(row, max_research, stock)
   append_messages(events, tech, 0)
 
 fn finish_upkeep(row: WorldRow) -> List<Int>:
@@ -1416,12 +1439,18 @@ fn finish_upkeep(row: WorldRow) -> List<Int>:
   [money, paid]
 
 fn finish_apply(row: WorldRow, max_research: Int, total_prosperity: Int) -> Result<List<Text>, DataError>:
+  let stock = match max_research <= 0:
+    true => []
+    false => best_stock_server(row, max_research)?
   let log_base = logs.count(world: row.id, epoch: row.epoch)?
-  save_logs(finish_messages(row, max_research), row.id, row.epoch, log_base, 0)?
+  save_logs(finish_messages(row, max_research, stock), row.id, row.epoch, log_base, 0)?
   let history_base = history.count(world: row.id, epoch: row.epoch)?
   save_history([total_prosperity], row.id, row.epoch, history_base, 0)?
   let upkeep = finish_upkeep(row)
-  let updated = worlds.update(row.id, EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: row.tick, money: nth_int(upkeep, 0), tech_road: false, tech_river: false, tech_rail: false, tech: tech_advance(row_tech(row), max_research), auto_upkeep: row.auto_upkeep, last_paid_tick: nth_int(upkeep, 1), upkeep_per_cycle: row.upkeep_per_cycle, phase: 0, epoch: row.epoch, settle_days: 0, settle_from: 0, draft_from: row.draft_from, draft_to: row.draft_to, draft_via: row.draft_via))?
+  let tech = match max_research <= 0:
+    true => row_tech(row)
+    false => tech_advance_pass_stock(row_tech(row), max_research, stock)
+  let updated = worlds.update(row.id, EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: row.tick, money: nth_int(upkeep, 0), tech_road: false, tech_river: false, tech_rail: false, tech: tech, auto_upkeep: row.auto_upkeep, last_paid_tick: nth_int(upkeep, 1), upkeep_per_cycle: row.upkeep_per_cycle, phase: 0, epoch: row.epoch, settle_days: 0, settle_from: 0, draft_from: row.draft_from, draft_to: row.draft_to, draft_via: row.draft_via))?
   Ok([int_text(updated.tick), int_text(updated.money), int_text(max_research), int_text(total_prosperity)])
 
 export fn advance_finish_commit(max_research: Int, total_prosperity: Int) -> Result<List<Text>, DataError>:
@@ -1607,6 +1636,9 @@ export fn advance_scale(hours: Int, cadence: Text, phase: Int, cursor: Text, pop
 fn encode_ints4(values: List<Int>) -> Result<Text, DataError>:
   host.compute<Text>("arteries", "encode_ints4", values)
 
+fn tech_effects_server(state: Text) -> Result<List<Int>, DataError>:
+  host.compute<List<Int>>("arteries", "tech_effect_mask", state, tech_effect_table())
+
 fn flow_apply_routes_server(routes: List<Route>, result: List<List<Int>>, town_count: Int, i: Int, acc: List<Route>) -> Result<List<Route>, DataError>:
   match list_get(routes, i):
     None => Ok(acc)
@@ -1630,7 +1662,8 @@ fn market_flow_period(world: World, days: Int, scale: Int) -> Result<World, Data
     r.pipeline
   # Run production and trade together in Rust. The interpreter only carries
   # the compact rows, so a larger goods list does not inflate managed values.
-  let result = host.compute<List<List<Int>>>("arteries", "market", world.money, town_values, route_values, pipeline_values, days, scale)?
+  let effects = tech_effects_server(world.tech)?
+  let result = host.compute<List<List<Int>>>("arteries", "market", world.money, town_values, route_values, pipeline_values, days, scale, effects)?
   let money_row = match list_get(result, 0):
     Some(values) => values
     None => []

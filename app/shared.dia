@@ -630,13 +630,16 @@ export fn map_count() -> Int:
 
 # ---------------------------------------------------------------- technology
 #
-# The catalog lives in tech_tables.dia. State is a compact bitset Text indexed
-# by catalog order (one character per tech). Adding a tech is a data change:
+# The catalog lives in tech_tables.dia. State is a packed hex bitset Text:
+# four techs per nibble, in catalog order. Adding a tech is a data change:
 # append a row with prerequisites and an effect, and the unlock/progress/gating
 # code below picks it up. Catalog order must be topological.
 
 export fn tech_row_count() -> Int:
   catalog_row_count()
+
+export fn tech_effect_table() -> Text:
+  catalog_effect_table()
 
 export fn tech_row_at(i: Int) -> List<Text>:
   catalog_row_at(i)
@@ -656,11 +659,17 @@ fn tech_era_row(row: List<Text>) -> Int:
 fn tech_cost_row(row: List<Text>) -> Int:
   int_of(nth_text(row, 3))
 
-fn tech_effect_row(row: List<Text>) -> Text:
+fn tech_gate_row(row: List<Text>) -> Text:
   nth_text(row, 5)
 
-fn tech_description_row(row: List<Text>) -> Text:
+fn tech_effect_row(row: List<Text>) -> Text:
   nth_text(row, 6)
+
+fn tech_value_row(row: List<Text>) -> Int:
+  int_of(nth_text(row, 7))
+
+fn tech_description_row(row: List<Text>) -> Text:
+  nth_text(row, 8)
 
 export fn tech_name_at(i: Int) -> Text:
   tech_field_at(i, 1)
@@ -674,29 +683,96 @@ export fn tech_cost_at(i: Int) -> Int:
 fn tech_prereqs_at(i: Int) -> Text:
   tech_field_at(i, 4)
 
-fn tech_effect_at(i: Int) -> Text:
+fn tech_gate_at(i: Int) -> Text:
   tech_field_at(i, 5)
 
-fn tech_description_at(i: Int) -> Text:
+fn tech_effect_at(i: Int) -> Text:
   tech_field_at(i, 6)
+
+fn tech_value_at(i: Int) -> Int:
+  int_of(tech_field_at(i, 7))
+
+fn tech_description_at(i: Int) -> Text:
+  tech_field_at(i, 8)
 
 export fn empty_tech_state() -> Text:
   ""
 
+fn tech_hex_char(value: Int) -> Text:
+  match value == 10:
+    true => "a"
+    false => match value == 11:
+      true => "b"
+      false => match value == 12:
+        true => "c"
+        false => match value == 13:
+          true => "d"
+          false => match value == 14:
+            true => "e"
+            false => match value == 15:
+              true => "f"
+              false => int_text(value)
+
+fn tech_hex_value(c: Text) -> Int:
+  match c == "a":
+    true => 10
+    false => match c == "b":
+      true => 11
+      false => match c == "c":
+        true => 12
+        false => match c == "d":
+          true => 13
+          false => match c == "e":
+            true => 14
+            false => match c == "f":
+              true => 15
+              false => digit_value(c)
+
+fn tech_bit_value(bit: Int) -> Int:
+  match bit == 0:
+    true => 1
+    false => match bit == 1:
+      true => 2
+      false => match bit == 2:
+        true => 4
+        false => 8
+
+# The authoritative state packs four techs into one hex nibble. Nine hex
+# characters cover the 33-entry catalog, which keeps every World copy small.
 export fn tech_has(state: Text, id: Int) -> Bool:
-  match id < 0 or id >= len(state):
+  match id < 0 or id >= tech_row_count():
     true => false
-    false => text_slice(state, id, 1) == "1"
+    false =>
+      let pos = id / 4
+      match pos >= len(state):
+        true => false
+        false =>
+          let nibble = tech_hex_value(text_slice(state, pos, 1))
+          mod_int(nibble / tech_bit_value(id - pos * 4), 2) == 1
 
 fn tech_discover(state: Text, id: Int) -> Text:
-  let n = max_int(len(state), id + 1)
-  let bits = for i in indices(n):
-    match i == id:
-      true => "1"
-      false => match i < len(state):
-        true => text_slice(state, i, 1)
-        false => "0"
-  join_text(bits, "")
+  let pos = id / 4
+  let bit = id - pos * 4
+  let nibble = match pos < len(state):
+    true => tech_hex_value(text_slice(state, pos, 1))
+    false => 0
+  let updated = match mod_int(nibble / tech_bit_value(bit), 2) == 1:
+    true => nibble
+    false => nibble + tech_bit_value(bit)
+  let ch = tech_hex_char(updated)
+  match pos >= len(state):
+    true =>
+      let pad = for i in indices(pos - len(state)):
+        "0"
+      state + join_text(pad, "") + ch
+    false => match pos == len(state) - 1:
+      true => text_slice(state, 0, pos) + ch
+      false =>
+        let bits = for i in indices(len(state)):
+          match i == pos:
+            true => ch
+            false => text_slice(state, i, 1)
+        join_text(bits, "")
 
 fn tech_discover_effect(state: Text, effect: Text) -> Text:
   let idx = tech_effect_index_where("", effect, false)
@@ -764,32 +840,49 @@ fn first_nonnegative_range(xs: List<Int>, start: Int, count: Int) -> Int:
           true => left
           false => first_nonnegative_range(xs, start + half, count - half)
 
-fn tech_pass_chunk(state: Text, research: Int, chunk: List<List<Text>>) -> Text:
-  let bits = for row in chunk:
-    let id = tech_id_row(row)
-    match tech_has(state, id):
-      true => "1"
-      false => match tech_cost_row(row) <= research and tech_prereqs_ok_row(state, row):
-        true => "1"
-        false => "0"
-  join_text(bits, "")
+# A gate is an 18-digit string in goods order. An empty or short stock list
+# means "no physical gate" so research-only tools and old callers still work.
+export fn tech_gate_ok(gate: Text, stock: List<Int>) -> Bool:
+  match len(stock) < good_count():
+    true => true
+    false =>
+      let flags = for i in indices(good_count()):
+        bool_int(digit_value(text_slice(gate, i, 1)) <= nth_int(stock, i))
+      total(flags) == good_count()
 
-fn tech_pass(chunks: List<List<List<Text>>>, state: Text, research: Int) -> Text:
-  let chunk_bits = for chunk in chunks:
-    tech_pass_chunk(state, research, chunk)
-  join_text(chunk_bits, "")
+fn tech_discover_chunk(state: Text, research: Int, stock: List<Int>, chunk: List<List<Text>>, i: Int) -> Text:
+  match list_get(chunk, i):
+    None => state
+    Some(row) =>
+      let id = tech_id_row(row)
+      match tech_has(state, id):
+        true => tech_discover_chunk(state, research, stock, chunk, i + 1)
+        false => match tech_cost_row(row) <= research and tech_prereqs_ok_row(state, row) and tech_gate_ok(tech_gate_row(row), stock):
+          true => tech_discover_chunk(tech_discover(state, id), research, stock, chunk, i + 1)
+          false => tech_discover_chunk(state, research, stock, chunk, i + 1)
 
-fn tech_advance_passes(chunks: List<List<List<Text>>>, state: Text, research: Int, remaining: Int) -> Text:
+fn tech_discover_chunks(chunks: List<List<List<Text>>>, state: Text, research: Int, stock: List<Int>, c: Int) -> Text:
+  match list_get(chunks, c):
+    None => state
+    Some(chunk) => tech_discover_chunks(chunks, tech_discover_chunk(state, research, stock, chunk, 0), research, stock, c + 1)
+
+export fn tech_advance_pass_stock(state: Text, research: Int, stock: List<Int>) -> Text:
+  tech_discover_chunks(catalog_chunks(), state, research, stock, 0)
+
+fn tech_advance_stock_passes(state: Text, research: Int, stock: List<Int>, remaining: Int) -> Text:
   match remaining <= 0:
     true => state
     false =>
-      let next = tech_pass(chunks, state, research)
+      let next = tech_advance_pass_stock(state, research, stock)
       match next == state:
         true => next
-        false => tech_advance_passes(chunks, next, research, remaining - 1)
+        false => tech_advance_stock_passes(next, research, stock, remaining - 1)
+
+export fn tech_advance_stock(state: Text, research: Int, stock: List<Int>) -> Text:
+  tech_advance_stock_passes(state, research, stock, 6)
 
 export fn tech_advance(state: Text, research: Int) -> Text:
-  tech_advance_passes(catalog_chunks(), state, research, 48)
+  tech_advance_stock(state, research, [])
 
 fn tech_messages_chunk(before: Text, after: Text, chunk: List<List<Text>>) -> Text:
   let parts = for row in chunk:
@@ -827,13 +920,180 @@ fn tech_effect_index_where(state: Text, effect: Text, require_discovered: Bool) 
 
 export fn tech_unlocks_mode(state: Text, mode: RouteMode) -> Bool:
   match mode:
-    Road => tech_effect_index_where(state, "unlock_road", true) >= 0
-    River => tech_effect_index_where(state, "unlock_river", true) >= 0
-    Rail => tech_effect_index_where(state, "unlock_rail", true) >= 0
+    Road => tech_has(state, road_tech_id())
+    River => tech_has(state, river_tech_id())
+    Rail => tech_has(state, rail_tech_id())
     _ => false
 
 export fn tech_has_effect(state: Text, effect: Text) -> Bool:
   tech_effect_index_where(state, effect, true) >= 0
+
+# A single catalog scan powers the header, footer, survey controls, and
+# inspector. Keeping it in one record avoids five independent scans per browser
+# update.
+export type TechView:
+  count: Int
+  total: Int
+  next: Int
+  name: Text
+  cost: Int
+  gate: Text
+  gate_text: Text
+  era: Int
+  road: Bool
+  river: Bool
+  rail: Bool
+
+type TechScan:
+  count: Int
+  ready: Int
+  any: Int
+  era: Int
+  road: Bool
+  river: Bool
+  rail: Bool
+
+fn tech_scan_row(scan: TechScan, state: Text, row: List<Text>) -> TechScan:
+  let id = tech_id_row(row)
+  let effect = tech_effect_row(row)
+  match tech_has(state, id):
+    false =>
+      let any = match scan.any < 0:
+        true => id
+        false => scan.any
+      TechScan(count: scan.count, ready: scan.ready, any: any, era: scan.era, road: scan.road, river: scan.river, rail: scan.rail)
+    true =>
+      TechScan(count: scan.count + 1, ready: scan.ready, any: scan.any, era: max_int(scan.era, tech_era_row(row)), road: scan.road or effect == "unlock_road", river: scan.river or effect == "unlock_river", rail: scan.rail or effect == "unlock_rail")
+
+fn tech_scan_chunk(scan: TechScan, state: Text, chunk: List<List<Text>>, i: Int) -> TechScan:
+  match list_get(chunk, i):
+    None => scan
+    Some(row) => tech_scan_chunk(tech_scan_row(scan, state, row), state, chunk, i + 1)
+
+fn tech_scan_chunks(scan: TechScan, state: Text, chunks: List<List<List<Text>>>, c: Int) -> TechScan:
+  match list_get(chunks, c):
+    None => scan
+    Some(chunk) => tech_scan_chunks(tech_scan_chunk(scan, state, chunk, 0), state, chunks, c + 1)
+
+export fn tech_view(state: Text) -> TechView:
+  let scan = tech_scan_chunks(TechScan(count: 0, ready: -1, any: -1, era: 0, road: false, river: false, rail: false), state, catalog_chunks(), 0)
+  let idx = scan.any
+  let total = tech_row_count()
+  let era = max_int(1, scan.era)
+  match idx < 0:
+    true => TechView(count: scan.count, total: total, next: -1, name: "All technologies", cost: 1, gate: "", gate_text: "", era: era, road: scan.road, river: scan.river, rail: scan.rail)
+    false =>
+      let row = tech_row_at(idx)
+      let gate = tech_gate_row(row)
+      TechView(count: scan.count, total: total, next: idx, name: tech_name_row(row), cost: tech_cost_row(row), gate: gate, gate_text: tech_gate_text(gate), era: era, road: scan.road, river: scan.river, rail: scan.rail)
+
+fn tech_popcount_hex(value: Int) -> Int:
+  match value == 0:
+    true => 0
+    false => match value == 1:
+      true => 1
+      false => match value == 2:
+        true => 1
+        false => match value == 3:
+          true => 2
+          false => match value == 4:
+            true => 1
+            false => match value == 5:
+              true => 2
+              false => match value == 6:
+                true => 2
+                false => match value == 7:
+                  true => 3
+                  false => match value == 8:
+                    true => 1
+                    false => match value == 9:
+                      true => 2
+                      false => match value == 10:
+                        true => 2
+                        false => match value == 11:
+                          true => 3
+                          false => match value == 12:
+                            true => 2
+                            false => match value == 13:
+                              true => 3
+                              false => match value == 14:
+                                true => 3
+                                false => 4
+
+export fn tech_state_count(state: Text) -> Int:
+  let counts = for i in indices(len(state)):
+    tech_popcount_hex(tech_hex_value(text_slice(state, i, 1)))
+  total(counts)
+
+export fn tech_state_summary(state: Text) -> Text:
+  int_text(tech_state_count(state)) + "/" + int_text(tech_row_count()) + " techs"
+
+export fn tech_state_road(state: Text) -> Bool:
+  tech_has(state, road_tech_id())
+
+export fn tech_state_river(state: Text) -> Bool:
+  tech_has(state, river_tech_id())
+
+export fn tech_state_rail(state: Text) -> Bool:
+  tech_has(state, rail_tech_id())
+
+export fn tech_state_progress(state: Text) -> Int:
+  clamp(tech_state_count(state) * 100 / max_int(tech_row_count(), 1), 0, 100)
+
+export fn tech_summary_at(view: TechView) -> Text:
+  int_text(view.count) + "/" + int_text(view.total) + " techs"
+
+export fn tech_next_text_at(view: TechView) -> Text:
+  match view.next < 0:
+    true => "All technologies discovered"
+    false => view.name + " at " + int_text(view.cost) + " research · needs " + view.gate_text
+
+export fn tech_progress_at(world: World, view: TechView) -> Int:
+  clamp(max_town_research(world) * 100 / max_int(view.cost, 1), 0, 100)
+
+export fn town_knowledge_text_at(world: World, id: Text, view: TechView) -> Text:
+  let t = find_town(world.towns, id)
+  match t.id == "":
+    true => ""
+    false => match view.next < 0:
+      true => "Every branch is known. The frontier is fully industrialised."
+      false => "Next discovery: " + view.name + " · " + int_text(t.state.research) + "/" + int_text(view.cost) + " research · needs " + view.gate_text
+
+export fn tech_gate_text(gate: Text) -> Text:
+  let parts = for i in indices(good_count()):
+    let amount = digit_value(text_slice(gate, i, 1))
+    match amount > 0:
+      true => [good_name(nth_good(i)) + " " + int_text(amount)]
+      false => []
+  let flat = flatten_texts(parts, 0, [])
+  match len(flat) == 0:
+    true => "no material gate"
+    false => join_text(flat, ", ")
+
+export fn tech_gate_progress_text(gate: Text, stock: List<Int>) -> Text:
+  let parts = for i in indices(good_count()):
+    let amount = digit_value(text_slice(gate, i, 1))
+    match amount > 0:
+      true => [good_name(nth_good(i)) + " " + int_text(nth_int(stock, i)) + "/" + int_text(amount)]
+      false => []
+  let flat = flatten_texts(parts, 0, [])
+  match len(flat) == 0:
+    true => "ready"
+    false => join_text(flat, ", ")
+
+fn best_research_index(towns: List<Town>, i: Int, best: Int, best_research: Int) -> Int:
+  match i >= len(towns):
+    true => best
+    false =>
+      let research = nth_town(towns, i).state.research
+      match research > best_research:
+        true => best_research_index(towns, i + 1, i, research)
+        false => best_research_index(towns, i + 1, best, best_research)
+
+export fn best_research_stock(towns: List<Town>) -> List<Int>:
+  match len(towns) == 0:
+    true => []
+    false => nth_town(towns, best_research_index(towns, 0, 0, nth_town(towns, 0).state.research)).state.stock
 
 fn tech_cost_by_effect(effect: Text) -> Int:
   let idx = tech_effect_index_where("", effect, false)
@@ -884,12 +1144,12 @@ export fn era_of_research(research: Int) -> Int:
 
 export fn era_name(era: Int) -> Text:
   match era == 4:
-    true => "Era 4 · Rails"
+    true => "Era 4 · Networks"
     false => match era == 3:
-      true => "Era 3 · Rivers"
+      true => "Era 3 · Industry"
       false => match era == 2:
-        true => "Era 2 · Roads"
-        false => "Era 1 · Pack routes"
+        true => "Era 2 · Workshops"
+        false => "Era 1 · Settling"
 
 fn tech_era_chunk(state: Text, chunk: List<List<Text>>) -> Int:
   let eras = for row in chunk:
@@ -1044,14 +1304,13 @@ export fn indices(n: Int) -> List<Int>:
           true => [0, 1, 2]
           false => match n == 18:
             true => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
-            false => match n == 40:
-              true => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39]
-              false => match n == 43:
-                true => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42]
-                false => match n == 144:
-                  true => indices_144()
+            false => match n == 33:
+              true => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
+              false => match n == 40:
+                true => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39]
+                false => match n == 43:
+                  true => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42]
                   false => indices_from(0, n, [])
-
 # Balanced list folds keep call depth logarithmic, so 100+ settlements stay
 # inside Diamond's depth-64 limit. Each leaf walks at most eight items.
 fn sum_small(xs: List<Int>, start: Int, count: Int) -> Int:
@@ -1911,7 +2170,7 @@ fn with_routes(world: World, routes: List<Route>) -> World:
 fn with_sites(world: World, sites: List<Site>) -> World:
   World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: sites, routes: world.routes, log: world.log, history: world.history, tech: world.tech)
 
-fn with_tech_state(world: World, tech: Text) -> World:
+export fn with_tech_state(world: World, tech: Text) -> World:
   World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: world.log, history: world.history, tech: tech)
 
 fn record(world: World, message: Text) -> World:
@@ -2704,10 +2963,23 @@ export fn survey_badge(sel: Selection) -> Text:
         true => "idle"
         false => "choose destination"
 
+export fn next_tech_gate_text(world: World) -> Text:
+  let idx = tech_next_index(world.tech)
+  match idx < 0:
+    true => ""
+    false => tech_gate_text(tech_gate_at(idx))
+
 export fn tech_next_text(world: World) -> Text:
-  match tech_next_index(world.tech) < 0:
-    true => "All technologies discovered"
-    false => next_tech_name(world) + " at " + int_text(next_tech_threshold(world)) + " research"
+  tech_next_text_at(tech_view(world.tech))
+
+export fn tech_next_progress_text(world: World) -> Text:
+  let view = tech_view(world.tech)
+  match view.next < 0:
+    true => "Every branch is known."
+    false => view.name + " · " + int_text(max_town_research(world)) + "/" + int_text(view.cost) + " research · " + tech_gate_progress_text(view.gate, best_research_stock(world.towns))
+
+export fn town_knowledge_text(world: World, id: Text) -> Text:
+  town_knowledge_text_at(world, id, tech_view(world.tech))
 
 export fn signal_count(game: Game) -> Int:
   len(alerts(game.world)) + match upkeep_due(game) > 0:
@@ -2731,7 +3003,7 @@ export fn rt_face_polygon(i: Int) -> List<RtVec>:
   [rt_vertex(f.a), rt_vertex(f.b), rt_vertex(f.c), rt_vertex(f.d)]
 
 export fn empty_inspect_view() -> InspectView:
-  InspectView(ready: false, is_site: false, name: "", status: "", tone: "ok", resource: "", richness: 0, founded: false, pop: 0, prosperity: 0, research: 0, terrain: "", climate: "", value: 0, insight: "", shortages: "none", connected: 0, goods: zero_goods(), needs: zero_goods(), endows: zero_goods())
+  InspectView(ready: false, is_site: false, name: "", status: "", tone: "ok", resource: "", richness: 0, founded: false, pop: 0, prosperity: 0, research: 0, terrain: "", climate: "", value: 0, insight: "", shortages: "none", connected: 0, goods: [], needs: [], endows: [])
 
 export fn inspect_view(world: World, id: Text) -> InspectView:
   let t = find_town(world.towns, id)
@@ -2901,8 +3173,7 @@ export fn next_tech_name(world: World) -> Text:
     false => tech_name_at(idx)
 
 export fn tech_progress(world: World) -> Int:
-  let best = max_town_research(world)
-  clamp(best * 100 / max_int(next_tech_threshold(world), 1), 0, 100)
+  tech_progress_at(world, tech_view(world.tech))
 
 export fn progress_class(world: World) -> Text:
   let p = tech_progress(world)
@@ -3622,22 +3893,16 @@ fn drop_route(routes: List<Route>, id: Text, i: Int, acc: List<Route>) -> List<R
         true => drop_route(routes, id, i + 1, acc)
         false => drop_route(routes, id, i + 1, list_append(acc, current))
 
-export fn upgrade_planks(world: World, mode: RouteMode) -> Int:
-  let base = match mode:
+export fn upgrade_planks(_world: World, mode: RouteMode) -> Int:
+  match mode:
     Path => 2
     Road => 4
     _ => 0
-  match base > 0 and tech_has_effect(world.tech, "discount_planks"):
-    true => max_int(1, base / 2)
-    false => base
 
-export fn upgrade_steel(world: World, mode: RouteMode) -> Int:
-  let base = match mode:
+export fn upgrade_steel(_world: World, mode: RouteMode) -> Int:
+  match mode:
     River => 4
     _ => 0
-  match base > 0 and tech_has_effect(world.tech, "discount_steel"):
-    true => max_int(1, base / 2)
-    false => base
 
 export fn can_upgrade(world: World, route: Route) -> Bool:
   match route.mode:
@@ -4205,7 +4470,7 @@ export fn tech_discovered_count(state: Text) -> Int:
   total(flags)
 
 export fn tech_summary(world: World) -> Text:
-  int_text(tech_discovered_count(world.tech)) + "/" + int_text(tech_row_count()) + " techs"
+  tech_summary_at(tech_view(world.tech))
 
 
 fn nth_town(towns: List<Town>, i: Int) -> Town:
@@ -4597,8 +4862,21 @@ export fn build_button_text_plan(world: World, projects: List<Project>, from: Te
 export fn build_button_text(game: Game) -> Text:
   build_button_text_plan(game.world, game.projects, game.sel.from, game.sel.to, game.sel.draft, game.sel.ready)
 
+fn can_upgrade_ui(game: Game, route: Route) -> Bool:
+  match route.mode:
+    Path => match tech_state_road(game.world.tech):
+      false => false
+      true => game.world.money >= 35 and combined_stock(game.world, route.a, route.b, Stone) >= 2 and combined_stock(game.world, route.a, route.b, Planks) >= 2
+    Road => match tech_state_river(game.world.tech):
+      false => false
+      true => game.world.money >= 60 and combined_stock(game.world, route.a, route.b, Timber) >= 4 and combined_stock(game.world, route.a, route.b, Planks) >= 4
+    River => match tech_state_rail(game.world.tech):
+      false => false
+      true => game.world.money >= 90 and combined_stock(game.world, route.a, route.b, Steel) >= 4 and combined_stock(game.world, route.a, route.b, Tools) >= 2
+    _ => false
+
 export fn can_start_upgrade(game: Game, route: Route) -> Bool:
-  len(game.projects) < max_projects() and not has_project_for(game.projects, route.id) and can_upgrade(game.world, route)
+  len(game.projects) < max_projects() and not has_project_for(game.projects, route.id) and can_upgrade_ui(game, route)
 
 fn next_route_mode(mode: RouteMode) -> RouteMode:
   match mode:
@@ -4848,10 +5126,10 @@ export fn survey_selection_plan(from: Text, to: Text, plan: RoutePlan) -> Select
   Selection(selected: to, from: from, to: to, draft: plan, ready: plan.length > 0, routing: true, notice: "")
 
 export fn server_apply(base: Game, fresh: Game) -> Game:
-  Game(world: fresh.world, sel: base.sel, notice: fresh.notice, last_ok: fresh.last_ok, route_groups: [], auto_upkeep: fresh.auto_upkeep, last_paid_tick: fresh.last_paid_tick, upkeep_per_cycle: fresh.upkeep_per_cycle, projects: fresh.projects, inspect: empty_inspect_view())
+  Game(world: fresh.world, sel: base.sel, notice: fresh.notice, last_ok: fresh.last_ok, route_groups: [], auto_upkeep: fresh.auto_upkeep, last_paid_tick: fresh.last_paid_tick, upkeep_per_cycle: fresh.upkeep_per_cycle, projects: fresh.projects, inspect: base.inspect)
 
 export fn server_adopt(fresh: Game) -> Game:
-  Game(world: fresh.world, sel: fresh.sel, notice: fresh.notice, last_ok: fresh.last_ok, route_groups: [], auto_upkeep: fresh.auto_upkeep, last_paid_tick: fresh.last_paid_tick, upkeep_per_cycle: fresh.upkeep_per_cycle, projects: fresh.projects, inspect: empty_inspect_view())
+  Game(world: fresh.world, sel: fresh.sel, notice: fresh.notice, last_ok: fresh.last_ok, route_groups: [], auto_upkeep: fresh.auto_upkeep, last_paid_tick: fresh.last_paid_tick, upkeep_per_cycle: fresh.upkeep_per_cycle, projects: fresh.projects, inspect: fresh.inspect)
 
 # Replace only the survey draft, keeping the loaded world. The preview RPC
 # returns a compact RoutePlan instead of a whole Game, which keeps the browser
@@ -4982,8 +5260,12 @@ export fn finish_period(world: World, days: Int, from: Int) -> World:
     true => world
     false =>
       let best = max_research(world.towns, 0)
-      let tech = tech_advance(world.tech, best)
-      let msgs_tech = tech_discovery_messages(world.tech, tech)
+      let tech = match best <= 0:
+        true => world.tech
+        false => tech_advance_pass_stock(world.tech, best, best_research_stock(world.towns))
+      let msgs_tech = match tech == world.tech:
+        true => []
+        false => tech_discovery_messages(world.tech, tech)
       let start_day = from / hours_per_day()
       let ev1 = match boundary_in_period(start_day, days, 6):
         true => harvest(world.towns)

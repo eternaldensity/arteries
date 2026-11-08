@@ -70,7 +70,7 @@
   <text class="field-label" x="228" y="277">GATE</text>
   <text class="gate" x="278" y="277">Timber 4</text>
   <text class="field-label" x="228" y="323">EFFECT</text>
-  <text class="effect" x="278" y="323">unlock Planks</text>
+  <text class="effect" x="278" y="323">+15% Planks</text>
   <rect class="card" x="610" y="225" width="350" height="140" rx="14"/>
   <line x1="626" y1="227" x2="944" y2="227" stroke="#e0ac5c" stroke-width="4" stroke-linecap="round"/>
   <text class="card-title" x="628" y="256">Masonry</text>
@@ -78,7 +78,7 @@
   <text class="field-label" x="628" y="277">GATE</text>
   <text class="gate" x="678" y="277">Stone 4 + Clay 2</text>
   <text class="field-label" x="628" y="323">EFFECT</text>
-  <text class="effect" x="678" y="323">unlock Bricks</text>
+  <text class="effect" x="678" y="323">+15% Bricks</text>
   <rect class="card" x="1010" y="225" width="350" height="140" rx="14"/>
   <line x1="1026" y1="227" x2="1344" y2="227" stroke="#e0ac5c" stroke-width="4" stroke-linecap="round"/>
   <text class="card-title" x="1028" y="256">Engineering</text>
@@ -87,7 +87,7 @@
   <text class="gate" x="1078" y="277">Planks 4 + Bricks 4</text>
   <text class="gate" x="1078" y="292">Tools 2</text>
   <text class="field-label" x="1028" y="323">EFFECT</text>
-  <text class="effect" x="1078" y="323">bridge / road capacity</text>
+  <text class="effect" x="1078" y="323">+10% route capacity</text>
   <text class="after-label" x="1028" y="349">AFTER</text>
   <text class="after" x="1078" y="349">Carpentry + Masonry</text>
   <rect class="card" x="1410" y="225" width="350" height="140" rx="14"/>
@@ -98,7 +98,7 @@
   <text class="gate" x="1478" y="277">Planks 6 + Bricks 6</text>
   <text class="gate" x="1478" y="292">Cloth 2</text>
   <text class="field-label" x="1428" y="323">EFFECT</text>
-  <text class="effect" x="1478" y="323">growth / prosperity</text>
+  <text class="effect" x="1478" y="323">+1 growth</text>
   <text class="after-label" x="1428" y="349">AFTER</text>
   <text class="after" x="1478" y="349">Engineering + Weaving</text>
   <rect class="card" x="210" y="383" width="350" height="140" rx="14"/>
@@ -108,7 +108,7 @@
   <text class="field-label" x="228" y="435">GATE</text>
   <text class="gate" x="278" y="435">Ore 4 + Stone 2</text>
   <text class="field-label" x="228" y="481">EFFECT</text>
-  <text class="effect" x="278" y="481">unlock Steel</text>
+  <text class="effect" x="278" y="481">+15% Steel</text>
   <rect class="card" x="610" y="383" width="350" height="140" rx="14"/>
   <line x1="626" y1="385" x2="944" y2="385" stroke="#69c3b3" stroke-width="4" stroke-linecap="round"/>
   <text class="card-title" x="628" y="414">Toolmaking</text>
@@ -116,7 +116,7 @@
   <text class="field-label" x="628" y="435">GATE</text>
   <text class="gate" x="678" y="435">Steel 2 + Planks 2</text>
   <text class="field-label" x="628" y="481">EFFECT</text>
-  <text class="effect" x="678" y="481">unlock Tools</text>
+  <text class="effect" x="678" y="481">+15% Tools</text>
   <text class="after-label" x="628" y="507">AFTER</text>
   <text class="after" x="678" y="507">Smelting + Carpentry</text>
   <rect class="card" x="1010" y="383" width="350" height="140" rx="14"/>
@@ -126,7 +126,7 @@
   <text class="field-label" x="1028" y="435">GATE</text>
   <text class="gate" x="1078" y="435">Steel 4 + Tools 2</text>
   <text class="field-label" x="1028" y="481">EFFECT</text>
-  <text class="effect" x="1078" y="481">unlock Machinery</text>
+  <text class="effect" x="1078" y="481">+15% Machinery</text>
   <text class="after-label" x="1028" y="507">AFTER</text>
   <text class="after" x="1078" y="507">Toolmaking</text>
   <rect class="card" x="1410" y="383" width="350" height="140" rx="14"/>
@@ -137,7 +137,7 @@
   <text class="gate" x="1478" y="435">Steel 8 + Machinery 4</text>
   <text class="gate" x="1478" y="450">Tools 4</text>
   <text class="field-label" x="1428" y="481">EFFECT</text>
-  <text class="effect" x="1478" y="481">rail speed / capacity</text>
+  <text class="effect" x="1478" y="481">+20% rail capacity</text>
   <text class="after-label" x="1428" y="507">AFTER</text>
   <text class="after" x="1478" y="507">Machining + Engineering</text>
   <rect class="card" x="210" y="541" width="350" height="140" rx="14"/>
@@ -147,7 +147,7 @@
   <text class="field-label" x="228" y="593">GATE</text>
   <text class="gate" x="278" y="593">Fiber 4</text>
   <text class="field-label" x="228" y="639">EFFECT</text>
-  <text class="effect" x="278" y="639">unlock Cloth</text>
+  <text class="effect" x="278" y="639">+15% Cloth</text>
   <rect class="card" x="610" y="541" width="350" height="140" rx="14"/>
   <line x1="626" y1="543" x2="944" y2="543" stroke="#e07a8a" stroke-width="4" stroke-linecap="round"/>
   <text class="card-title" x="628" y="572">Ropewalk</text>
@@ -155,7 +155,7 @@
   <text class="field-label" x="628" y="593">GATE</text>
   <text class="gate" x="678" y="593">Fiber 4 + Planks 2</text>
   <text class="field-label" x="628" y="639">EFFECT</text>
-  <text class="effect" x="678" y="639">unlock Rope</text>
+  <text class="effect" x="678" y="639">+15% Rope</text>
   <text class="after-label" x="628" y="665">AFTER</text>
   <text class="after" x="678" y="665">Weaving + Carpentry</text>
   <rect class="card" x="1010" y="541" width="350" height="140" rx="14"/>
@@ -165,7 +165,7 @@
   <text class="field-label" x="1028" y="593">GATE</text>
   <text class="gate" x="1078" y="593">Cloth 4 + Rope 2</text>
   <text class="field-label" x="1028" y="639">EFFECT</text>
-  <text class="effect" x="1078" y="639">unlock Ship Parts</text>
+  <text class="effect" x="1078" y="639">+15% Ship Parts</text>
   <text class="after-label" x="1028" y="665">AFTER</text>
   <text class="after" x="1078" y="665">Weaving + Ropewalk</text>
   <rect class="card" x="1410" y="541" width="350" height="140" rx="14"/>
@@ -176,7 +176,7 @@
   <text class="gate" x="1478" y="593">Planks 6 + Cloth 2 + Rope 2</text>
   <text class="gate" x="1478" y="608">Ship Parts 2 + Tools 2</text>
   <text class="field-label" x="1428" y="639">EFFECT</text>
-  <text class="effect" x="1478" y="639">unlock Sea lanes / harbour</text>
+  <text class="effect" x="1478" y="639">+25% Ship Parts</text>
   <text class="after-label" x="1428" y="665">AFTER</text>
   <text class="after" x="1478" y="665">Sailmaking + Carpentry + Toolmaking</text>
   <rect class="card" x="210" y="699" width="350" height="140" rx="14"/>
@@ -194,7 +194,7 @@
   <text class="field-label" x="628" y="751">GATE</text>
   <text class="gate" x="678" y="751">Grain 6 + Stone 2</text>
   <text class="field-label" x="628" y="797">EFFECT</text>
-  <text class="effect" x="678" y="797">unlock Flour</text>
+  <text class="effect" x="678" y="797">+15% Flour</text>
   <text class="after-label" x="628" y="823">AFTER</text>
   <text class="after" x="678" y="823">Crop rotation + Masonry</text>
   <rect class="card" x="1010" y="699" width="350" height="140" rx="14"/>
@@ -205,7 +205,7 @@
   <text class="gate" x="1078" y="751">Flour 4 + Fish 2</text>
   <text class="gate" x="1078" y="766">Cloth 2</text>
   <text class="field-label" x="1028" y="797">EFFECT</text>
-  <text class="effect" x="1078" y="797">growth / prosperity</text>
+  <text class="effect" x="1078" y="797">+1 growth</text>
   <text class="after-label" x="1028" y="823">AFTER</text>
   <text class="after" x="1078" y="823">Milling + Weaving</text>
   <rect class="card" x="1410" y="699" width="350" height="140" rx="14"/>
@@ -216,7 +216,7 @@
   <text class="gate" x="1478" y="751">Cloth 2 + Tools 2</text>
   <text class="gate" x="1478" y="766">Prosperity 12</text>
   <text class="field-label" x="1428" y="797">EFFECT</text>
-  <text class="effect" x="1478" y="797">+research rate</text>
+  <text class="effect" x="1478" y="797">+20% research</text>
   <text class="after-label" x="1428" y="823">AFTER</text>
   <text class="after" x="1478" y="823">Provisioning + Toolmaking</text>
   <rect class="start" x="210" y="857" width="350" height="140" rx="14"/>
@@ -336,7 +336,7 @@
   <text class="side-title" x="1216" y="1188">Logistics</text>
   <text class="meta" x="1744" y="1188" text-anchor="end">E4 · 180r</text>
   <text class="side-line" x="1216" y="1206">after Bulk handling + Mathematics · Tools 2 + Machinery 1</text>
-  <text class="side-effect" x="1216" y="1223">EFFECT  +20% throughput</text>
+  <text class="side-effect" x="1216" y="1223">EFFECT  +20% route capacity</text>
   <rect class="card" x="1200" y="1244" width="560" height="66" rx="10"/>
   <line x1="1214" y1="1246" x2="1746" y2="1246" stroke="#6f90ba" stroke-width="3" stroke-linecap="round"/>
   <text class="side-title" x="1216" y="1266">Rail signaling</text>
@@ -348,7 +348,7 @@
   <text class="side-title" x="1216" y="1344">Harbor cranes</text>
   <text class="meta" x="1744" y="1344" text-anchor="end">E4 · 160r</text>
   <text class="side-line" x="1216" y="1362">after Shipbuilding · Ship Parts 2 + Steel 2</text>
-  <text class="side-effect" x="1216" y="1379">EFFECT  +25% sea capacity</text>
+  <text class="side-effect" x="1216" y="1379">EFFECT  +25% route capacity</text>
   <rect class="card" x="1200" y="1400" width="560" height="66" rx="10"/>
   <line x1="1214" y1="1402" x2="1746" y2="1402" stroke="#6f90ba" stroke-width="3" stroke-linecap="round"/>
   <text class="side-title" x="1216" y="1422">Customs house</text>

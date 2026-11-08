@@ -86,6 +86,165 @@ struct PeriodResult {
     cloth_used: i64,
 }
 
+/// Number of integers in the compact technology-effect mask.
+pub const EFFECT_COUNT: usize = 17;
+
+/// Technology bonuses passed from the Diamond catalog into the market kernel.
+///
+/// Percentages start at 100 so a default mask is neutral. Flat bonuses start at
+/// zero. The order matches the mask consumed by `tech_effect_mask`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TechEffects {
+    pub research_pct: i64,
+    pub planks_pct: i64,
+    pub bricks_pct: i64,
+    pub steel_pct: i64,
+    pub cloth_pct: i64,
+    pub flour_pct: i64,
+    pub rope_pct: i64,
+    pub tools_pct: i64,
+    pub ship_pct: i64,
+    pub machinery_pct: i64,
+    pub engines_pct: i64,
+    pub grain_bonus: i64,
+    pub fish_bonus: i64,
+    pub capacity_pct: i64,
+    pub rail_capacity_pct: i64,
+    pub toll_pct: i64,
+    pub growth: i64,
+}
+
+impl Default for TechEffects {
+    fn default() -> Self {
+        Self {
+            research_pct: 100,
+            planks_pct: 100,
+            bricks_pct: 100,
+            steel_pct: 100,
+            cloth_pct: 100,
+            flour_pct: 100,
+            rope_pct: 100,
+            tools_pct: 100,
+            ship_pct: 100,
+            machinery_pct: 100,
+            engines_pct: 100,
+            grain_bonus: 0,
+            fish_bonus: 0,
+            capacity_pct: 100,
+            rail_capacity_pct: 100,
+            toll_pct: 100,
+            growth: 0,
+        }
+    }
+}
+
+impl TechEffects {
+    /// Decode a wire mask. A short list means "neutral defaults", which keeps
+    /// older callers and test fixtures valid.
+    #[must_use]
+    pub fn from_values(values: &[i64]) -> Self {
+        if values.len() < EFFECT_COUNT {
+            return Self::default();
+        }
+        Self {
+            research_pct: values[0],
+            planks_pct: values[1],
+            bricks_pct: values[2],
+            steel_pct: values[3],
+            cloth_pct: values[4],
+            flour_pct: values[5],
+            rope_pct: values[6],
+            tools_pct: values[7],
+            ship_pct: values[8],
+            machinery_pct: values[9],
+            engines_pct: values[10],
+            grain_bonus: values[11],
+            fish_bonus: values[12],
+            capacity_pct: values[13],
+            rail_capacity_pct: values[14],
+            toll_pct: values[15],
+            growth: values[16],
+        }
+    }
+
+    fn production_pct(&self, good: usize) -> i64 {
+        match good {
+            PLANKS => self.planks_pct,
+            BRICKS => self.bricks_pct,
+            STEEL => self.steel_pct,
+            CLOTH => self.cloth_pct,
+            FLOUR => self.flour_pct,
+            ROPE => self.rope_pct,
+            TOOLS => self.tools_pct,
+            SHIP_PARTS => self.ship_pct,
+            MACHINERY => self.machinery_pct,
+            ENGINES => self.engines_pct,
+            _ => 100,
+        }
+    }
+}
+
+fn tech_discovered(state: &str, id: usize) -> bool {
+    let position = id / 4;
+    let byte = state.as_bytes().get(position).copied().unwrap_or(b'0');
+    let nibble = match byte {
+        b'0'..=b'9' => byte - b'0',
+        b'a'..=b'f' => byte - b'a' + 10,
+        _ => 0,
+    };
+    (nibble >> (id % 4)) & 1 == 1
+}
+
+/// Decode the Diamond catalog effect table and a packed tech bitset into the
+/// compact market mask.
+///
+/// The state packs four technologies per hex nibble. The table is one
+/// `code:value` entry per tech id, separated by `|`. Unknown codes are ignored
+/// so the catalog can grow without breaking older kernels.
+#[must_use]
+pub fn tech_effect_mask(state: &str, table: &str) -> Vec<i64> {
+    let mut mask = vec![
+        100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 0, 0, 100, 100, 100, 0,
+    ];
+    for (index, entry) in table.split('|').enumerate() {
+        if !tech_discovered(state, index) {
+            continue;
+        }
+        let Some((code, raw)) = entry.split_once(':') else {
+            continue;
+        };
+        let value = raw.parse::<i64>().unwrap_or(0);
+        match code {
+            "research" => mask[0] += value,
+            "planks" => mask[1] += value,
+            "bricks" => mask[2] += value,
+            "steel" => mask[3] += value,
+            "cloth" => mask[4] += value,
+            "flour" => mask[5] += value,
+            "rope" => mask[6] += value,
+            "tools" => mask[7] += value,
+            "ship" => mask[8] += value,
+            "machinery" => mask[9] += value,
+            "engines" => mask[10] += value,
+            "grain" => mask[11] += value,
+            "food" => {
+                mask[11] += value;
+                mask[12] += value;
+            }
+            "capacity" => mask[13] += value,
+            "rail_capacity" => mask[14] += value,
+            "toll" => mask[15] += value,
+            "growth" => mask[16] += value,
+            "tools_machinery" => {
+                mask[7] += value;
+                mask[9] += value;
+            }
+            _ => {}
+        }
+    }
+    mask
+}
+
 /// One town's mutable market state.
 ///
 /// `climate` is `0` temperate, `1` cold, or `2` dry/hot. It only changes trade
@@ -145,13 +304,18 @@ pub struct TickState {
 /// Routes whose endpoints are outside the town list are ignored. The function
 /// is total for any nonnegative `days` and always deterministic.
 pub fn market(state: &mut TickState, days: i64, scale: i64) {
+    market_with_effects(state, days, scale, TechEffects::default());
+}
+
+/// Apply one market phase with technology bonuses.
+pub fn market_with_effects(state: &mut TickState, days: i64, scale: i64, effects: TechEffects) {
     if days <= 0 {
         return;
     }
     for town in &mut state.towns {
-        *town = advance_town_days(town, days);
+        *town = advance_town_days_with_effects(town, days, effects);
     }
-    trade(state, days, scale);
+    trade_with_effects(state, days, scale, effects);
 }
 
 /// Apply network flow only, leaving production and growth untouched.
@@ -163,6 +327,11 @@ pub fn market(state: &mut TickState, days: i64, scale: i64) {
 /// the Rust twin of `flow_pass` in `app/shared.dia`; the two implementations
 /// must stay byte-for-byte equivalent.
 pub fn trade(state: &mut TickState, days: i64, scale: i64) {
+    trade_with_effects(state, days, scale, TechEffects::default());
+}
+
+/// Apply network flow only with technology bonuses.
+pub fn trade_with_effects(state: &mut TickState, days: i64, scale: i64, effects: TechEffects) {
     if days <= 0 || state.towns.is_empty() {
         return;
     }
@@ -209,9 +378,12 @@ pub fn trade(state: &mut TickState, days: i64, scale: i64) {
 
     let mut remaining: Vec<i64> = Vec::with_capacity(state.routes.len() * 2);
     for route in &state.routes {
-        let cap = (route.capacity.saturating_mul(scale) / 100)
-            .saturating_mul(days)
-            .max(2);
+        let mut pct = effects.capacity_pct;
+        if route.mode == 4 {
+            pct = pct.saturating_mul(effects.rail_capacity_pct) / 100;
+        }
+        let cap = (route.capacity.saturating_mul(scale) / 100).saturating_mul(pct) / 100;
+        let cap = cap.saturating_mul(days).max(2);
         remaining.push(cap);
         remaining.push(cap);
     }
@@ -280,6 +452,7 @@ pub fn trade(state: &mut TickState, days: i64, scale: i64) {
                 (state.towns[source.sender].stock[good] - units).max(0);
         }
     }
+    let income = income.saturating_mul(effects.toll_pct) / 100;
     state.money = state.money.saturating_add(income);
 }
 
@@ -589,9 +762,13 @@ fn flow_find(
     None
 }
 
+#[cfg(test)]
 fn advance_town_days(town: &TickTown, days: i64) -> TickTown {
-    let result = period_result(town, days);
-    let _after = result.stock;
+    advance_town_days_with_effects(town, days, TechEffects::default())
+}
+
+fn advance_town_days_with_effects(town: &TickTown, days: i64, effects: TechEffects) -> TickTown {
+    let result = period_result_with_effects(town, days, effects);
     let need_grain = town.pop * days;
     let need_fish = (town.pop / 3 + 1) * days;
     let fed = result.grain_eaten + result.fish_eaten * 2;
@@ -606,9 +783,10 @@ fn advance_town_days(town: &TickTown, days: i64) -> TickTown {
     let after = result.stock;
     let score = after.iter().filter(|value| **value > 0).count() as i64;
     let comfort = i64::from(after[TOOLS] > 0) + i64::from(result.cloth_used > 0);
-    let delta = (food * 2 + score.min(6) / 2 + comfort - 2) * days;
+    let delta = (food * 2 + score.min(6) / 2 + comfort - 2 + effects.growth) * days;
     let prosperity = clamp(town.prosperity + delta, 0, 30);
-    let research = town.research + (town.pop + score + prosperity / 6 + food) * days;
+    let research_gain = (town.pop + score + prosperity / 6 + food) * effects.research_pct / 100;
+    let research = town.research + research_gain * days;
     let food_now = after[GRAIN] + after[FISH];
     let can_grow = days >= 7
         && prosperity >= 9
@@ -646,11 +824,13 @@ fn advance_town_days(town: &TickTown, days: i64) -> TickTown {
     }
 }
 
-fn period_result(town: &TickTown, days: i64) -> PeriodResult {
+fn period_result_with_effects(town: &TickTown, days: i64, effects: TechEffects) -> PeriodResult {
     let mut available = [0_i64; GOOD_COUNT];
     for (index, value) in available.iter_mut().enumerate() {
         *value = town.stock[index] + town.endow[index] * days;
     }
+    available[GRAIN] = available[GRAIN].saturating_add(effects.grain_bonus * days);
+    available[FISH] = available[FISH].saturating_add(effects.fish_bonus * days);
     for recipe in RECIPES {
         let ready = recipe
             .inputs
@@ -660,7 +840,8 @@ fn period_result(town: &TickTown, days: i64) -> PeriodResult {
             for (good, quantity) in recipe.inputs {
                 available[*good] -= quantity * days;
             }
-            available[recipe.output] += days;
+            let output = (days * effects.production_pct(recipe.output) / 100).max(days);
+            available[recipe.output] = available[recipe.output].saturating_add(output);
         }
     }
     let grain_eaten = available[GRAIN].min(town.pop * days);
@@ -1350,5 +1531,35 @@ mod tests {
         assert!(state.towns.iter().all(|t| t.pop >= 1));
         assert!(state.routes.iter().all(|r| r.traffic >= 0));
         assert!(state.money >= before.money);
+    }
+
+    #[test]
+    fn technology_effects_change_production_and_income() {
+        let table = "research:10|planks:25|unlock_road:1|food:1|tools_machinery:25|capacity:20|toll:10|rail_capacity:20";
+        let mask = tech_effect_mask("ff", table);
+        assert_eq!(mask[0], 110);
+        assert_eq!(mask[1], 125);
+        assert_eq!(mask[7], 125);
+        assert_eq!(mask[9], 125);
+        assert_eq!(mask[11], 1);
+        assert_eq!(mask[12], 1);
+        assert_eq!(mask[13], 120);
+        assert_eq!(mask[14], 120);
+        assert_eq!(mask[15], 110);
+
+        let effects = TechEffects::from_values(&mask);
+        let town = TickTown {
+            pop: 4,
+            prosperity: 6,
+            research: 0,
+            endow: [0; GOOD_COUNT],
+            stock: [20, 8, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            climate: 0,
+        };
+        let plain = period_result_with_effects(&town, 4, TechEffects::default());
+        let boosted = period_result_with_effects(&town, 4, effects);
+        assert!(boosted.stock[PLANKS] > plain.stock[PLANKS]);
+        assert!(boosted.stock[GRAIN] > plain.stock[GRAIN]);
+        assert_eq!(boosted.stock[FISH], plain.stock[FISH] + 4);
     }
 }

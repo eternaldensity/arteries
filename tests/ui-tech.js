@@ -2,8 +2,8 @@
 /*
  * Real-browser acceptance test for the data-driven tech tree.
  *
- * A fresh world starts at 0/5 techs. Running a month should discover every
- * transport tech, advance the era, and persist the bitset across a reload.
+ * A fresh world starts at 0/33 techs. Running a month should discover at least
+ * one material-gated branch and persist the compact UI state across a reload.
  */
 const playwrightPath = process.env.PLAYWRIGHT_CORE || 'playwright-core';
 const { chromium } = require(playwrightPath);
@@ -40,35 +40,36 @@ function assert(condition, message) {
     const stats = await page.locator('.stat').allInnerTexts();
     const technology = stats.find((text) => text.includes('TECHNOLOGY')) || '';
     const footer = await page.locator('.footer').innerText();
-    return { technology, footer };
+    const text = technology + ' ' + footer;
+    const count = Number((text.match(/(\d+)\/33 techs/) || [])[1] || -1);
+    return { technology, footer, count };
   };
 
   await page.goto(url);
   await signIn();
   const before = await summary();
-  assert(before.footer.includes('0/5 techs'), `expected no techs at start: ${before.footer}`);
+  assert(before.count === 0, `expected no techs at start: ${before.footer}`);
   assert(
-    before.technology.includes('Roads at 45 research'),
-    `expected Roads as next tech: ${before.technology}`
+    before.technology.includes('material-gated discoveries'),
+    `expected the tech summary: ${before.technology}`
   );
 
-  await page.getByRole('button', { name: '1 month', exact: true }).click();
-  await page.waitForTimeout(1800);
+  for (let month = 0; month < 3; month++) {
+    await page.getByRole('button', { name: '1 month', exact: true }).click();
+    await page.waitForTimeout(2200);
+    if ((await summary()).count > 0) break;
+  }
   const after = await summary();
-  assert(after.footer.includes('5/5 techs'), `expected all techs after a month: ${after.footer}`);
-  assert(after.footer.includes('Era 4 · Rails'), `expected Rail era: ${after.footer}`);
-  assert(
-    after.technology.includes('All technologies discovered'),
-    `expected completed tree text: ${after.technology}`
-  );
+  assert(after.count > 0, `expected at least one discovery after a few months: ${after.footer}`);
+  assert(after.count < 33, `a few months should not finish the whole tree: ${after.footer}`);
 
   await page.reload();
   await signIn();
   const resumed = await summary();
-  assert(resumed.footer.includes('5/5 techs'), `tech state did not persist: ${resumed.footer}`);
+  assert(resumed.count === after.count, `tech state did not persist: ${resumed.footer}`);
   assert(errors.length === 0, 'browser errors: ' + errors.join('; '));
 
-  console.log('PASS: data-driven tech tree unlocks and persists');
+  console.log(`PASS: data-driven tech tree unlocked ${after.count}/33 and persisted`);
   await browser.close();
 })().catch((error) => {
   console.error('FAIL:', error.message);

@@ -1,0 +1,9 @@
+# Appended by tools/check-tech-tree.sh. A separate Diamond run keeps the
+# progress check inside the evaluator's step budget.
+
+fn tech_progress_stock() -> List<Int>:
+  [9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9]
+
+fn main() -> Text:
+  let all = tech_advance_stock(empty_tech_state(), 999, tech_progress_stock())
+  int_text(tech_discovered_count(all))

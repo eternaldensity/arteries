@@ -16,31 +16,64 @@ import sys
 text = open(sys.argv[1], encoding='utf-8').read()
 rows = re.findall(r'\[([^\[\]]*)\]', text)
 techs = []
+tech_values = []
 for row in rows:
     fields = re.findall(r'"([^"\n]*)"', row)
     if not fields:
         continue
-    if len(fields) != 7:
-        raise SystemExit(f'tech row needs 7 fields: {row}')
-    tech_id, name, era, cost, prereqs, effect, description = fields
+    if len(fields) != 9:
+        raise SystemExit(f'tech row needs 9 fields: {row}')
+    tech_id, name, era, cost, prereqs, gate, effect, value, description = fields
     tech_id = int(tech_id)
     era = int(era)
     cost = int(cost)
-    prereq_ids = [int(value) for value in prereqs.split(',') if value]
+    value = int(value)
+    prereq_ids = [int(item) for item in prereqs.split(',') if item]
     if tech_id != len(techs):
         raise SystemExit(f'tech ids must be contiguous and ordered: {tech_id}')
     if not name or not effect or not description:
         raise SystemExit(f'tech {tech_id} has an empty field')
-    if era < 1 or cost < 0:
-        raise SystemExit(f'tech {tech_id} has invalid era/cost')
-    if any(value < 0 or value >= tech_id for value in prereq_ids):
+    if era < 1 or cost < 0 or value < 0:
+        raise SystemExit(f'tech {tech_id} has invalid era/cost/value')
+    if len(gate) != 18 or any(ch not in '0123456789' for ch in gate):
+        raise SystemExit(f'tech {tech_id} has a malformed goods gate: {gate!r}')
+    if any(item < 0 or item >= tech_id for item in prereq_ids):
         raise SystemExit(f'tech {tech_id} has a non-topological prerequisite')
-    techs.append((tech_id, name, era, cost, prereq_ids, effect))
+    if effect.startswith('unlock_') and value != 1:
+        raise SystemExit(f'tech {tech_id} has a non-unit unlock value')
+    techs.append((tech_id, name, era, cost, prereq_ids, gate, effect))
+    tech_values.append(value)
 if not techs:
     raise SystemExit('tech catalog is empty')
-effects = [effect for _, _, _, _, _, effect in techs]
-if len(effects) != len(set(effects)):
-    raise SystemExit('tech effects must be unique')
+unlocks = [effect for _, _, _, _, _, _, effect in techs if effect.startswith('unlock_')]
+if len(unlocks) != len(set(unlocks)):
+    raise SystemExit('unlock effects must be unique')
+
+table_match = re.search(r'export fn catalog_effect_table\(\) -> Text:\s*\n\s*"([^"]*)"', text)
+if not table_match:
+    raise SystemExit('missing catalog_effect_table')
+entries = table_match.group(1).split('|')
+if len(entries) != len(techs):
+    raise SystemExit('catalog_effect_table must have one entry per tech')
+for index, entry in enumerate(entries):
+    code, _, value = entry.partition(':')
+    expected = techs[index][6]
+    expected_value = tech_values[index]
+    if code != expected or value != str(expected_value):
+        raise SystemExit(
+            f'effect table mismatch at {index}: {code}:{value} != {expected}:{expected_value}'
+        )
+for name, unlock in (
+    ('road_tech_id', 'unlock_road'),
+    ('river_tech_id', 'unlock_river'),
+    ('rail_tech_id', 'unlock_rail'),
+):
+    match = re.search(name + r'\(\) -> Int:\s*\n\s*(\d+)', text)
+    if not match:
+        raise SystemExit(f'missing {name}')
+    index = int(match.group(1))
+    if techs[index][6] != unlock:
+        raise SystemExit(f'{name} does not point at {unlock}')
 PY
 
 TMP=$(mktemp -d)
@@ -55,13 +88,64 @@ cat "$ROOT/tools/tech_tree_main.dia" >> "$GEN"
 
 "$DIAMOND" check "$GEN" >/dev/null
 RESULT=$("$DIAMOND" run "$GEN")
-EXPECTED='5|0,1,3,5|1|1,4|5/5 techs|3|0,1,3,-1|All technologies discovered'
+EXPECTED='33|33'
 if [ "$RESULT" = "$EXPECTED" ]; then
-  echo "tech catalog and bitset unlocks match the expected path"
+  echo "tech catalog and rich-stock unlocks match"
 else
   echo "tech tree drifted" >&2
   echo "expected: $EXPECTED" >&2
   echo "actual:   $RESULT" >&2
+  exit 1
+fi
+
+BLOCKED="$TMP/tech_blocked.dia"
+sed 's/^export //' "$ROOT/app/rt_tables.dia" > "$BLOCKED"
+sed 's/^export //' "$ROOT/app/worldgen_tables.dia" >> "$BLOCKED"
+sed 's/^export //' "$ROOT/app/tech_tables.dia" >> "$BLOCKED"
+sed 's/^export //' "$ROOT/app/shared.dia" >> "$BLOCKED"
+cat "$ROOT/tools/tech_tree_blocked_main.dia" >> "$BLOCKED"
+"$DIAMOND" check "$BLOCKED" >/dev/null
+BLOCKED_RESULT=$("$DIAMOND" run "$BLOCKED")
+if [ "$BLOCKED_RESULT" = "0" ]; then
+  echo "empty stock satisfies no material gate"
+else
+  echo "empty-stock gate drifted: $BLOCKED_RESULT" >&2
+  exit 1
+fi
+
+PROGRESS="$TMP/tech_progress.dia"
+sed 's/^export //' "$ROOT/app/rt_tables.dia" > "$PROGRESS"
+sed 's/^export //' "$ROOT/app/worldgen_tables.dia" >> "$PROGRESS"
+sed 's/^export //' "$ROOT/app/tech_tables.dia" >> "$PROGRESS"
+sed 's/^export //' "$ROOT/app/shared.dia" >> "$PROGRESS"
+cat "$ROOT/tools/tech_tree_progress_main.dia" >> "$PROGRESS"
+"$DIAMOND" check "$PROGRESS" >/dev/null
+PROGRESS_RESULT=$("$DIAMOND" run "$PROGRESS")
+PROGRESS_EXPECTED='33'
+if [ "$PROGRESS_RESULT" = "$PROGRESS_EXPECTED" ]; then
+  echo "tech discovery count matches"
+else
+  echo "tech progress drifted" >&2
+  echo "expected: $PROGRESS_EXPECTED" >&2
+  echo "actual:   $PROGRESS_RESULT" >&2
+  exit 1
+fi
+
+MODE="$TMP/tech_mode.dia"
+sed 's/^export //' "$ROOT/app/rt_tables.dia" > "$MODE"
+sed 's/^export //' "$ROOT/app/worldgen_tables.dia" >> "$MODE"
+sed 's/^export //' "$ROOT/app/tech_tables.dia" >> "$MODE"
+sed 's/^export //' "$ROOT/app/shared.dia" >> "$MODE"
+cat "$ROOT/tools/tech_tree_mode_main.dia" >> "$MODE"
+"$DIAMOND" check "$MODE" >/dev/null
+MODE_RESULT=$("$DIAMOND" run "$MODE")
+MODE_EXPECTED='1'
+if [ "$MODE_RESULT" = "$MODE_EXPECTED" ]; then
+  echo "tech mode and next-tech helpers match"
+else
+  echo "tech mode drifted" >&2
+  echo "expected: $MODE_EXPECTED" >&2
+  echo "actual:   $MODE_RESULT" >&2
   exit 1
 fi
 
@@ -76,7 +160,7 @@ for chunk in range(6):
     for offset in range(10):
         tech_id = chunk * 10 + offset
         rows.append(
-            f'["{tech_id}", "Tech {tech_id}", "1", "0", "", "", "bulk"]'
+            f'["{tech_id}", "Tech {tech_id}", "1", "0", "", "", "bulk", "0", "bulk"]'
         )
     chunks.append(rows)
 
@@ -86,6 +170,11 @@ with open(sys.argv[1], 'w', encoding='utf-8') as out:
         out.write('  [' + ', '.join(rows) + ']\n\n')
     out.write('fn row_at(rows: List<List<Text>>, i: Int) -> List<Text>:\n')
     out.write('  match list_get(rows, i):\n    Some(row) => row\n    None => []\n\n')
+    out.write('export fn catalog_era_values() -> List<Int>:\n')
+    out.write('  [' + ', '.join('1' for _ in range(len(chunks) * 10)) + ']\n\n')
+    out.write('export fn road_tech_id() -> Int:\n  0\n\nexport fn river_tech_id() -> Int:\n  1\n\nexport fn rail_tech_id() -> Int:\n  2\n\n')
+    out.write('export fn catalog_effect_table() -> Text:\n')
+    out.write('  "' + '|'.join('bulk:0' for _ in range(len(chunks) * 10)) + '"\n\n')
     out.write('export fn catalog_chunks() -> List<List<List<Text>>>:\n')
     out.write('  [' + ', '.join(f'tech_rows_{i}()' for i in range(len(chunks))) + ']\n\n')
     out.write('fn chunk_width() -> Int:\n  10\n\n')
@@ -100,7 +189,7 @@ with open(sys.argv[1], 'w', encoding='utf-8') as out:
         out.write('  ' * (2 * index + 4) + f'true => row_at(tech_rows_{index}(), offset)\n')
     out.write('  ' * (2 * (len(chunks) - 1) + 4) + 'false => []\n')
     out.write('fn main() -> Text:\n')
-    out.write('  let state = tech_advance(empty_tech_state(), 0)\n')
+    out.write('  let state = tech_advance_pass_stock(empty_tech_state(), 0, [])\n')
     out.write('  int_text(tech_row_count()) + "|" + int_text(tech_discovered_count(state)) + "|" + int_text(tech_next_index(state))\n')
 PY
 

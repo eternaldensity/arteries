@@ -17,25 +17,25 @@ branches = [
 
 techs = [
     # branch, era, title, cost, gate_lines, effect, after, start
-    (0, 0, "Carpentry", 25, ["Timber 4"], "unlock Planks", "—", False),
-    (0, 1, "Masonry", 55, ["Stone 4 + Clay 2"], "unlock Bricks", "—", False),
-    (0, 2, "Engineering", 120, ["Planks 4 + Bricks 4", "Tools 2"], "bridge / road capacity", "Carpentry + Masonry", False),
-    (0, 3, "Architecture", 220, ["Planks 6 + Bricks 6", "Cloth 2"], "growth / prosperity", "Engineering + Weaving", False),
+    (0, 0, "Carpentry", 25, ["Timber 4"], "+15% Planks", "—", False),
+    (0, 1, "Masonry", 55, ["Stone 4 + Clay 2"], "+15% Bricks", "—", False),
+    (0, 2, "Engineering", 120, ["Planks 4 + Bricks 4", "Tools 2"], "+10% route capacity", "Carpentry + Masonry", False),
+    (0, 3, "Architecture", 220, ["Planks 6 + Bricks 6", "Cloth 2"], "+1 growth", "Engineering + Weaving", False),
 
-    (1, 0, "Smelting", 40, ["Ore 4 + Stone 2"], "unlock Steel", "—", False),
-    (1, 1, "Toolmaking", 80, ["Steel 2 + Planks 2"], "unlock Tools", "Smelting + Carpentry", False),
-    (1, 2, "Machining", 150, ["Steel 4 + Tools 2"], "unlock Machinery", "Toolmaking", False),
-    (1, 3, "Engines", 300, ["Steel 8 + Machinery 4", "Tools 4"], "rail speed / capacity", "Machining + Engineering", False),
+    (1, 0, "Smelting", 40, ["Ore 4 + Stone 2"], "+15% Steel", "—", False),
+    (1, 1, "Toolmaking", 80, ["Steel 2 + Planks 2"], "+15% Tools", "Smelting + Carpentry", False),
+    (1, 2, "Machining", 150, ["Steel 4 + Tools 2"], "+15% Machinery", "Toolmaking", False),
+    (1, 3, "Engines", 300, ["Steel 8 + Machinery 4", "Tools 4"], "+20% rail capacity", "Machining + Engineering", False),
 
-    (2, 0, "Weaving", 30, ["Fiber 4"], "unlock Cloth", "—", False),
-    (2, 1, "Ropewalk", 70, ["Fiber 4 + Planks 2"], "unlock Rope", "Weaving + Carpentry", False),
-    (2, 2, "Sailmaking", 130, ["Cloth 4 + Rope 2"], "unlock Ship Parts", "Weaving + Ropewalk", False),
-    (2, 3, "Shipbuilding", 240, ["Planks 6 + Cloth 2 + Rope 2", "Ship Parts 2 + Tools 2"], "unlock Sea lanes / harbour", "Sailmaking + Carpentry + Toolmaking", False),
+    (2, 0, "Weaving", 30, ["Fiber 4"], "+15% Cloth", "—", False),
+    (2, 1, "Ropewalk", 70, ["Fiber 4 + Planks 2"], "+15% Rope", "Weaving + Carpentry", False),
+    (2, 2, "Sailmaking", 130, ["Cloth 4 + Rope 2"], "+15% Ship Parts", "Weaving + Ropewalk", False),
+    (2, 3, "Shipbuilding", 240, ["Planks 6 + Cloth 2 + Rope 2", "Ship Parts 2 + Tools 2"], "+25% Ship Parts", "Sailmaking + Carpentry + Toolmaking", False),
 
     (3, 0, "Crop rotation", 25, ["Grain 6 + Fish 2"], "+1 Grain/day", "—", False),
-    (3, 1, "Milling", 65, ["Grain 6 + Stone 2"], "unlock Flour", "Crop rotation + Masonry", False),
-    (3, 2, "Provisioning", 120, ["Flour 4 + Fish 2", "Cloth 2"], "growth / prosperity", "Milling + Weaving", False),
-    (3, 3, "Education", 200, ["Cloth 2 + Tools 2", "Prosperity 12"], "+research rate", "Provisioning + Toolmaking", False),
+    (3, 1, "Milling", 65, ["Grain 6 + Stone 2"], "+15% Flour", "Crop rotation + Masonry", False),
+    (3, 2, "Provisioning", 120, ["Flour 4 + Fish 2", "Cloth 2"], "+1 growth", "Milling + Weaving", False),
+    (3, 3, "Education", 200, ["Cloth 2 + Tools 2", "Prosperity 12"], "+20% research", "Provisioning + Toolmaking", False),
 
     (4, 0, "Pack routes", 0, ["starting mode"], "Path links", "—", True),
     (4, 1, "Roads", 45, ["Timber 4 + Stone 2"], "unlock Road", "Carpentry", False),
@@ -187,9 +187,9 @@ side_groups = [
     ]),
     ("TRANSPORT & TRADE", "#6f90ba", 1200, [
         ("Bulk handling", "E3 · 120r", "after Roads", "Planks 4 + Tools 2", "+15% route capacity"),
-        ("Logistics", "E4 · 180r", "after Bulk handling + Mathematics", "Tools 2 + Machinery 1", "+20% throughput"),
+        ("Logistics", "E4 · 180r", "after Bulk handling + Mathematics", "Tools 2 + Machinery 1", "+20% route capacity"),
         ("Rail signaling", "E4 · 160r", "after Rail + Mathematics", "Steel 4 + Tools 2", "+20% rail capacity"),
-        ("Harbor cranes", "E4 · 160r", "after Shipbuilding", "Ship Parts 2 + Steel 2", "+25% sea capacity"),
+        ("Harbor cranes", "E4 · 160r", "after Shipbuilding", "Ship Parts 2 + Steel 2", "+25% route capacity"),
         ("Customs house", "E3 · 90r", "after Roads + Weaving", "Cloth 2 + Tools 2", "+10% toll income"),
     ]),
 ]

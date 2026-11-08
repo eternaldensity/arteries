@@ -52,12 +52,11 @@ tree has meaningful crossroads.
 | 0 | Grain, Timber, Stone, Ore, Fiber, Fish, Clay, Coal | endowment |
 | 1 | Planks | Timber |
 | 1 | Bricks | Clay + Stone |
-| 1 | Steel | Ore + Coal (or Ore + Stone before coal) |
+| 1 | Steel | Ore + Stone (Coal gates the Bloomery side branch) |
 | 1 | Cloth | Fiber |
 | 1 | Flour | Grain + Stone |
 | 1 | Rope | Fiber + Planks |
 | 2 | Tools | Planks + Steel |
-| 2 | Furniture | Planks + Cloth |
 | 2 | Ship Parts | Planks + Cloth + Rope |
 | 2 | Machinery | Steel + Tools |
 | 3 | Engines | Steel + Machinery + Tools |
@@ -75,37 +74,37 @@ Five branches share four eras. Cross-branch prerequisites are intentional.
 
 | Era | Tech | Cost | Prereqs | Material gate | Effect |
 | --- | --- | ---: | --- | --- | --- |
-| 1 | Carpentry | 25 | — | Timber 4 | unlock Planks recipe |
-| 2 | Masonry | 55 | — | Stone 4 + Clay 2 | unlock Bricks recipe |
-| 3 | Engineering | 120 | Carpentry + Masonry | Planks 4 + Bricks 4 + Tools 2 | bridge/road capacity |
-| 4 | Architecture | 220 | Engineering + Weaving | Planks 6 + Bricks 6 + Cloth 2 | settlement growth/prosperity |
+| 1 | Carpentry | 25 | — | Timber 4 | +15% Planks output |
+| 2 | Masonry | 55 | — | Stone 4 + Clay 2 | +15% Bricks output |
+| 3 | Engineering | 120 | Carpentry + Masonry | Planks 4 + Bricks 4 + Tools 2 | +10% route capacity |
+| 4 | Architecture | 220 | Engineering + Weaving | Planks 6 + Bricks 6 + Cloth 2 | +1 growth |
 
 ### Metallurgy
 
 | Era | Tech | Cost | Prereqs | Material gate | Effect |
 | --- | --- | ---: | --- | --- | --- |
-| 1 | Smelting | 40 | — | Ore 4 + Stone 2 | unlock Steel recipe |
-| 2 | Toolmaking | 80 | Smelting + Carpentry | Steel 2 + Planks 2 | unlock Tools recipe |
-| 3 | Machining | 150 | Toolmaking | Steel 4 + Tools 2 | unlock Machinery recipe |
-| 4 | Engines | 300 | Machining + Engineering | Steel 8 + Machinery 4 + Tools 4 | rail speed/capacity |
+| 1 | Smelting | 40 | — | Ore 4 + Stone 2 | +15% Steel output |
+| 2 | Toolmaking | 80 | Smelting + Carpentry | Steel 2 + Planks 2 | +15% Tools output |
+| 3 | Machining | 150 | Toolmaking | Steel 4 + Tools 2 | +15% Machinery output |
+| 4 | Engines | 300 | Machining + Engineering | Steel 8 + Machinery 4 + Tools 4 | +20% rail capacity |
 
 ### Textiles and trade
 
 | Era | Tech | Cost | Prereqs | Material gate | Effect |
 | --- | --- | ---: | --- | --- | --- |
-| 1 | Weaving | 30 | — | Fiber 4 | unlock Cloth recipe |
-| 2 | Ropewalk | 70 | Weaving + Carpentry | Fiber 4 + Planks 2 | unlock Rope recipe |
-| 3 | Sailmaking | 130 | Weaving + Ropewalk | Cloth 4 + Rope 2 | unlock Ship Parts recipe |
-| 4 | Shipbuilding | 240 | Sailmaking + Carpentry + Toolmaking | Planks 6 + Cloth 2 + Rope 2 + Ship Parts 2 + Tools 2 | unlock sea lanes / harbour |
+| 1 | Weaving | 30 | — | Fiber 4 | +15% Cloth output |
+| 2 | Ropewalk | 70 | Weaving + Carpentry | Fiber 4 + Planks 2 | +15% Rope output |
+| 3 | Sailmaking | 130 | Weaving + Ropewalk | Cloth 4 + Rope 2 | +15% Ship Parts output |
+| 4 | Shipbuilding | 240 | Sailmaking + Carpentry + Toolmaking | Planks 6 + Cloth 2 + Rope 2 + Ship Parts 2 + Tools 2 | +25% Ship Parts output |
 
 ### Agriculture and prosperity
 
 | Era | Tech | Cost | Prereqs | Material gate | Effect |
 | --- | --- | ---: | --- | --- | --- |
 | 1 | Crop rotation | 25 | — | Grain 6 + Fish 2 | +1 Grain/day |
-| 2 | Milling | 65 | Crop rotation + Masonry | Grain 6 + Stone 2 | unlock Flour recipe |
-| 3 | Provisioning | 120 | Milling + Weaving | Flour 4 + Fish 2 + Cloth 2 | growth/prosperity |
-| 4 | Education | 200 | Provisioning + Toolmaking | Cloth 2 + Tools 2 + Prosperity 12 | +research rate |
+| 2 | Milling | 65 | Crop rotation + Masonry | Grain 6 + Stone 2 | +15% Flour output |
+| 3 | Provisioning | 120 | Milling + Weaving | Flour 4 + Fish 2 + Cloth 2 | +1 growth |
+| 4 | Education | 200 | Provisioning + Toolmaking | Cloth 2 + Tools 2 | +20% research |
 
 ### Transport
 
@@ -115,7 +114,7 @@ Five branches share four eras. Cross-branch prerequisites are intentional.
 | 2 | Roads | 45 | Carpentry | Timber 4 + Stone 2 | unlock Road |
 | 3 | River barges | 110 | Roads + Carpentry + Ropewalk | Planks 4 + Rope 2 + Cloth 2 | unlock River |
 | 4 | Rail | 240 | Roads + Toolmaking + Machining | Steel 6 + Tools 4 + Machinery 2 | unlock Rail |
-| 4 | Sea lanes | 220 | Shipbuilding + River barges | Ship Parts 2 + Planks 4 + Cloth 2 | unlock Sea |
+| 4 | Sea lanes | 220 | Shipbuilding + River barges | Ship Parts 2 + Planks 4 + Cloth 2 | +20% route capacity |
 
 ## Side branches
 
@@ -155,9 +154,9 @@ single production identity, but they are not bottlenecks for the main tree.
 | Tech | Era | Cost | Prereqs | Material gate | Effect |
 | --- | --- | ---: | --- | --- | --- |
 | Bulk handling | 3 | 120 | Roads | Planks 4 + Tools 2 | +15% route capacity |
-| Logistics | 4 | 180 | Bulk handling + Mathematics | Tools 2 + Machinery 1 | +20% throughput, less congestion |
+| Logistics | 4 | 180 | Bulk handling + Mathematics | Tools 2 + Machinery 1 | +20% route capacity |
 | Rail signaling | 4 | 160 | Rail + Mathematics | Steel 4 + Tools 2 | +20% rail capacity |
-| Harbor cranes | 4 | 160 | Shipbuilding | Ship Parts 2 + Steel 2 | +25% sea-lane capacity |
+| Harbor cranes | 4 | 160 | Shipbuilding | Ship Parts 2 + Steel 2 | +25% route capacity |
 | Customs house | 3 | 90 | Roads + Weaving | Cloth 2 + Tools 2 | +10% toll income |
 
 The transport leaves are where the tree folds back into the map. Research-rate
@@ -215,6 +214,24 @@ non-trivial implementation step, because production currently lives in Rust.
 The UI adds a **Knowledge** panel per settlement: known techs, exposure,
 current gate progress, and the next reachable discovery. The player can see
 exactly which missing good is blocking a branch.
+
+## Current implementation
+
+The catalog is `app/tech_tables.dia` (33 rows). Rows are ordered
+topologically and each row carries its goods gate as an 18-digit string in
+`goods()` order. `world.tech` is the authoritative packed hex bitset (four techs per nibble). Discovery uses the
+best-research settlement's stock, then a single pass over the catalog per
+settlement because catalog order is topological. The effect mask is decoded in
+the Rust `tech_effect_mask` kernel and passed to the `market` and `trade`
+kernels, which apply research, production, capacity, toll, food, and growth
+bonuses.
+
+The browser receives the same packed hex bitset (nine characters at full
+size) and derives the header count with a nibble popcount, so every World copy
+stays small. Mode unlocks are read from fixed catalog ids. Per-settlement tech
+ownership and diffusion remain future work; the current gate is deliberately a
+network-level approximation so the full-map UI stays inside Diamond's
+managed-value budget.
 
 ## Why this fits Arteries
 

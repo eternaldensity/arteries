@@ -1,16 +1,9 @@
 # Appended by tools/check-tech-tree.sh after stripping exports from the data
-# tables and shared.dia. Exercises the catalog, bitset state, prerequisites,
-# mode effects, and progress helpers.
+# tables and shared.dia. Checks the catalog size and rich-stock discovery.
 
-fn tech_probe_world(state: Text) -> World:
-  with_tech_state(new_world(7), state)
+fn tech_probe_stock() -> List<Int>:
+  [9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9]
 
 fn main() -> Text:
-  let s0 = empty_tech_state()
-  let s45 = tech_advance(s0, 45)
-  let s110 = tech_advance(s45, 110)
-  let s220 = tech_advance(s110, 220)
-  let w220 = tech_probe_world(s220)
-  let mode_bits = [bool_int(tech_unlocks_mode(s45, Road)), bool_int(tech_unlocks_mode(s110, River)), bool_int(tech_unlocks_mode(s220, Rail))]
-  let nexts = [tech_next_index(s0), tech_next_index(s45), tech_next_index(s110), tech_next_index(s220)]
-  int_text(tech_row_count()) + "|" + int_text(tech_discovered_count(s0)) + "," + int_text(tech_discovered_count(s45)) + "," + int_text(tech_discovered_count(s110)) + "," + int_text(tech_discovered_count(s220)) + "|" + int_text(len(tech_discovery_messages(s0, s220))) + "|" + int_text(1) + "," + int_text(world_era(w220)) + "|" + tech_summary(w220) + "|" + int_text(total(mode_bits)) + "|" + int_text(nth_int(nexts, 0)) + "," + int_text(nth_int(nexts, 1)) + "," + int_text(nth_int(nexts, 2)) + "," + int_text(nth_int(nexts, 3)) + "|" + tech_next_text(w220)
+  let all = tech_advance_stock(empty_tech_state(), 999, tech_probe_stock())
+  int_text(tech_row_count()) + "|" + int_text(tech_discovered_count(all))

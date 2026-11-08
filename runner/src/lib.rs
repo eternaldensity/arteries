@@ -8,10 +8,11 @@
 
 use arteries_core::{
     encode_ints4, encode_link_rules, face_components, face_neighbors, face_path, face_summary, fbm,
-    finish_towns, generate_faces, generate_world, globe_raster, market, pathfind,
-    pathfind_features, region_text, region_trade, route_cost, route_cost_features, trade,
-    FeatureGrid, Grid, GridPoint, TickRoute, TickState, TickTown, TravelMode, GOOD_COUNT, MAP_H,
-    MAP_W, MAX_SEED, PIPELINE_LEN, TOWN_ROW_LEN,
+    finish_towns, generate_faces, generate_world, globe_raster, market_with_effects, pathfind,
+    pathfind_features, region_text, region_trade, route_cost, route_cost_features,
+    tech_effect_mask, trade_with_effects, FeatureGrid, Grid, GridPoint, TechEffects, TickRoute,
+    TickState, TickTown, TravelMode, EFFECT_COUNT, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED,
+    PIPELINE_LEN, TOWN_ROW_LEN,
 };
 use diamond::{Compute, ComputeContext, ComputeError, RuntimeGrants};
 use serde_json::Value as Json;
@@ -182,13 +183,15 @@ impl Compute for RouteCost {
 
 /// Pure-compute export `arteries.market`.
 ///
-/// Arguments: `(money, towns, routes, days, scale)`.
+/// Arguments: `(money, towns, routes, pipelines, days, scale, effects)`.
 ///
-/// Each town row is `[pop, prosperity, research, 8 endowments, 8 stocks]`.
-/// Each route row is `[a_index, b_index, fee, traffic, capacity, upkeep]`.
+/// Each town row is `[pop, prosperity, research, endowments, stocks]`.
+/// Each route row is `[a_index, b_index, fee, traffic, capacity, upkeep, mode,
+/// allow flags, good fees]`. `effects` is the compact technology mask from
+/// `tech_effect_values`.
 ///
-/// Reply: `[money]`, one `[pop, prosperity, research, 8 stocks]` row per town,
-/// then one `[traffic]` row per route.
+/// Reply: `[money]`, one `[pop, prosperity, research, stocks]` row per town,
+/// then one `[traffic, pipeline, flow]` row per route.
 pub struct Market;
 
 impl Market {
@@ -198,7 +201,7 @@ impl Market {
     /// Returns [`ComputeError::InvalidInput`] for malformed rows or out-of-range
     /// town indices.
     pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
-        if arguments.len() != 6 {
+        if arguments.len() != 7 {
             return Err(ComputeError::InvalidInput);
         }
         let money = int_arg(arguments, 0)?;
@@ -207,8 +210,12 @@ impl Market {
         let pipeline_texts = text_list_arg(arguments, 3)?;
         let days = int_arg(arguments, 4)?;
         let scale = int_arg(arguments, 5)?;
+        let effects = int_list_arg(arguments, 6)?;
+        if effects.len() != EFFECT_COUNT {
+            return Err(ComputeError::InvalidInput);
+        }
         let mut state = parse_tick_state(money, &town_rows, &route_rows, &pipeline_texts)?;
-        market(&mut state, days, scale);
+        market_with_effects(&mut state, days, scale, TechEffects::from_values(&effects));
         Ok(tick_state_json(&state))
     }
 }
@@ -227,7 +234,7 @@ impl Trade {
     /// Returns [`ComputeError::InvalidInput`] for malformed rows or out-of-range
     /// town indices.
     pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
-        if arguments.len() != 6 {
+        if arguments.len() != 7 {
             return Err(ComputeError::InvalidInput);
         }
         let money = int_arg(arguments, 0)?;
@@ -236,8 +243,12 @@ impl Trade {
         let pipeline_texts = text_list_arg(arguments, 3)?;
         let days = int_arg(arguments, 4)?;
         let scale = int_arg(arguments, 5)?;
+        let effects = int_list_arg(arguments, 6)?;
+        if effects.len() != EFFECT_COUNT {
+            return Err(ComputeError::InvalidInput);
+        }
         let mut state = parse_tick_state(money, &town_rows, &route_rows, &pipeline_texts)?;
-        trade(&mut state, days, scale);
+        trade_with_effects(&mut state, days, scale, TechEffects::from_values(&effects));
         Ok(tick_state_json(&state))
     }
 }
@@ -305,6 +316,39 @@ impl EncodeLinkRules {
 }
 
 impl Compute for EncodeLinkRules {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
+/// Pure-compute export `arteries.tech_effect_mask`.
+///
+/// Arguments: `(tech_state, effect_table)`. The state is the discovered-tech
+/// bitset and the table is the catalog's `code:value` list in id order.
+/// Reply: the compact 17-slot market effect mask.
+pub struct TechEffectMask;
+
+impl TechEffectMask {
+    /// Validate arguments and decode one effect mask.
+    ///
+    /// # Errors
+    /// Returns [`ComputeError::InvalidInput`] for the wrong arity or non-text
+    /// arguments.
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 2 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let state = text_arg(arguments, 0)?;
+        let table = text_arg(arguments, 1)?;
+        Ok(int_list_json(tech_effect_mask(state, table)))
+    }
+}
+
+impl Compute for TechEffectMask {
     fn call(
         &self,
         _context: &ComputeContext<'_>,
@@ -1232,6 +1276,7 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
             "List<Text>",
             "Int",
             "Int",
+            "List<Int>",
         ],
         "List<List<Int>>",
         Market,
@@ -1246,6 +1291,7 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
             "List<Text>",
             "Int",
             "Int",
+            "List<Int>",
         ],
         "List<List<Int>>",
         Trade,
@@ -1270,6 +1316,13 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
         &["List<Int>", "List<Int>"],
         "Text",
         EncodeLinkRules,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "tech_effect_mask",
+        &["Text", "Text"],
+        "List<Int>",
+        TechEffectMask,
     )?;
     grants.register_compute(
         "arteries",

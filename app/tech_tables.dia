@@ -1,21 +1,54 @@
 # Tech catalog data.
 #
 # Each row is a list of fields:
-#   [id, name, era, cost, prerequisites, effect, description]
+#   [id, name, era, cost, prerequisites, goods_gate, effect, value, description]
 #
 # IDs are stable and 0-based. Catalog order must stay topological: a tech may
 # only list prerequisites that appear earlier in the table. The bitset state in
 # a world is indexed by this ID.
+#
+# `goods_gate` is an 18-character string with one digit per good in `goods()`
+# order. A digit is the amount that must be present in the same settlement
+# before the technology can be discovered. For example position 1 is Timber and
+# position 5 is Tools.
+#
+# `effect` names a compact effect kind and `value` its percentage or flat
+# amount. Discovery unlocks route modes and improves research, production,
+# capacity, food, tolls, or growth.
 #
 # Split into chunks so the catalog can grow beyond one Diamond expression and
 # so lookups stay at constant call depth. Add rows to a chunk, or add a new
 # `tech_rows_N` plus a dispatch case in `catalog_row_at`.
 
 export fn tech_rows_0() -> List<List<Text>>:
-  [["0", "Roads", "2", "45", "", "unlock_road", "Improved carts. Roads can now be upgraded."], ["1", "Carpentry", "2", "60", "", "discount_planks", "Sawmills and framing. Road and barge upgrades need fewer planks."], ["2", "River barges", "3", "110", "0,1", "unlock_river", "River navigation. Barges can now be upgraded."], ["3", "Metallurgy", "3", "140", "0", "discount_steel", "Smelting and steelworking. Rail upgrades need less steel."], ["4", "Rail", "4", "220", "2,3", "unlock_rail", "Steam power. Rail can now be upgraded."]]
+  [["0", "Crop rotation", "1", "25", "", "600000020000000000", "grain", "1", "Rotating fields and fishing grounds raise the grain surplus."], ["1", "Carpentry", "1", "25", "", "040000000000000000", "planks", "15", "Sawmills and framing improve plank output."], ["2", "Weaving", "1", "30", "", "000040000000000000", "cloth", "15", "Looms turn fiber into cloth more efficiently."], ["3", "Smelting", "1", "40", "", "002400000000000000", "steel", "15", "Hot furnaces improve steel output."], ["4", "Masonry", "1", "55", "", "004000000020000000", "bricks", "15", "Kilns and mortar improve brick output."], ["5", "Roads", "2", "45", "1", "042000000000000000", "unlock_road", "1", "Improved carts. Roads can now be upgraded."], ["6", "Writing", "2", "50", "2", "000000202000000000", "research", "10", "Records and ledgers speed up research."], ["7", "Sawmill gearing", "2", "50", "1", "040000002000000000", "planks", "25", "Geared saws raise plank output further."], ["8", "Loom speed", "2", "50", "2", "000040002000000000", "cloth", "25", "Faster looms raise cloth output further."], ["9", "Bloomery", "2", "55", "3", "000400000002000000", "steel", "25", "Coal-fired blooms raise steel output further."]]
 
 export fn tech_rows_1() -> List<List<Text>>:
-  []
+  [["10", "Milling", "2", "65", "0,4", "602000000000000000", "flour", "15", "Stone mills turn grain into flour."], ["11", "Ropewalk", "2", "70", "2,1", "000040002000000000", "rope", "15", "Long walks braid fiber and planks into rope."], ["12", "Toolmaking", "2", "80", "3,1", "000000002200000000", "tools", "15", "Hardened tools raise tool output."], ["13", "Irrigation", "3", "100", "0,4", "600000000000200000", "food", "1", "Channels raise both grain and fish yields."], ["14", "Mathematics", "3", "100", "6,4", "000002002000000000", "research", "15", "Geometry and accounting speed up research."], ["15", "Customs house", "3", "90", "5,2", "000002200000000000", "toll", "10", "Tolls and tariffs raise trade income."], ["16", "Engineering", "3", "120", "1,4", "000002004000400000", "capacity", "10", "Bridges and embankments raise route capacity."], ["17", "Provisioning", "3", "120", "10,2", "000000220000040000", "growth", "1", "Stores and clothing support settlement growth."], ["18", "Bulk handling", "3", "120", "5", "000002004000000000", "capacity", "15", "Cranes and pallets raise route capacity."], ["19", "Standardized parts", "3", "120", "12", "000002000400000000", "tools_machinery", "25", "Interchangeable parts raise tool and machinery output."]]
+
+export fn tech_rows_2() -> List<List<Text>>:
+  [["20", "Sailmaking", "3", "130", "2,11", "000000400000002000", "ship", "15", "Cut canvas and cordage raise ship-part output."], ["21", "Machining", "3", "150", "12", "000002000400000000", "machinery", "15", "Precision machining raises machinery output."], ["22", "River barges", "3", "110", "5,1,11", "000000204000002000", "unlock_river", "1", "River navigation. Barges can now be upgraded."], ["23", "Rail", "4", "240", "5,12,21", "000004000600000020", "unlock_rail", "1", "Steam power. Rail can now be upgraded."], ["24", "Rail signaling", "4", "160", "23,14", "000002000400000000", "rail_capacity", "20", "Signals and sidings raise rail capacity."], ["25", "Architecture", "4", "220", "16,2", "000000206000600000", "growth", "1", "Civic works support larger settlements."], ["26", "Education", "4", "200", "17,12", "000002200000000000", "research", "20", "Schools and libraries speed up research."], ["27", "Shipbuilding", "4", "240", "20,1,12", "000002206000002200", "ship", "25", "Hulls and rigging raise ship-part output."], ["28", "Sea lanes", "4", "220", "27,22", "000000204000000200", "capacity", "20", "Harbour lanes raise long-distance capacity."], ["29", "Scientific method", "4", "200", "14,26", "000004400000000010", "research", "25", "Experiment and peer review speed up research."]]
+
+export fn tech_rows_3() -> List<List<Text>>:
+  [["30", "Logistics", "4", "180", "18,14", "000002000000000010", "capacity", "20", "Schedules and depots raise throughput."], ["31", "Engines", "4", "300", "21,16", "000004000800000040", "rail_capacity", "20", "Powerful engines raise rail capacity."], ["32", "Harbor cranes", "4", "160", "27", "000000000200000200", "capacity", "25", "Cranes raise harbour capacity."]]
+
+# One effect entry per tech id, in catalog order. Rust decodes this table into
+# the compact market-effect mask so the interpreter never rebuilds a 17-slot
+# list once per discovered technology.
+export fn catalog_era_values() -> List<Int>:
+  [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+
+export fn road_tech_id() -> Int:
+  5
+
+export fn river_tech_id() -> Int:
+  22
+
+export fn rail_tech_id() -> Int:
+  23
+
+export fn catalog_effect_table() -> Text:
+  "grain:1|planks:15|cloth:15|steel:15|bricks:15|unlock_road:1|research:10|planks:25|cloth:25|steel:25|flour:15|rope:15|tools:15|food:1|research:15|toll:10|capacity:10|growth:1|capacity:15|tools_machinery:25|ship:15|machinery:15|unlock_river:1|unlock_rail:1|rail_capacity:20|growth:1|research:20|ship:25|capacity:20|research:25|capacity:20|rail_capacity:20|capacity:25"
 
 fn row_at(rows: List<List<Text>>, i: Int) -> List<Text>:
   match list_get(rows, i):
@@ -30,7 +63,7 @@ fn nth_tech_row(rows: List<List<Text>>, i: Int) -> List<Text>:
 # Scanning code walks chunks directly; this avoids copying the whole catalog
 # through repeated list appends as the tree grows.
 export fn catalog_chunks() -> List<List<List<Text>>>:
-  [tech_rows_0(), tech_rows_1()]
+  [tech_rows_0(), tech_rows_1(), tech_rows_2(), tech_rows_3()]
 
 # Keep chunk width fixed so lookup is arithmetic instead of a chain of length
 # checks. A generated catalog can add chunk functions and match arms.
@@ -38,7 +71,7 @@ fn chunk_width() -> Int:
   10
 
 export fn catalog_row_count() -> Int:
-  5
+  33
 
 export fn catalog_row_at(i: Int) -> List<Text>:
   let chunk = i / chunk_width()
@@ -47,4 +80,8 @@ export fn catalog_row_at(i: Int) -> List<Text>:
     true => row_at(tech_rows_0(), offset)
     false => match chunk == 1:
       true => row_at(tech_rows_1(), offset)
-      false => []
+      false => match chunk == 2:
+        true => row_at(tech_rows_2(), offset)
+        false => match chunk == 3:
+          true => row_at(tech_rows_3(), offset)
+          false => []

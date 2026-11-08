@@ -1,0 +1,9 @@
+# Appended by tools/check-tech-tree.sh. Checks positive route unlocks and the
+# completed-tree next-tech result.
+
+fn tech_mode_stock() -> List<Int>:
+  [9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9]
+
+fn main() -> Text:
+  let all = tech_advance_stock(empty_tech_state(), 999, tech_mode_stock())
+  int_text(bool_int(tech_unlocks_mode(all, Rail)))

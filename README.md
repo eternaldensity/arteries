@@ -138,9 +138,15 @@ Routes can be upgraded through the transport eras:
 | Mode | Unlock | Capacity | Character |
 | --- | --- | --- | --- |
 | Pack route | start | low | cheap first connection |
-| Cart road | 45 research in one settlement | medium | durable trunk |
-| River barge | 110 research | high | bulk goods |
-| Rail | 220 research | highest | late-era backbone |
+| Cart road | Roads: 45 research + Timber 4 + Stone 2 | medium | durable trunk |
+| River barge | River barges: 110 research + Planks 4 + Rope 2 + Cloth 2 | high | bulk goods |
+| Rail | Rail: 240 research + Steel 6 + Tools 4 + Machinery 2 | highest | late-era backbone |
+
+The full tree adds construction, metallurgy, textiles, agriculture, and
+transport branches plus optional research, production, and throughput leaves.
+A discovery needs research, prerequisites, and a goods gate in the same
+settlement, so the transport modes are reached by routing, not by research
+alone.
 
 ### A live economy
 
@@ -232,7 +238,19 @@ database starts with one world.
 
 ### Technology tree
 
-See [`docs/tech-tree.svg`](docs/tech-tree.svg) for the current transport spine.
+The catalog is data-driven in `app/tech_tables.dia` and now holds 33
+discoveries across five branches and four eras. Each row records its research
+cost, topological prerequisites, an 18-good material gate, and one effect
+(research, production, capacity, toll, food, growth, or a route unlock). The
+server evaluates discovery against the best-research settlement's stock and
+passes the resulting effect mask into the Rust market kernel, so research,
+production, and trade bonuses are part of the authoritative simulation. The
+full-map UI receives a compact tech state and mode bits rather than the full
+bitset.
+
+See [`docs/tech-production-tree.md`](docs/tech-production-tree.md) and
+[`docs/tech-production-tree.svg`](docs/tech-production-tree.svg) for the
+branching tree and its material gates.
 The proposed advanced tree — including per-settlement material gates, production
 crossroads, and research/throughput side branches — is in
 [`docs/tech-production-tree.md`](docs/tech-production-tree.md) and illustrated
@@ -448,8 +466,8 @@ a persisted per-good surcharge. `ui-m5.js` covers the region map, sea lanes,
 continents, globe raster, and region trade; `ui-m6.js` compares the what-if
 forecast with a real re-simulation; `ui-saves.js` creates and switches worlds;
 `ui-production.js` runs a fresh week and requires Planks and Steel to appear from
-consumed inputs; and `ui-tech.js` requires the 0/5 → 5/5 tech path, Rail era, and
-reload persistence. They fail on page errors, console errors, missing UI state,
+consumed inputs; and `ui-tech.js` requires the 0/33 start, at least one material-gated
+discovery, and reload persistence. They fail on page errors, console errors, missing UI state,
 or unexpected cycle failures.
 
 ## Scale and the Diamond evaluation budget

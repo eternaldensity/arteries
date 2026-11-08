@@ -1,0 +1,8 @@
+# Appended by tools/check-tech-tree.sh. Empty stock must satisfy no gate.
+
+fn tech_blocked_stock() -> List<Int>:
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+fn main() -> Text:
+  let blocked = tech_advance_stock(empty_tech_state(), 999, tech_blocked_stock())
+  int_text(tech_discovered_count(blocked))
