@@ -232,6 +232,10 @@ with one world.
 ### Technology tree
 
 See [`docs/tech-tree.svg`](docs/tech-tree.svg) for the current transport spine.
+The proposed advanced tree — including per-settlement material gates and the
+production crossroads — is in
+[`docs/tech-production-tree.md`](docs/tech-production-tree.md) and illustrated
+in [`docs/tech-production-tree.svg`](docs/tech-production-tree.svg).
 
 Technology is data-driven rather than a trio of booleans. The catalog lives in
 `app/tech_tables.dia` as compact field rows:
@@ -331,6 +335,7 @@ tools/
   tick_finish_main.dia  fixed two-town finish fixture for that diff
   check-tech-tree.sh    validate the tech catalog and bitset unlock path
   tech_tree_main.dia    fixed tech-tree probe appended by that script
+  gen-tech-production-svg.py  regenerate the proposed advanced tree diagram
 tests/
   ui-smoke.js      real-browser acceptance driver (routes, ghost plans, queue ETAs, health, upkeep, dismantle)
   ui-m3.js         site-directed founding and waypoint acceptance

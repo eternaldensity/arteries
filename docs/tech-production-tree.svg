@@ -1,0 +1,309 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1260" viewBox="0 0 1800 1260" role="img" aria-labelledby="title desc">
+  <title id="title">Arteries advanced tech and production tree</title>
+  <desc id="desc">A proposed five-branch technology DAG where each discovery requires research, prerequisite technologies, and a specific combination of goods present in a settlement. Routing goods together is how the player guides technological progress.</desc>
+  <defs>
+    <radialGradient id="bgA" cx="12%" cy="7%" r="58%">
+      <stop offset="0%" stop-color="#173252" stop-opacity="0.60"/>
+      <stop offset="100%" stop-color="#173252" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="bgB" cx="92%" cy="20%" r="52%">
+      <stop offset="0%" stop-color="#4a3218" stop-opacity="0.42"/>
+      <stop offset="100%" stop-color="#4a3218" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.34"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#7188aa"/>
+    </marker>
+  </defs>
+  <style>
+    .bg { fill: #070d17; }
+    .eyebrow { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 12px; font-weight: 650; letter-spacing: 2.6px; fill: #7890b2; }
+    .h1 { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 31px; font-weight: 700; fill: #f4f7fc; letter-spacing: -0.4px; }
+    .sub { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 14px; fill: #9aabc5; }
+    .meta { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace; font-size: 9.5px; fill: #8fa5c4; }
+    .era { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 10.5px; font-weight: 650; letter-spacing: 1.8px; fill: #8ea5c4; }
+    .branch { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 10.5px; font-weight: 650; letter-spacing: 1.6px; fill: #8ea5c4; }
+    .card { fill: #0f1a2b; stroke: #2a405e; stroke-width: 1.1; filter: url(#shadow); }
+    .start { fill: #0c1727; stroke: #36506f; stroke-width: 1.2; stroke-dasharray: 7 6; filter: url(#shadow); }
+    .card-title { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 18px; font-weight: 650; fill: #f4f7fc; }
+    .field-label { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 8.5px; font-weight: 650; letter-spacing: 1.1px; fill: #6f86a8; }
+    .gate { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace; font-size: 9.5px; fill: #e0c58c; }
+    .effect { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace; font-size: 9.5px; fill: #7fd0c0; }
+    .after-label { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 8.5px; font-weight: 650; letter-spacing: 1.1px; fill: #6f86a8; }
+    .after { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace; font-size: 9px; fill: #a7b8d1; }
+    .timeline { stroke: #2a405e; stroke-width: 1.2; stroke-dasharray: 5 6; }
+    .panel { fill: #0c1523; stroke: #253b57; stroke-width: 1; }
+    .panel-title { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 11px; font-weight: 650; letter-spacing: 1.8px; fill: #8ea5c4; }
+    .body { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 11px; fill: #c6d3e6; }
+    .muted { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 10px; fill: #8297b6; }
+    .code { font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace; font-size: 9.8px; fill: #b9cce5; }
+    .footer { font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 11px; fill: #637897; }
+  </style>
+  <rect class="bg" width="1800" height="1260"/>
+  <rect width="1800" height="1260" fill="url(#bgA)"/>
+  <rect width="1800" height="1260" fill="url(#bgB)"/>
+  <text class="eyebrow" x="64" y="58">ARTERIES · TECHNOLOGY</text>
+  <text class="h1" x="64" y="96">Advanced tech + production tree</text>
+  <text class="sub" x="64" y="124">The player guides discovery by routing goods into the same settlement.</text>
+  <text class="meta" x="1736" y="62" text-anchor="end">5 branches · 4 eras · 19 discoveries</text>
+  <text class="meta" x="1736" y="84" text-anchor="end">tech + material gate + research</text>
+  <line class="timeline" x1="40" y1="190" x2="1760" y2="190"/>
+  <text class="era" x="385" y="176" text-anchor="middle">ERA 1 · FOUNDATION</text>
+  <text class="era" x="785" y="176" text-anchor="middle">ERA 2 · SPECIALIZATION</text>
+  <text class="era" x="1185" y="176" text-anchor="middle">ERA 3 · INTEGRATION</text>
+  <text class="era" x="1585" y="176" text-anchor="middle">ERA 4 · INDUSTRY</text>
+  <text class="branch" x="40" y="295" >CONSTRUCTION</text>
+  <text class="branch" x="40" y="453" >METALLURGY</text>
+  <text class="branch" x="40" y="611" >TEXTILES / TRADE</text>
+  <text class="branch" x="40" y="769" >AGRICULTURE</text>
+  <text class="branch" x="40" y="927" >TRANSPORT</text>
+  <rect class="card" x="210" y="225" width="350" height="140" rx="14"/>
+  <line x1="226" y1="227" x2="544" y2="227" stroke="#e0ac5c" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="228" y="256">Carpentry</text>
+  <text class="meta" x="542" y="253" text-anchor="end">25 research · era 1</text>
+  <text class="field-label" x="228" y="277">GATE</text>
+  <text class="gate" x="278" y="277">Timber 4</text>
+  <text class="field-label" x="228" y="323">EFFECT</text>
+  <text class="effect" x="278" y="323">unlock Planks</text>
+  <rect class="card" x="610" y="225" width="350" height="140" rx="14"/>
+  <line x1="626" y1="227" x2="944" y2="227" stroke="#e0ac5c" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="628" y="256">Masonry</text>
+  <text class="meta" x="942" y="253" text-anchor="end">55 research · era 2</text>
+  <text class="field-label" x="628" y="277">GATE</text>
+  <text class="gate" x="678" y="277">Stone 4 + Clay 2</text>
+  <text class="field-label" x="628" y="323">EFFECT</text>
+  <text class="effect" x="678" y="323">unlock Bricks</text>
+  <rect class="card" x="1010" y="225" width="350" height="140" rx="14"/>
+  <line x1="1026" y1="227" x2="1344" y2="227" stroke="#e0ac5c" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="1028" y="256">Engineering</text>
+  <text class="meta" x="1342" y="253" text-anchor="end">120 research · era 3</text>
+  <text class="field-label" x="1028" y="277">GATE</text>
+  <text class="gate" x="1078" y="277">Planks 4 + Bricks 4</text>
+  <text class="gate" x="1078" y="292">Tools 2</text>
+  <text class="field-label" x="1028" y="323">EFFECT</text>
+  <text class="effect" x="1078" y="323">bridge / road capacity</text>
+  <text class="after-label" x="1028" y="349">AFTER</text>
+  <text class="after" x="1078" y="349">Carpentry + Masonry</text>
+  <rect class="card" x="1410" y="225" width="350" height="140" rx="14"/>
+  <line x1="1426" y1="227" x2="1744" y2="227" stroke="#e0ac5c" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="1428" y="256">Architecture</text>
+  <text class="meta" x="1742" y="253" text-anchor="end">220 research · era 4</text>
+  <text class="field-label" x="1428" y="277">GATE</text>
+  <text class="gate" x="1478" y="277">Planks 6 + Bricks 6</text>
+  <text class="gate" x="1478" y="292">Cloth 2</text>
+  <text class="field-label" x="1428" y="323">EFFECT</text>
+  <text class="effect" x="1478" y="323">growth / prosperity</text>
+  <text class="after-label" x="1428" y="349">AFTER</text>
+  <text class="after" x="1478" y="349">Engineering + Weaving</text>
+  <rect class="card" x="210" y="383" width="350" height="140" rx="14"/>
+  <line x1="226" y1="385" x2="544" y2="385" stroke="#69c3b3" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="228" y="414">Smelting</text>
+  <text class="meta" x="542" y="411" text-anchor="end">40 research · era 1</text>
+  <text class="field-label" x="228" y="435">GATE</text>
+  <text class="gate" x="278" y="435">Ore 4 + Stone 2</text>
+  <text class="field-label" x="228" y="481">EFFECT</text>
+  <text class="effect" x="278" y="481">unlock Steel</text>
+  <rect class="card" x="610" y="383" width="350" height="140" rx="14"/>
+  <line x1="626" y1="385" x2="944" y2="385" stroke="#69c3b3" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="628" y="414">Toolmaking</text>
+  <text class="meta" x="942" y="411" text-anchor="end">80 research · era 2</text>
+  <text class="field-label" x="628" y="435">GATE</text>
+  <text class="gate" x="678" y="435">Steel 2 + Planks 2</text>
+  <text class="field-label" x="628" y="481">EFFECT</text>
+  <text class="effect" x="678" y="481">unlock Tools</text>
+  <text class="after-label" x="628" y="507">AFTER</text>
+  <text class="after" x="678" y="507">Smelting + Carpentry</text>
+  <rect class="card" x="1010" y="383" width="350" height="140" rx="14"/>
+  <line x1="1026" y1="385" x2="1344" y2="385" stroke="#69c3b3" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="1028" y="414">Machining</text>
+  <text class="meta" x="1342" y="411" text-anchor="end">150 research · era 3</text>
+  <text class="field-label" x="1028" y="435">GATE</text>
+  <text class="gate" x="1078" y="435">Steel 4 + Tools 2</text>
+  <text class="field-label" x="1028" y="481">EFFECT</text>
+  <text class="effect" x="1078" y="481">unlock Machinery</text>
+  <text class="after-label" x="1028" y="507">AFTER</text>
+  <text class="after" x="1078" y="507">Toolmaking</text>
+  <rect class="card" x="1410" y="383" width="350" height="140" rx="14"/>
+  <line x1="1426" y1="385" x2="1744" y2="385" stroke="#69c3b3" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="1428" y="414">Engines</text>
+  <text class="meta" x="1742" y="411" text-anchor="end">300 research · era 4</text>
+  <text class="field-label" x="1428" y="435">GATE</text>
+  <text class="gate" x="1478" y="435">Steel 8 + Machinery 4</text>
+  <text class="gate" x="1478" y="450">Tools 4</text>
+  <text class="field-label" x="1428" y="481">EFFECT</text>
+  <text class="effect" x="1478" y="481">rail speed / capacity</text>
+  <text class="after-label" x="1428" y="507">AFTER</text>
+  <text class="after" x="1478" y="507">Machining + Engineering</text>
+  <rect class="card" x="210" y="541" width="350" height="140" rx="14"/>
+  <line x1="226" y1="543" x2="544" y2="543" stroke="#e07a8a" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="228" y="572">Weaving</text>
+  <text class="meta" x="542" y="569" text-anchor="end">30 research · era 1</text>
+  <text class="field-label" x="228" y="593">GATE</text>
+  <text class="gate" x="278" y="593">Fiber 4</text>
+  <text class="field-label" x="228" y="639">EFFECT</text>
+  <text class="effect" x="278" y="639">unlock Cloth</text>
+  <rect class="card" x="610" y="541" width="350" height="140" rx="14"/>
+  <line x1="626" y1="543" x2="944" y2="543" stroke="#e07a8a" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="628" y="572">Ropewalk</text>
+  <text class="meta" x="942" y="569" text-anchor="end">70 research · era 2</text>
+  <text class="field-label" x="628" y="593">GATE</text>
+  <text class="gate" x="678" y="593">Fiber 4 + Planks 2</text>
+  <text class="field-label" x="628" y="639">EFFECT</text>
+  <text class="effect" x="678" y="639">unlock Rope</text>
+  <text class="after-label" x="628" y="665">AFTER</text>
+  <text class="after" x="678" y="665">Weaving + Carpentry</text>
+  <rect class="card" x="1010" y="541" width="350" height="140" rx="14"/>
+  <line x1="1026" y1="543" x2="1344" y2="543" stroke="#e07a8a" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="1028" y="572">Sailmaking</text>
+  <text class="meta" x="1342" y="569" text-anchor="end">130 research · era 3</text>
+  <text class="field-label" x="1028" y="593">GATE</text>
+  <text class="gate" x="1078" y="593">Cloth 4 + Rope 2</text>
+  <text class="field-label" x="1028" y="639">EFFECT</text>
+  <text class="effect" x="1078" y="639">unlock Ship Parts</text>
+  <text class="after-label" x="1028" y="665">AFTER</text>
+  <text class="after" x="1078" y="665">Weaving + Ropewalk</text>
+  <rect class="card" x="1410" y="541" width="350" height="140" rx="14"/>
+  <line x1="1426" y1="543" x2="1744" y2="543" stroke="#e07a8a" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="1428" y="572">Shipbuilding</text>
+  <text class="meta" x="1742" y="569" text-anchor="end">240 research · era 4</text>
+  <text class="field-label" x="1428" y="593">GATE</text>
+  <text class="gate" x="1478" y="593">Planks 6 + Cloth 2 + Rope 2</text>
+  <text class="gate" x="1478" y="608">Ship Parts 2 + Tools 2</text>
+  <text class="field-label" x="1428" y="639">EFFECT</text>
+  <text class="effect" x="1478" y="639">unlock Sea lanes / harbour</text>
+  <text class="after-label" x="1428" y="665">AFTER</text>
+  <text class="after" x="1478" y="665">Sailmaking + Carpentry + Toolmaking</text>
+  <rect class="card" x="210" y="699" width="350" height="140" rx="14"/>
+  <line x1="226" y1="701" x2="544" y2="701" stroke="#8fd18a" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="228" y="730">Crop rotation</text>
+  <text class="meta" x="542" y="727" text-anchor="end">25 research · era 1</text>
+  <text class="field-label" x="228" y="751">GATE</text>
+  <text class="gate" x="278" y="751">Grain 6 + Fish 2</text>
+  <text class="field-label" x="228" y="797">EFFECT</text>
+  <text class="effect" x="278" y="797">+1 Grain/day</text>
+  <rect class="card" x="610" y="699" width="350" height="140" rx="14"/>
+  <line x1="626" y1="701" x2="944" y2="701" stroke="#8fd18a" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="628" y="730">Milling</text>
+  <text class="meta" x="942" y="727" text-anchor="end">65 research · era 2</text>
+  <text class="field-label" x="628" y="751">GATE</text>
+  <text class="gate" x="678" y="751">Grain 6 + Stone 2</text>
+  <text class="field-label" x="628" y="797">EFFECT</text>
+  <text class="effect" x="678" y="797">unlock Flour</text>
+  <text class="after-label" x="628" y="823">AFTER</text>
+  <text class="after" x="678" y="823">Crop rotation + Masonry</text>
+  <rect class="card" x="1010" y="699" width="350" height="140" rx="14"/>
+  <line x1="1026" y1="701" x2="1344" y2="701" stroke="#8fd18a" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="1028" y="730">Provisioning</text>
+  <text class="meta" x="1342" y="727" text-anchor="end">120 research · era 3</text>
+  <text class="field-label" x="1028" y="751">GATE</text>
+  <text class="gate" x="1078" y="751">Flour 4 + Fish 2</text>
+  <text class="gate" x="1078" y="766">Cloth 2</text>
+  <text class="field-label" x="1028" y="797">EFFECT</text>
+  <text class="effect" x="1078" y="797">growth / prosperity</text>
+  <text class="after-label" x="1028" y="823">AFTER</text>
+  <text class="after" x="1078" y="823">Milling + Weaving</text>
+  <rect class="card" x="1410" y="699" width="350" height="140" rx="14"/>
+  <line x1="1426" y1="701" x2="1744" y2="701" stroke="#8fd18a" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="1428" y="730">Education</text>
+  <text class="meta" x="1742" y="727" text-anchor="end">200 research · era 4</text>
+  <text class="field-label" x="1428" y="751">GATE</text>
+  <text class="gate" x="1478" y="751">Cloth 2 + Tools 2</text>
+  <text class="gate" x="1478" y="766">Prosperity 12</text>
+  <text class="field-label" x="1428" y="797">EFFECT</text>
+  <text class="effect" x="1478" y="797">+research rate</text>
+  <text class="after-label" x="1428" y="823">AFTER</text>
+  <text class="after" x="1478" y="823">Provisioning + Toolmaking</text>
+  <rect class="start" x="210" y="857" width="350" height="140" rx="14"/>
+  <line x1="226" y1="859" x2="544" y2="859" stroke="#6f90ba" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="228" y="888">Pack routes</text>
+  <text class="meta" x="542" y="885" text-anchor="end">starting mode</text>
+  <text class="field-label" x="228" y="909">GATE</text>
+  <text class="gate" x="278" y="909">starting mode</text>
+  <text class="field-label" x="228" y="955">EFFECT</text>
+  <text class="effect" x="278" y="955">Path links</text>
+  <rect class="card" x="610" y="857" width="350" height="140" rx="14"/>
+  <line x1="626" y1="859" x2="944" y2="859" stroke="#6f90ba" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="628" y="888">Roads</text>
+  <text class="meta" x="942" y="885" text-anchor="end">45 research · era 2</text>
+  <text class="field-label" x="628" y="909">GATE</text>
+  <text class="gate" x="678" y="909">Timber 4 + Stone 2</text>
+  <text class="field-label" x="628" y="955">EFFECT</text>
+  <text class="effect" x="678" y="955">unlock Road</text>
+  <text class="after-label" x="628" y="981">AFTER</text>
+  <text class="after" x="678" y="981">Carpentry</text>
+  <rect class="card" x="1010" y="857" width="350" height="140" rx="14"/>
+  <line x1="1026" y1="859" x2="1344" y2="859" stroke="#6f90ba" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="1028" y="888">River barges</text>
+  <text class="meta" x="1342" y="885" text-anchor="end">110 research · era 3</text>
+  <text class="field-label" x="1028" y="909">GATE</text>
+  <text class="gate" x="1078" y="909">Planks 4 + Rope 2</text>
+  <text class="gate" x="1078" y="924">Cloth 2</text>
+  <text class="field-label" x="1028" y="955">EFFECT</text>
+  <text class="effect" x="1078" y="955">unlock River</text>
+  <text class="after-label" x="1028" y="981">AFTER</text>
+  <text class="after" x="1078" y="981">Roads + Carpentry + Ropewalk</text>
+  <rect class="card" x="1410" y="857" width="350" height="140" rx="14"/>
+  <line x1="1426" y1="859" x2="1744" y2="859" stroke="#6f90ba" stroke-width="4" stroke-linecap="round"/>
+  <text class="card-title" x="1428" y="888">Rail</text>
+  <text class="meta" x="1742" y="885" text-anchor="end">240 research · era 4</text>
+  <text class="field-label" x="1428" y="909">GATE</text>
+  <text class="gate" x="1478" y="909">Steel 6 + Tools 4</text>
+  <text class="gate" x="1478" y="924">Machinery 2</text>
+  <text class="field-label" x="1428" y="955">EFFECT</text>
+  <text class="effect" x="1478" y="955">unlock Rail</text>
+  <text class="after-label" x="1428" y="981">AFTER</text>
+  <text class="after" x="1478" y="981">Roads + Toolmaking + Machining</text>
+  <line x1="1365" y1="295" x2="1405" y2="295" stroke="#e0ac5c" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="565" y1="453" x2="605" y2="453" stroke="#69c3b3" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="965" y1="453" x2="1005" y2="453" stroke="#69c3b3" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="1365" y1="453" x2="1405" y2="453" stroke="#69c3b3" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="565" y1="611" x2="605" y2="611" stroke="#e07a8a" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="965" y1="611" x2="1005" y2="611" stroke="#e07a8a" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="1365" y1="611" x2="1405" y2="611" stroke="#e07a8a" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="565" y1="769" x2="605" y2="769" stroke="#8fd18a" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="965" y1="769" x2="1005" y2="769" stroke="#8fd18a" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="1365" y1="769" x2="1405" y2="769" stroke="#8fd18a" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="565" y1="927" x2="605" y2="927" stroke="#6f90ba" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="965" y1="927" x2="1005" y2="927" stroke="#6f90ba" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="1365" y1="927" x2="1405" y2="927" stroke="#6f90ba" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <rect class="panel" x="40" y="1025" width="560" height="195" rx="12"/>
+  <text class="panel-title" x="60" y="1053">PRODUCTION CHAIN</text>
+  <text class="code" x="60" y="1079">Timber → Planks</text>
+  <text class="code" x="60" y="1092">Clay + Stone → Bricks</text>
+  <text class="code" x="60" y="1105">Ore + Stone → Steel</text>
+  <text class="code" x="60" y="1118">Fiber → Cloth</text>
+  <text class="code" x="60" y="1131">Fiber + Planks → Rope</text>
+  <text class="code" x="60" y="1144">Planks + Steel → Tools</text>
+  <text class="code" x="60" y="1157">Steel + Tools → Machinery</text>
+  <text class="code" x="60" y="1170">Planks + Cloth + Rope → Ship Parts</text>
+  <text class="code" x="60" y="1183">Steel + Machinery + Tools → Engines</text>
+  <text class="code" x="60" y="1196">Grain + Stone → Flour</text>
+  <text class="code" x="60" y="1209">Grain + Fish → growth</text>
+  <rect class="panel" x="620" y="1025" width="560" height="195" rx="12"/>
+  <text class="panel-title" x="640" y="1053">ROUTING → DISCOVERY</text>
+  <text class="code" x="640" y="1077">1  Route goods</text>
+  <text class="code" x="640" y="1091">2  settle together</text>
+  <text class="code" x="640" y="1105">3  expose materials</text>
+  <text class="code" x="640" y="1119">4  research + prereqs</text>
+  <text class="code" x="640" y="1133">5  discover</text>
+  <text class="code" x="640" y="1147">6  unlock recipe/effect</text>
+  <text class="code" x="640" y="1161">7  new goods reach new gates</text>
+  <text class="muted" x="640" y="1188">Forest town + Ore/Stone → Carpentry + Smelting</text>
+  <text class="muted" x="640" y="1206">→ Planks + Steel → Toolmaking → Machining → Rail</text>
+  <rect class="panel" x="1200" y="1025" width="560" height="195" rx="12"/>
+  <text class="panel-title" x="1220" y="1053">DISCOVERY GATE</text>
+  <text class="code" x="1220" y="1077">research ≥ cost</text>
+  <text class="code" x="1220" y="1091">AND prerequisites known here</text>
+  <text class="code" x="1220" y="1105">AND goods present together</text>
+  <text class="code" x="1220" y="1119">for at least one market day</text>
+  <text class="muted" x="1220" y="1143">GATE  goods that must meet in one place</text>
+  <text class="muted" x="1220" y="1157">EFFECT  recipe, mode, or production boost</text>
+  <text class="muted" x="1220" y="1171">AFTER  prerequisite technologies</text>
+  <text class="muted" x="1220" y="1185">arrows show same-branch chains</text>
+  <text class="muted" x="1220" y="1203">No tech unlocks from research alone.</text>
+  <text class="muted" x="1220" y="1219">Branch colour = production family.</text>
+  <text class="footer" x="64" y="1242">Arteries prototype · proposed advanced tree · routing choices assemble the research environment</text>
+</svg>
