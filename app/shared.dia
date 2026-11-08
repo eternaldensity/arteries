@@ -4225,18 +4225,18 @@ export fn game_build(game: Game) -> Game:
     false => Game(world: game.world, sel: game.sel, notice: result.message, last_ok: false, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
     true =>
       let next_sel = Selection(selected: game.sel.to, from: "", to: "", draft: empty_plan(), ready: false, routing: false, notice: "")
-      Game(world: result.world, sel: next_sel, notice: result.message, last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: list_append(game.projects, result.project), inspect: inspect_view(result.world, next_sel.selected))
+      Game(world: result.world, sel: next_sel, notice: result.message, last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: list_append(game.projects, result.project), inspect: empty_inspect_view())
 
 export fn game_upgrade(game: Game, id: Text) -> Game:
   let result = begin_upgrade(game.world, id)
   match result.ok:
     false => Game(world: game.world, sel: game.sel, notice: result.message, last_ok: false, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
-    true => Game(world: result.world, sel: game.sel, notice: result.message, last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: list_append(game.projects, result.project), inspect: inspect_view(result.world, game.sel.selected))
+    true => Game(world: result.world, sel: game.sel, notice: result.message, last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: list_append(game.projects, result.project), inspect: empty_inspect_view())
 
 export fn game_demolish(game: Game, id: Text) -> Game:
   let result = demolish_route(game.world, id)
   let projects = drop_projects(game.projects, id, 0, [])
-  Game(world: result.world, sel: game.sel, notice: result.message, last_ok: result.ok, route_groups: route_groups(result.world.routes), auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: total_upkeep(result.world.routes), projects: projects, inspect: inspect_view(result.world, game.sel.selected))
+  Game(world: result.world, sel: game.sel, notice: result.message, last_ok: result.ok, route_groups: route_groups(result.world.routes), auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: total_upkeep(result.world.routes), projects: projects, inspect: empty_inspect_view())
 
 export fn game_use_alt(game: Game, idx: Int) -> Game:
   let plans = survey_alternatives(game.world, game.sel.from, game.sel.to)
