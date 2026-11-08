@@ -24,9 +24,10 @@ pub use path::{
 };
 pub use planet::{generate_faces, MAX_DETAIL, PLANET_SCALE};
 pub use tick::{
-    finish_towns, market, region_trade, trade, FinishPage, TickRoute, TickState, TickTown, CLOTH,
-    FIBER, FISH, GOOD_COUNT, GRAIN, ORE, PIPELINE_LEN, PLANKS, ROUTE_ROW_LEN, STEEL, STONE, TIMBER,
-    TOOLS, TOWN_ROW_LEN,
+    encode_ints4, encode_link_rules, finish_towns, market, region_trade, trade, FinishPage,
+    TickRoute, TickState, TickTown, BRICKS, CLAY, CLOTH, COAL, ENGINES, FIBER, FISH, FLOUR,
+    GOOD_COUNT, GRAIN, MACHINERY, ORE, PIPELINE_LEN, PLANKS, ROPE, ROUTE_ROW_LEN, SHIP_PARTS,
+    STEEL, STONE, TIMBER, TOOLS, TOWN_ROW_LEN,
 };
 pub use worldgen::{
     climate_code, generate as generate_world, map_line as worldgen_map_line,

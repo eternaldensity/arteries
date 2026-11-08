@@ -295,7 +295,7 @@ function assert(condition, message) {
     await page.waitForTimeout(450);
     s = await state();
     assert(s.inspector === 'Greenvale', 'inspector did not switch to Greenvale');
-    assert((await page.locator('.good-chip').count()) === 10, 'expected ten goods');
+    assert((await page.locator('.good-chip').count()) === 18, 'expected eighteen goods');
 
     // Dismantling frees a route slot (now requires confirmation).
     await page.locator('.route-card button.danger').first().click();

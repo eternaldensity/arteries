@@ -7,10 +7,11 @@
 //! this binary instead.
 
 use arteries_core::{
-    face_components, face_neighbors, face_path, face_summary, fbm, finish_towns, generate_faces,
-    generate_world, globe_raster, market, pathfind, pathfind_features, region_text, region_trade,
-    route_cost, route_cost_features, trade, FeatureGrid, Grid, GridPoint, TickRoute, TickState,
-    TickTown, TravelMode, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED, PIPELINE_LEN, TOWN_ROW_LEN,
+    encode_ints4, encode_link_rules, face_components, face_neighbors, face_path, face_summary, fbm,
+    finish_towns, generate_faces, generate_world, globe_raster, market, pathfind,
+    pathfind_features, region_text, region_trade, route_cost, route_cost_features, trade,
+    FeatureGrid, Grid, GridPoint, TickRoute, TickState, TickTown, TravelMode, GOOD_COUNT, MAP_H,
+    MAP_W, MAX_SEED, PIPELINE_LEN, TOWN_ROW_LEN,
 };
 use diamond::{Compute, ComputeContext, ComputeError, RuntimeGrants};
 use serde_json::Value as Json;
@@ -242,6 +243,68 @@ impl Trade {
 }
 
 impl Compute for Trade {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
+/// Pure-compute export `arteries.encode_ints4`.
+///
+/// Arguments: `(values)`. Reply: four-character zero-padded fields.
+pub struct EncodeInts4;
+
+impl EncodeInts4 {
+    /// Validate arguments and encode one integer list.
+    ///
+    /// # Errors
+    /// Returns [`ComputeError::InvalidInput`] for the wrong arity or a
+    /// non-integer list.
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 1 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let values = int_list_arg(arguments, 0)?;
+        Ok(Json::String(encode_ints4(&values)))
+    }
+}
+
+impl Compute for EncodeInts4 {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
+/// Pure-compute export `arteries.encode_link_rules`.
+///
+/// Arguments: `(allow, fee)`. Reply: one allow digit per good followed by
+/// two-digit fees.
+pub struct EncodeLinkRules;
+
+impl EncodeLinkRules {
+    /// Validate arguments and encode one link-rules pair.
+    ///
+    /// # Errors
+    /// Returns [`ComputeError::InvalidInput`] for the wrong arity or a
+    /// non-integer list.
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 2 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let allow = int_list_arg(arguments, 0)?;
+        let fee = int_list_arg(arguments, 1)?;
+        Ok(Json::String(encode_link_rules(&allow, &fee)))
+    }
+}
+
+impl Compute for EncodeLinkRules {
     fn call(
         &self,
         _context: &ComputeContext<'_>,
@@ -1193,6 +1256,20 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
         &["List<List<Int>>", "List<Int>", "Int", "Int"],
         "List<List<Int>>",
         RegionTrade,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "encode_ints4",
+        &["List<Int>"],
+        "Text",
+        EncodeInts4,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "encode_link_rules",
+        &["List<Int>", "List<Int>"],
+        "Text",
+        EncodeLinkRules,
     )?;
     grants.register_compute(
         "arteries",

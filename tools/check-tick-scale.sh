@@ -4,10 +4,9 @@
 # Shared and rt_tables are inlined (with `export` stripped) so the result runs
 # as a standalone file, like tools/check-core.sh.
 #
-# The default (5 settlements) exercises the depth-hardened list folds. Raising
-# SETTLEMENTS shows where Diamond's managed-value budget stops the current
-# pure-Diamond tick; 100 currently needs the Rust tick/compact view described
-# in RUST_HOST_EXTENSIONS.md.
+# The default (5 settlements) exercises the depth-hardened finish/event folds.
+# Production and trade are covered by the Rust market kernel tests at 100
+# settlements; this probe keeps the remaining Diamond finish path honest.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 DIAMOND=${DIAMOND:-$(command -v diamond || true)}

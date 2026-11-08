@@ -109,7 +109,7 @@ Routes are not fixed links. Click two settlements to survey one:
   flows toward the cheapest deficit path, paying every link's toll plus the
   good's surcharge and one transfer penalty per intermediate settlement, with
   each direction's capacity shared across goods;
-- every link has a **Rules** desk: allow or block each of the ten goods, and
+- every link has a **Rules** desk: allow or block each of the eighteen goods, and
   add a per-good surcharge on top of the base toll. Blocked goods never enter
   the link, and a surcharge high enough to cover the deficit sends the flow
   down a different path; both are persisted with the route and applied by the
@@ -147,9 +147,11 @@ Routes can be upgraded through the transport eras:
 Each cycle a settlement:
 
 - extracts its natural endowments;
-- runs production chains: planks from timber, steel from ore + stone, cloth
-  from fiber, and tools from timber + stone + ore. Planks and steel claim their
-  raw inputs before tools, so a timber-and-ore town cannot overdraw its stock;
+- runs production chains in dependency order: planks from timber, bricks from
+  clay + stone, steel from ore + stone, cloth from fiber, flour from grain +
+  stone, rope from fiber + planks, tools from planks + steel, ship parts from
+  planks + cloth + rope, machinery from steel + tools, and engines from steel +
+  machinery + tools;
 - consumes food and cloth;
 - gains or loses prosperity from food, variety, and comfort;
 - accumulates research from population, variety, and prosperity;
@@ -222,12 +224,11 @@ treasury, and current day; selecting one makes it the current world and reloads
 it. The server stores the current-save pointer per account, so signing out and
 back in resumes the world you last selected.
 
-Worlds are stored in the relational schema (storage v10). Version 9 added the
-two processed goods to the shared `Good` enum, which changed the site-resource
-constraint; that step needs a fresh database or an explicit conversion. Version
-10 is additive: it adds `world.tech` and lazily reconstructs the bitset from the
-legacy transport booleans when an older save is loaded. A fresh database starts
-with one world.
+Worlds are stored in the relational schema (storage v11). Expanding the shared
+`Good` enum changes the site-resource constraint, so v9 and v11 need a fresh
+database or an explicit conversion. Version 10 was additive and added
+`world.tech`; version 11 adds the new town endowment/stock columns. A fresh
+database starts with one world.
 
 ### Technology tree
 

@@ -26,6 +26,14 @@ export enum Good:
   Fish
   Planks
   Steel
+  Clay
+  Coal
+  Bricks
+  Flour
+  Rope
+  ShipParts
+  Machinery
+  Engines
 
 export enum RouteMode:
   NoRoute
@@ -217,6 +225,8 @@ export type Route:
   b: Text
   a_name: Text
   b_name: Text
+  a_ord: Int
+  b_ord: Int
   mode: RouteMode
   plan: RoutePlan
   fee: Int
@@ -224,8 +234,8 @@ export type Route:
   capacity: Int
   upkeep: Int
   rules: LinkRules
-  pipeline: List<Int>
-  flow: List<Int>
+  pipeline: Text
+  flow: Text
 
 # Per-link flow rules (design doc §5.4). `allow` holds one 0/1 entry per good in
 # `goods()` order and `fee` a per-good surcharge on top of the link's base fee.
@@ -237,7 +247,7 @@ export type LinkRules:
   fee: List<Int>
 
 export fn default_rules() -> LinkRules:
-  LinkRules(allow: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1], fee: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+  LinkRules(allow: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], fee: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 
 export fn rule_allows(rules: LinkRules, g: Good) -> Bool:
   nth_int(rules.allow, good_index(g)) > 0
@@ -257,17 +267,17 @@ export fn rule_label(rules: LinkRules, i: Int) -> Text:
     false => "Blocked"
 
 export fn route_rules_label(r: Route) -> Text:
-  "Rules · " + int_text(total(r.rules.allow)) + "/" + int_text(len(goods())) + " goods"
+  "Rules · " + int_text(total(r.rules.allow)) + "/" + int_text(good_count()) + " goods"
 
 # The desk sends whole lists, so accept any length and normalize the values.
 export fn normalize_allow(allow: List<Int>) -> List<Int>:
-  for i in indices(len(goods())):
+  for i in indices(good_count()):
     match nth_int(allow, i) > 0:
       true => 1
       false => 0
 
 export fn normalize_fees(fees: List<Int>) -> List<Int>:
-  for i in indices(len(goods())):
+  for i in indices(good_count()):
     clamp(nth_int(fees, i), 0, 99)
 
 export fn rule_fee(rules: LinkRules, g: Good) -> Int:
@@ -300,45 +310,53 @@ export fn encode_link_rules(rules: LinkRules) -> Text:
 # In-transit consignments per route, padded to the fixed kernel width. An empty
 # column decodes to an empty (zeroed) pipeline, so pre-transit rows stay valid.
 export fn encode_pipeline(pipeline: List<Int>) -> Text:
-  let parts = for i in indices(len(pipeline)):
-    pad4(nth_int(pipeline, i))
+  let parts = for value in pipeline:
+    pad4(value)
   join_text(parts, "")
 
 export fn decode_pipeline(text: Text) -> List<Int>:
   let count = len(text) / 4
-  let groups = for i in indices(count):
-    [int_of(text_slice(text, i * 4, 4))]
-  flatten_ints(groups, 0, [])
+  for i in indices(count):
+    int_of4(text, i * 4)
 
 # Dispatched units per good from the last trade pass. Empty means "not
 # recorded", so helpers fall back to the in-transit pipeline.
 export fn encode_flow(flow: List<Int>) -> Text:
-  let parts = for i in indices(len(goods())):
-    pad4(nth_int(flow, i))
+  let parts = for value in flow:
+    pad4(value)
   join_text(parts, "")
 
 export fn decode_flow(text: Text) -> List<Int>:
-  match len(text) < len(goods()) * 4:
+  match len(text) < good_count() * 4:
     true => []
     false =>
-      let values = for i in indices(len(goods())):
-        int_of(text_slice(text, i * 4, 4))
+      let values = for i in indices(good_count()):
+        int_of4(text, i * 4)
       values
 
 export fn flow_from_result(values: List<Int>) -> List<Int>:
-  let flow_start = 1 + 4 * len(goods()) * 2
-  match len(values) < flow_start + len(goods()):
+  let flow_start = 1 + 4 * good_count() * 2
+  match len(values) < flow_start + good_count():
     true => []
-    false => list_slice(values, flow_start, len(goods()))
+    false => list_slice(values, flow_start, good_count())
+
+fn pipeline_text_from_result(values: List<Int>) -> Text:
+  let width = 4 * good_count() * 2
+  match len(values) < 1 + width:
+    true => ""
+    false => encode_pipeline(list_slice(values, 1, width))
+
+fn flow_text_from_result(values: List<Int>) -> Text:
+  encode_flow(flow_from_result(values))
 
 export fn decode_link_rules(text: Text) -> LinkRules:
-  match len(text) < len(goods()) * 3:
+  match len(text) < good_count() * 3:
     true => default_rules()
     false =>
-      let allow = for i in indices(len(goods())):
-        int_of(text_slice(text, i, 1))
-      let fee = for i in indices(len(goods())):
-        int_of(text_slice(text, len(goods()) + i * 2, 2))
+      let allow = for i in indices(good_count()):
+        digit_value(text_slice(text, i, 1))
+      let fee = for i in indices(good_count()):
+        int_of2(text, good_count() + i * 2)
       LinkRules(allow: allow, fee: fee)
 
 export type World:
@@ -546,10 +564,9 @@ export fn encode_waypoints(via: List<Int>) -> Text:
   join_text(parts, "")
 
 export fn decode_waypoints(text: Text) -> List<Int>:
-  let count = len(text) / 8
-  let groups = for i in indices(count):
-    [int_of(text_slice(text, i * 8, 4)), int_of(text_slice(text, i * 8 + 4, 4))]
-  flatten_ints(groups, 0, [])
+  let count = len(text) / 4
+  for i in indices(count):
+    int_of4(text, i * 4)
 
 export type InspectView:
   ready: Bool
@@ -962,7 +979,7 @@ fn clamp(v: Int, lo: Int, hi: Int) -> Int:
       true => hi
       false => v
 
-fn bool_int(b: Bool) -> Int:
+export fn bool_int(b: Bool) -> Int:
   match b:
     true => 1
     false => 0
@@ -1013,8 +1030,27 @@ fn indices_from(start: Int, remaining: Int, acc: List<Int>) -> List<Int>:
       let take = min_int(remaining, 16)
       indices_from(start + take, remaining - take, append_index_chunk(acc, start, take))
 
+fn indices_144() -> List<Int>:
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143]
+
 export fn indices(n: Int) -> List<Int>:
-  indices_from(0, n, [])
+  match n == 0:
+    true => []
+    false => match n == 1:
+      true => [0]
+      false => match n == 2:
+        true => [0, 1]
+        false => match n == 3:
+          true => [0, 1, 2]
+          false => match n == 18:
+            true => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+            false => match n == 40:
+              true => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39]
+              false => match n == 43:
+                true => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42]
+                false => match n == 144:
+                  true => indices_144()
+                  false => indices_from(0, n, [])
 
 # Balanced list folds keep call depth logarithmic, so 100+ settlements stay
 # inside Diamond's depth-64 limit. Each leaf walks at most eight items.
@@ -1043,7 +1079,10 @@ fn concat_lists(xs: List<Text>, ys: List<Text>) -> List<Text>:
 # ---------------------------------------------------------------- goods
 
 export fn goods() -> List<Good>:
-  [Grain, Timber, Stone, Ore, Fiber, Tools, Cloth, Fish, Planks, Steel]
+  [Grain, Timber, Stone, Ore, Fiber, Tools, Cloth, Fish, Planks, Steel, Clay, Coal, Bricks, Flour, Rope, ShipParts, Machinery, Engines]
+
+export fn good_count() -> Int:
+  18
 
 fn good_index(g: Good) -> Int:
   match g:
@@ -1057,6 +1096,14 @@ fn good_index(g: Good) -> Int:
     Fish => 7
     Planks => 8
     Steel => 9
+    Clay => 10
+    Coal => 11
+    Bricks => 12
+    Flour => 13
+    Rope => 14
+    ShipParts => 15
+    Machinery => 16
+    Engines => 17
 
 export fn good_name(g: Good) -> Text:
   match g:
@@ -1070,6 +1117,14 @@ export fn good_name(g: Good) -> Text:
     Fish => "Fish"
     Planks => "Planks"
     Steel => "Steel"
+    Clay => "Clay"
+    Coal => "Coal"
+    Bricks => "Bricks"
+    Flour => "Flour"
+    Rope => "Rope"
+    ShipParts => "Ship Parts"
+    Machinery => "Machinery"
+    Engines => "Engines"
 
 export fn good_short(g: Good) -> Text:
   match g:
@@ -1083,6 +1138,14 @@ export fn good_short(g: Good) -> Text:
     Fish => "FSH"
     Planks => "PLK"
     Steel => "STL"
+    Clay => "CLY"
+    Coal => "COL"
+    Bricks => "BRK"
+    Flour => "FLR"
+    Rope => "ROP"
+    ShipParts => "SHP"
+    Machinery => "MCH"
+    Engines => "ENG"
 
 export fn stock(t: Town, g: Good) -> Int:
   nth_int(t.state.stock, good_index(g))
@@ -1159,6 +1222,14 @@ export fn need_of_at(t: Town, climate: Int, g: Good) -> Int:
     Cloth => t.state.pop / 2 + 1 + cloth_extra
     Planks => t.state.pop / 4 + 1
     Steel => t.state.pop / 8 + 1
+    Clay => t.state.pop / 6 + 1
+    Coal => t.state.pop / 6 + 1
+    Bricks => t.state.pop / 4 + 1
+    Flour => t.state.pop / 6 + 1
+    Rope => t.state.pop / 6 + 1
+    ShipParts => t.state.pop / 8 + 1
+    Machinery => t.state.pop / 10 + 1
+    Engines => t.state.pop / 12 + 1
 
 # Without a known geography, use the temperate baseline.
 export fn need_of(t: Town, g: Good) -> Int:
@@ -1486,12 +1557,15 @@ fn primary_terrain(g: Good) -> Terrain:
     _ => Plains
 
 fn endow_list(g1: Good, v1: Int, g2: Good, v2: Int) -> List<Int>:
-  let a = replace_int(zeros(len(goods())), good_index(g1), v1)
+  let a = replace_int(zero_goods(), good_index(g1), v1)
   replace_int(a, good_index(g2), v2)
 
 fn zeros(n: Int) -> List<Int>:
   for i in indices(n):
     0
+
+fn zero_goods() -> List<Int>:
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 fn initial_stock_for(i: Int) -> List<Int>:
   let endow = town_endow(i)
@@ -1510,27 +1584,27 @@ fn endow_add(endow: List<Int>, g: Good, value: Int) -> List<Int>:
 # biome, with small temperature/moisture modifiers. Cold highlands add stone;
 # wet climates add fiber; dry climates add stone.
 fn town_endow_for(biome: Int, temp: Int, moist: Int) -> List<Int>:
-  let base0 = replace_int(zeros(len(goods())), good_index(Grain), 2)
+  let base0 = replace_int(zero_goods(), good_index(Grain), 2)
   let base = endow_add(endow_add(base0, Timber, 1), Stone, 1)
   let shaped = match biome == 0:
     true => endow_add(endow_add(base, Fish, 4), Grain, 1)
     false => match biome == 1:
-      true => endow_add(endow_add(base, Stone, 2), Ore, 2)
+      true => endow_add(endow_add(endow_add(base, Stone, 2), Ore, 2), Coal, 2)
       false => match biome == 2:
-        true => endow_add(endow_add(endow_add(endow_add(base, Timber, 4), Fiber, 1), Stone, 1), Ore, 2)
+        true => endow_add(endow_add(endow_add(endow_add(endow_add(base, Timber, 4), Fiber, 1), Stone, 1), Ore, 2), Coal, 2)
         false => match biome == 3:
-          true => endow_add(endow_add(endow_add(base, Fiber, 3), Timber, 2), Grain, 1)
+          true => endow_add(endow_add(endow_add(endow_add(base, Fiber, 3), Timber, 2), Grain, 1), Clay, 2)
           false => match biome == 4:
             true => endow_add(endow_add(base, Grain, 4), Fiber, 1)
             false => match biome == 5:
               true => endow_add(endow_add(base, Grain, 3), Fiber, 2)
               false => match biome == 6:
-                true => endow_add(endow_add(base, Stone, 3), Ore, 1)
+                true => endow_add(endow_add(endow_add(base, Stone, 3), Ore, 1), Coal, 2)
                 false => match biome == 7:
                   true => endow_add(endow_add(base, Fiber, 3), Grain, 2)
                   false => match biome == 8:
-                    true => endow_add(endow_add(base, Stone, 3), Ore, 2)
-                    false => endow_add(endow_add(base, Ore, 4), Stone, 1)
+                    true => endow_add(endow_add(endow_add(base, Stone, 3), Ore, 2), Coal, 2)
+                    false => endow_add(endow_add(endow_add(base, Ore, 4), Stone, 1), Coal, 2)
   let cold = match temp <= 2:
     true => endow_add(shaped, Stone, 1)
     false => shaped
@@ -1539,7 +1613,7 @@ fn town_endow_for(biome: Int, temp: Int, moist: Int) -> List<Int>:
     false => cold
 
 fn outpost_stock(resource: Good, richness: Int) -> List<Int>:
-  let a = replace_int(zeros(len(goods())), good_index(resource), richness * 2)
+  let a = replace_int(zero_goods(), good_index(resource), richness * 2)
   let b = replace_int(a, good_index(Grain), 2)
   replace_int(b, good_index(Fish), 1)
 
@@ -1694,7 +1768,7 @@ fn make_site(seed: Int, i: Int, p: Point) -> Site:
 # ---------------------------------------------------------------- world creation
 
 fn empty_town() -> Town:
-  Town(id: "", name: "Unknown", x: 0, y: 0, terrain: Plains, endow: zeros(len(goods())), state: TownState(pop: 0, prosperity: 0, research: 0, stock: zeros(len(goods()))))
+  Town(id: "", name: "Unknown", x: 0, y: 0, terrain: Plains, endow: zero_goods(), state: TownState(pop: 0, prosperity: 0, research: 0, stock: zero_goods()))
 
 export fn empty_plan() -> RoutePlan:
   RoutePlan(path: [], bend: 0, length: 0, water: 0, mountain: 0, forest: 0, money: 0, timber: 0, stone: 0, min_y: 0, max_y: 0)
@@ -2040,9 +2114,11 @@ export fn via_max() -> Int:
   6
 
 export fn via_flat(via: List<Point>) -> List<Int>:
-  let groups = for p in via:
-    [p.x, p.y]
-  flatten_ints(groups, 0, [])
+  for i in indices(len(via) * 2):
+    let p = nth_point(via, i / 2)
+    match mod_int(i, 2) == 0:
+      true => p.x
+      false => p.y
 
 fn flatten_ints(xs: List<List<Int>>, i: Int, acc: List<Int>) -> List<Int>:
   match list_get(xs, i):
@@ -2238,6 +2314,15 @@ fn int_of_at(text: Text, i: Int, acc: Int) -> Int:
 fn int_of(text: Text) -> Int:
   int_of_at(text, 0, 0)
 
+fn int_of2(text: Text, start: Int) -> Int:
+  digit_value(text_slice(text, start, 1)) * 10 + digit_value(text_slice(text, start + 1, 1))
+
+fn int_of4(text: Text, start: Int) -> Int:
+  digit_value(text_slice(text, start, 1)) * 1000 + digit_value(text_slice(text, start + 1, 1)) * 100 + digit_value(text_slice(text, start + 2, 1)) * 10 + digit_value(text_slice(text, start + 3, 1))
+
+fn int_of8(text: Text, start: Int) -> Int:
+  int_of4(text, start) * 10000 + int_of4(text, start + 4)
+
 export fn text_int(text: Text) -> Int:
   int_of(text)
 
@@ -2255,13 +2340,13 @@ export fn decode_plan(text: Text, bend: Int) -> RoutePlan:
     false => match text_slice(text, 0, 2) != "v1":
       true => empty_plan()
       false =>
-        let count = int_of(text_slice(text, 2, 4))
+        let count = int_of4(text, 2)
         match count <= 0 or len(text) != 78 + count * 8:
           true => empty_plan()
           false =>
             let points = for i in indices(count):
-              Point(x: int_of(text_slice(text, 78 + i * 8, 4)), y: int_of(text_slice(text, 82 + i * 8, 4)))
-            RoutePlan(path: points, bend: bend, length: int_of(text_slice(text, 6, 8)), water: int_of(text_slice(text, 14, 8)), mountain: int_of(text_slice(text, 22, 8)), forest: int_of(text_slice(text, 30, 8)), money: int_of(text_slice(text, 38, 8)), timber: int_of(text_slice(text, 46, 8)), stone: int_of(text_slice(text, 54, 8)), min_y: int_of(text_slice(text, 62, 8)), max_y: int_of(text_slice(text, 70, 8)))
+              Point(x: int_of4(text, 78 + i * 8), y: int_of4(text, 82 + i * 8))
+            RoutePlan(path: points, bend: bend, length: int_of8(text, 6), water: int_of8(text, 14), mountain: int_of8(text, 22), forest: int_of8(text, 30), money: int_of8(text, 38), timber: int_of8(text, 46), stone: int_of8(text, 54), min_y: int_of8(text, 62), max_y: int_of8(text, 70))
 
 fn near_segment(px: Int, py: Int, a: Point, b: Point) -> Bool:
   let vx = b.x - a.x
@@ -2646,7 +2731,7 @@ export fn rt_face_polygon(i: Int) -> List<RtVec>:
   [rt_vertex(f.a), rt_vertex(f.b), rt_vertex(f.c), rt_vertex(f.d)]
 
 export fn empty_inspect_view() -> InspectView:
-  InspectView(ready: false, is_site: false, name: "", status: "", tone: "ok", resource: "", richness: 0, founded: false, pop: 0, prosperity: 0, research: 0, terrain: "", climate: "", value: 0, insight: "", shortages: "none", connected: 0, goods: zeros(len(goods())), needs: zeros(len(goods())), endows: zeros(len(goods())))
+  InspectView(ready: false, is_site: false, name: "", status: "", tone: "ok", resource: "", richness: 0, founded: false, pop: 0, prosperity: 0, research: 0, terrain: "", climate: "", value: 0, insight: "", shortages: "none", connected: 0, goods: zero_goods(), needs: zero_goods(), endows: zero_goods())
 
 export fn inspect_view(world: World, id: Text) -> InspectView:
   let t = find_town(world.towns, id)
@@ -2667,7 +2752,7 @@ export fn inspect_view(world: World, id: Text) -> InspectView:
             false => match len(world.towns) >= max_settlements():
               true => "Unclaimed " + good_name(s.resource) + " site. The frontier charter has reached its settlement limit."
               false => "Unclaimed " + good_name(s.resource) + " site. Route a line within one tile to found a settlement here."
-          InspectView(ready: true, is_site: true, name: s.name, status: status, tone: tone, resource: good_name(s.resource), richness: s.richness, founded: s.founded, pop: 0, prosperity: 0, research: 0, terrain: terrain_name(s.terrain), climate: "", value: s.richness, insight: insight, shortages: "none", connected: 0, goods: zeros(len(goods())), needs: zeros(len(goods())), endows: zeros(len(goods())))
+          InspectView(ready: true, is_site: true, name: s.name, status: status, tone: tone, resource: good_name(s.resource), richness: s.richness, founded: s.founded, pop: 0, prosperity: 0, research: 0, terrain: terrain_name(s.terrain), climate: "", value: s.richness, insight: insight, shortages: "none", connected: 0, goods: zero_goods(), needs: zero_goods(), endows: zero_goods())
     false =>
       let climate = town_climate(world.seed, t.x, t.y)
       let goods_now = for g in goods():
@@ -2690,13 +2775,19 @@ export fn inspect_endow(iv: InspectView, g: Good) -> Int:
 export fn good_recipe_text(g: Good) -> Text:
   match g:
     Planks => "made from Timber"
+    Bricks => "made from Clay + Stone"
     Steel => "made from Ore + Stone"
     Cloth => "made from Fiber"
-    Tools => "made from Timber + Stone + Ore"
+    Flour => "made from Grain + Stone"
+    Rope => "made from Fiber + Planks"
+    Tools => "made from Planks + Steel"
+    ShipParts => "made from Planks + Cloth + Rope"
+    Machinery => "made from Steel + Tools"
+    Engines => "made from Steel + Machinery + Tools"
     _ => "raw resource"
 
 export fn inspect_good_title(iv: InspectView, g: Good) -> Text:
-  good_name(g) + ": " + int_text(inspect_stock(iv, g)) + " stock · need " + int_text(inspect_need(iv, g)) + " · endowment " + int_text(inspect_endow(iv, g)) + " · " + good_recipe_text(g)
+  good_name(g) + ": " + int_text(inspect_stock(iv, g)) + " stock · endowment " + int_text(inspect_endow(iv, g))
 
 export fn upkeep_signal_text(game: Game) -> Text:
   "Upkeep due: " + int_text(upkeep_due(game)) + " crowns. " + match maintenance_text(game) == "degraded":
@@ -2709,6 +2800,25 @@ export fn survey_action_text(iv: InspectView) -> Text:
     true => match iv.is_site:
       true => "Select a settlement to survey"
       false => "Survey route from " + iv.name
+
+export fn selected_is_site(world: World, id: Text) -> Bool:
+  match id == "":
+    true => false
+    false => find_site(world.sites, id).id != ""
+
+export fn selected_ready(world: World, id: Text) -> Bool:
+  match id == "":
+    true => false
+    false => match find_town(world.towns, id).id != "":
+      true => true
+      false => find_site(world.sites, id).id != ""
+
+export fn survey_action_text_sel(world: World, sel: Selection) -> Text:
+  match selected_ready(world, sel.selected):
+    false => "Select a settlement to survey"
+    true => match selected_is_site(world, sel.selected):
+      true => "Select a settlement to survey"
+      false => "Survey route from " + marker_name(world, sel.selected)
 
 export fn inspect_endow_text(iv: InspectView) -> Text:
   let parts = for g in goods():
@@ -2733,7 +2843,7 @@ export fn game_link_rules(game: Game, id: Text, allow: List<Int>, fees: List<Int
   match r.id == "":
     true => game
     false =>
-      let changed = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: r.fee, traffic: r.traffic, capacity: r.capacity, upkeep: r.upkeep, rules: LinkRules(allow: allow, fee: fees), pipeline: r.pipeline, flow: r.flow)
+      let changed = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: r.fee, traffic: r.traffic, capacity: r.capacity, upkeep: r.upkeep, rules: LinkRules(allow: allow, fee: fees), a_ord: r.a_ord, b_ord: r.b_ord, pipeline: r.pipeline, flow: r.flow)
       Game(world: with_routes(game.world, replace_route(game.world.routes, changed)), sel: game.sel, notice: "Link rules updated.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
 
 export fn route_text(mode: RouteMode) -> Text:
@@ -2814,7 +2924,7 @@ export fn town_insight(world: World, t: Town) -> Text:
       false => match connected_routes(world, t.id) == 0:
         true => "Isolated. Build a route so its surplus can reach a market and new goods can arrive."
         false => match stock(t, Tools) == 0:
-          true => "No tools. Deliver timber, stone, and ore together to start tool production."
+          true => "No tools. Deliver planks and steel together to start tool production."
           false => match t.state.prosperity < 8:
             true => "Prosperity is fragile. Diversify the goods reaching this settlement; variety matters more than volume."
             false => match t.state.prosperity >= 16:
@@ -2920,13 +3030,13 @@ export fn town_is_hub(routes: List<Route>, id: Text) -> Bool:
 # Units currently in transit on this link (not yet delivered to the
 # destination). The pipeline matures over several days depending on the mode.
 export fn in_transit(r: Route) -> Int:
-  total(r.pipeline)
+  total(decode_pipeline(r.pipeline))
 
 fn pipeline_good_units(r: Route, good: Int) -> Int:
-  let width = len(goods()) * 2
-  let slots = len(r.pipeline) / width
+  let width = good_count() * 2
+  let slots = len(decode_pipeline(r.pipeline)) / width
   let values = for slot in indices(slots):
-    nth_int(r.pipeline, slot * width + good * 2) + nth_int(r.pipeline, slot * width + good * 2 + 1)
+    nth_int(decode_pipeline(r.pipeline), slot * width + good * 2) + nth_int(decode_pipeline(r.pipeline), slot * width + good * 2 + 1)
   total(values)
 
 fn dominant_good_index(values: List<Int>, i: Int, best: Int, best_value: Int) -> Int:
@@ -2937,22 +3047,25 @@ fn dominant_good_index(values: List<Int>, i: Int, best: Int, best_value: Int) ->
       false => dominant_good_index(values, i + 1, best, best_value)
 
 fn route_flow_total(r: Route) -> Int:
-  match len(r.flow) >= len(goods()):
-    true => total(r.flow)
+  let flow = decode_flow(r.flow)
+  match len(flow) >= good_count():
+    true => total(flow)
     false => 0
 
 export fn route_has_flow(r: Route) -> Bool:
   route_flow_total(r) > 0
 
 fn route_flow_good_units(r: Route, good: Int) -> Int:
-  match route_flow_total(r) > 0:
-    true => nth_int(r.flow, good)
+  let flow = decode_flow(r.flow)
+  match len(flow) >= good_count():
+    true => nth_int(flow, good)
     false => pipeline_good_units(r, good)
 
 fn route_flow_values(r: Route) -> List<Int>:
-  match route_flow_total(r) > 0:
-    true => r.flow
-    false => for good in indices(len(goods())):
+  let flow = decode_flow(r.flow)
+  match len(flow) >= good_count():
+    true => flow
+    false => for good in indices(good_count()):
       route_flow_good_units(r, good)
 
 fn route_dominant_good(r: Route) -> Int:
@@ -2995,15 +3108,10 @@ export fn route_good_class(r: Route) -> Text:
 
 export fn route_cargo_text(r: Route) -> Text:
   let flow = route_flow_values(r)
-  let parts = for good in indices(len(flow)):
-    let units = nth_int(flow, good)
-    match units > 0:
-      true => [good_short_at(good) + " " + int_text(units)]
-      false => []
-  let flat = flatten_texts(parts, 0, [])
-  match len(flat) == 0:
-    true => ""
-    false => join_text(flat, " · ")
+  let units = total(flow)
+  match units > 0:
+    true => good_short_at(route_dominant_good(r)) + " " + int_text(units)
+    false => ""
 
 fn text_seen(xs: List<Text>, value: Text, i: Int) -> Bool:
   match list_get(xs, i):
@@ -3173,7 +3281,7 @@ export fn region_endow(water: Int, biome: Int) -> List<Int>:
     true => 10
     false => 0
   let fish = 2 + water / 8
-  let e0 = replace_int(zeros(len(goods())), good_index(Grain), grain)
+  let e0 = replace_int(zero_goods(), good_index(Grain), grain)
   let e1 = replace_int(e0, good_index(Timber), timber)
   let e2 = replace_int(e1, good_index(Stone), stone)
   let e3 = replace_int(e2, good_index(Ore), ore)
@@ -3187,12 +3295,28 @@ export fn region_town_row(summary: List<Int>) -> List<Int>:
   let biome = nth_int(summary, 4)
   let endow = region_endow(water, biome)
   let head = [region_pop(land, water, climate), region_prosperity(land, biome), 0]
-  flatten_ints([head, endow, endow, [climate]], 0, [])
+  let gc = good_count()
+  let n = 3 + gc * 2 + 1
+  for i in indices(n):
+    match i < 3:
+      true => nth_int(head, i)
+      false => match i < 3 + gc:
+        true => nth_int(endow, i - 3)
+        false => match i < 3 + gc * 2:
+          true => nth_int(endow, i - 3 - gc)
+          false => climate
 
 export fn region_lane_row(a: Int, b: Int) -> List<Int>:
   let base = [a, b, 2, 0, 24, 1, 3]
   let rules = default_rules()
-  flatten_ints([base, rules.allow, rules.fee], 0, [])
+  let gc = good_count()
+  let n = 7 + gc * 2
+  for i in indices(n):
+    match i < 7:
+      true => nth_int(base, i)
+      false => match i < 7 + gc:
+        true => nth_int(rules.allow, i - 7)
+        false => nth_int(rules.fee, i - 7 - gc)
 
 fn region_lane_exists_from(lanes: List<Int>, a: Int, b: Int, k: Int) -> Bool:
   match k * 2 + 1 >= len(lanes):
@@ -3317,6 +3441,28 @@ export fn market_value(t: Town) -> Int:
 fn combined_stock(world: World, a: Text, b: Text, g: Good) -> Int:
   stock(find_town(world.towns, a), g) + stock(find_town(world.towns, b), g)
 
+fn combined_stock_towns(ta: Town, tb: Town, g: Good) -> Int:
+  stock(ta, g) + stock(tb, g)
+
+type PaidEndpoints:
+  towns: List<Town>
+  a: Town
+  b: Town
+
+fn pay_good_endpoints(towns: List<Town>, ta: Town, tb: Town, g: Good, amount: Int) -> PaidEndpoints:
+  let from_a = min_int(stock(ta, g), amount)
+  let left = amount - from_a
+  let ta2 = with_stock(ta, g, stock(ta, g) - from_a)
+  let tb2 = with_stock(tb, g, stock(tb, g) - left)
+  PaidEndpoints(towns: replace_town(replace_town(towns, ta2), tb2), a: ta2, b: tb2)
+
+fn pay_plan_endpoints(towns: List<Town>, ta: Town, tb: Town, plan: RoutePlan) -> PaidEndpoints:
+  let p1 = pay_good_endpoints(towns, ta, tb, Timber, plan.timber)
+  pay_good_endpoints(p1.towns, p1.a, p1.b, Stone, plan.stone)
+
+fn make_route_endpoints(ta: Town, tb: Town, a: Text, b: Text, plan: RoutePlan) -> Route:
+  Route(id: a + "-" + b, a: a, b: b, a_name: ta.name, b_name: tb.name, a_ord: 0, b_ord: 0, mode: Path, plan: plan, fee: 1, traffic: 0, capacity: route_capacity(Path, plan), upkeep: route_upkeep(Path, plan), rules: default_rules(), pipeline: "", flow: "")
+
 fn pay_good(world: World, a: Text, b: Text, g: Good, amount: Int) -> List<Town>:
   pay_good_list(world.towns, a, b, g, amount)
 
@@ -3365,13 +3511,13 @@ export fn route_upkeep(mode: RouteMode, plan: RoutePlan) -> Int:
 fn make_route(towns: List<Town>, a: Text, b: Text, plan: RoutePlan) -> Route:
   let ta = find_town(towns, a)
   let tb = find_town(towns, b)
-  Route(id: a + "-" + b, a: a, b: b, a_name: ta.name, b_name: tb.name, mode: Path, plan: plan, fee: 1, traffic: 0, capacity: route_capacity(Path, plan), upkeep: route_upkeep(Path, plan), rules: default_rules(), pipeline: [], flow: [])
+  Route(id: a + "-" + b, a: a, b: b, a_name: ta.name, b_name: tb.name, a_ord: town_position(towns, a), b_ord: town_position(towns, b), mode: Path, plan: plan, fee: 1, traffic: 0, capacity: route_capacity(Path, plan), upkeep: route_upkeep(Path, plan), rules: default_rules(), pipeline: "", flow: "")
 
 fn site_near_plan(plan: RoutePlan, s: Site) -> Bool:
   plan_crosses(plan, s.x, s.y) or plan_crosses(plan, s.x + 1, s.y) or plan_crosses(plan, s.x - 1, s.y) or plan_crosses(plan, s.x, s.y + 1) or plan_crosses(plan, s.x, s.y - 1)
 
 fn town_from_site(s: Site) -> Town:
-  let endow = replace_int(zeros(len(goods())), good_index(s.resource), s.richness)
+  let endow = replace_int(zero_goods(), good_index(s.resource), s.richness)
   Town(id: s.id, name: s.name, x: s.x, y: s.y, terrain: s.terrain, endow: endow, state: TownState(pop: 1, prosperity: 5, research: 0, stock: outpost_stock(s.resource, s.richness)))
 
 fn mark_site_founded(sites: List<Site>, id: Text) -> List<Site>:
@@ -3427,7 +3573,7 @@ export fn build_route(world: World, a: Text, b: Text, plan: RoutePlan) -> BuildR
               BuildResult(world: w, ok: true, message: "Route built. " + route.a_name + " and " + route.b_name + " are connected.", from: "", to: "")
 
 fn empty_route() -> Route:
-  Route(id: "", a: "", b: "", a_name: "", b_name: "", mode: NoRoute, plan: empty_plan(), fee: 0, traffic: 0, capacity: 0, upkeep: 0, rules: default_rules(), pipeline: [], flow: [])
+  Route(id: "", a: "", b: "", a_name: "", b_name: "", mode: NoRoute, plan: empty_plan(), fee: 0, traffic: 0, capacity: 0, upkeep: 0, rules: default_rules(), a_ord: 0, b_ord: 0, pipeline: "", flow: "")
 
 fn route_by_id_small(routes: List<Route>, id: Text, start: Int, count: Int) -> Route:
   match count <= 0:
@@ -3548,7 +3694,7 @@ fn upgrade_apply(world: World, r: Route) -> BuildResult:
   let w3 = match r.mode:
     River => with_towns(w2, pay_good(w2, r.a, r.b, Tools, 2))
     _ => w2
-  let upgraded = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: next_mode, plan: r.plan, fee: r.fee, traffic: r.traffic, capacity: route_capacity(next_mode, r.plan), upkeep: route_upkeep(next_mode, r.plan), rules: r.rules, pipeline: r.pipeline, flow: r.flow)
+  let upgraded = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: next_mode, plan: r.plan, fee: r.fee, traffic: r.traffic, capacity: route_capacity(next_mode, r.plan), upkeep: route_upkeep(next_mode, r.plan), rules: r.rules, a_ord: r.a_ord, b_ord: r.b_ord, pipeline: r.pipeline, flow: r.flow)
   let w4 = with_routes(w3, replace_route(w3.routes, upgraded))
   let w5 = with_resources(w4, w4.money - cost, w4.log)
   let w6 = record(w5, r.a_name + " to " + r.b_name + " upgraded to " + route_text(next_mode) + ".")
@@ -3616,7 +3762,7 @@ export fn survey_trade_volume(world: World, from: Text, to: Text, plan: RoutePla
     true => 0
     false =>
       let cap = route_capacity(Path, plan)
-      let moves = trade_moves(a, b, town_climate(world.seed, a.x, a.y), town_climate(world.seed, b.x, b.y), Route(id: "", a: a.id, b: b.id, a_name: a.name, b_name: b.name, mode: Path, plan: plan, fee: 1, traffic: 0, capacity: cap, upkeep: 0, rules: default_rules(), pipeline: [], flow: []), cap)
+      let moves = trade_moves(a, b, town_climate(world.seed, a.x, a.y), town_climate(world.seed, b.x, b.y), Route(id: "", a: a.id, b: b.id, a_name: a.name, b_name: b.name, mode: Path, plan: plan, fee: 1, traffic: 0, capacity: cap, upkeep: 0, rules: default_rules(), a_ord: 0, b_ord: 0, pipeline: "", flow: ""), cap)
       moves.moved
 
 # How materials are split between endpoints when paying for the plan.
@@ -3720,7 +3866,7 @@ export fn adjust_fee(world: World, id: Text, delta: Int) -> World:
   match r.id == "":
     true => world
     false =>
-      let changed = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: clamp(r.fee + delta, 0, 5), traffic: r.traffic, capacity: r.capacity, upkeep: r.upkeep, rules: r.rules, pipeline: r.pipeline, flow: r.flow)
+      let changed = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: clamp(r.fee + delta, 0, 5), traffic: r.traffic, capacity: r.capacity, upkeep: r.upkeep, rules: r.rules, a_ord: r.a_ord, b_ord: r.b_ord, pipeline: r.pipeline, flow: r.flow)
       with_routes(world, replace_route(world.routes, changed))
 
 fn empty_project() -> Project:
@@ -3769,23 +3915,26 @@ export fn construction_time(world: World, a: Text, b: Text, plan: RoutePlan, mod
 fn begin_route(world: World, a: Text, b: Text, plan: RoutePlan) -> ProjectStart:
   match a == "" or b == "" or a == b:
     true => ProjectStart(world: world, project: empty_project(), ok: false, message: "Choose two different settlements.", from: a, to: b)
-    false => match route_exists(world.routes, a, b, 0):
-      true => ProjectStart(world: world, project: empty_project(), ok: false, message: "A route already connects these settlements.", from: a, to: b)
-      false => match world.money < plan.money:
-        true => ProjectStart(world: world, project: empty_project(), ok: false, message: "The treasury needs " + int_text(plan.money) + " crowns for this survey.", from: a, to: b)
-        false => match combined_stock(world, a, b, Timber) < plan.timber or combined_stock(world, a, b, Stone) < plan.stone:
-          true => ProjectStart(world: world, project: empty_project(), ok: false, message: "Materials are short: " + int_text(plan.timber) + " timber and " + int_text(plan.stone) + " stone are needed.", from: a, to: b)
-          false =>
-            let paid = pay_plan_list(world.towns, a, b, plan)
-            let w1 = with_towns(world, paid)
-            let w2 = with_resources(w1, world.money - plan.money, w1.log)
-            let time = construction_time(world, a, b, plan, Path)
-            let a_name = marker_name(world, a)
-            let b_name = marker_name(world, b)
-            let project = Project(id: a + "-" + b, kind: "route", a: a, b: b, a_name: a_name, b_name: b_name, mode: Path, route_id: "", plan: plan, start_tick: world.tick, ready_tick: world.tick + time)
-            let message = "Construction started: " + a_name + " to " + b_name + ", ready in " + duration_text(time) + "."
-            let w3 = record(w2, message)
-            ProjectStart(world: w3, project: project, ok: true, message: message, from: "", to: "")
+    false =>
+      let ta = find_town(world.towns, a)
+      let tb = find_town(world.towns, b)
+      match route_exists(world.routes, a, b, 0):
+        true => ProjectStart(world: world, project: empty_project(), ok: false, message: "A route already connects these settlements.", from: a, to: b)
+        false => match world.money < plan.money:
+          true => ProjectStart(world: world, project: empty_project(), ok: false, message: "The treasury needs " + int_text(plan.money) + " crowns for this survey.", from: a, to: b)
+          false => match combined_stock_towns(ta, tb, Timber) < plan.timber or combined_stock_towns(ta, tb, Stone) < plan.stone:
+            true => ProjectStart(world: world, project: empty_project(), ok: false, message: "Materials are short: " + int_text(plan.timber) + " timber and " + int_text(plan.stone) + " stone are needed.", from: a, to: b)
+            false =>
+              let paid = pay_plan_endpoints(world.towns, ta, tb, plan)
+              let w1 = with_towns(world, paid.towns)
+              let w2 = with_resources(w1, world.money - plan.money, w1.log)
+              let time = construction_time(world, a, b, plan, Path)
+              let a_name = paid.a.name
+              let b_name = paid.b.name
+              let project = Project(id: a + "-" + b, kind: "route", a: a, b: b, a_name: a_name, b_name: b_name, mode: Path, route_id: "", plan: plan, start_tick: world.tick, ready_tick: world.tick + time)
+              let message = "Construction started: " + a_name + " to " + b_name + ", ready in " + duration_text(time) + "."
+              let w3 = record(w2, message)
+              ProjectStart(world: w3, project: project, ok: true, message: message, from: "", to: "")
 
 fn begin_upgrade(world: World, id: Text) -> ProjectStart:
   let r = route_by_id(world.routes, id, 0)
@@ -3828,7 +3977,7 @@ fn begin_upgrade(world: World, id: Text) -> ProjectStart:
 fn complete_project(world: World, project: Project) -> World:
   match project.kind == "route":
     true =>
-      let route = Route(id: project.a + "-" + project.b, a: project.a, b: project.b, a_name: project.a_name, b_name: project.b_name, mode: project.mode, plan: project.plan, fee: 1, traffic: 0, capacity: route_capacity(project.mode, project.plan), upkeep: route_upkeep(project.mode, project.plan), rules: default_rules(), pipeline: [], flow: [])
+      let route = Route(id: project.a + "-" + project.b, a: project.a, b: project.b, a_name: project.a_name, b_name: project.b_name, a_ord: town_position(world.towns, project.a), b_ord: town_position(world.towns, project.b), mode: project.mode, plan: project.plan, fee: 1, traffic: 0, capacity: route_capacity(project.mode, project.plan), upkeep: route_upkeep(project.mode, project.plan), rules: default_rules(), pipeline: "", flow: "")
       let log1 = append_message(world.log, "Construction finished: " + project.a_name + " to " + project.b_name + " is open.")
       let found = found_target(project.b, world.towns, world.sites, log1, project.plan, 1)
       World(seed: world.seed, tick: world.tick, money: world.money, towns: found.towns, sites: found.sites, routes: list_append(world.routes, route), log: found.log, history: world.history, tech: world.tech)
@@ -3837,7 +3986,7 @@ fn complete_project(world: World, project: Project) -> World:
       match r.id == "":
         true => record(world, project.a_name + " to " + project.b_name + " upgrade was abandoned because the route no longer exists.")
         false =>
-          let upgraded = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: project.mode, plan: r.plan, fee: r.fee, traffic: r.traffic, capacity: route_capacity(project.mode, r.plan), upkeep: route_upkeep(project.mode, r.plan), rules: r.rules, pipeline: r.pipeline, flow: r.flow)
+          let upgraded = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: project.mode, plan: r.plan, fee: r.fee, traffic: r.traffic, capacity: route_capacity(project.mode, r.plan), upkeep: route_upkeep(project.mode, r.plan), rules: r.rules, a_ord: r.a_ord, b_ord: r.b_ord, pipeline: r.pipeline, flow: r.flow)
           record(with_routes(world, replace_route(world.routes, upgraded)), "Construction finished: " + r.a_name + " to " + r.b_name + " is now a " + route_text(project.mode) + ".")
 
 fn complete_message(project: Project) -> Text:
@@ -3904,7 +4053,7 @@ fn advance_town(t: Town) -> Town:
   let fish_eaten = min_int(fish_prod, need_fish)
   let cloth_need = t.state.pop / 4
   let cloth_used = min_int(cloth_prod, cloth_need)
-  let after = for i in indices(len(goods())):
+  let after = for i in indices(good_count()):
     let raw = nth_int(t.state.stock, i) + endowment(t, nth_good(i))
     let prod_value = match can_tools and (i == timber_at or i == stone_at or i == ore_at):
       true => raw - 1
@@ -3961,7 +4110,7 @@ fn move_ab(a: Town, b: Town, climate_a: Int, climate_b: Int, g: Good, quota: Int
     false => 0
 
 fn trade_moves(a: Town, b: Town, climate_a: Int, climate_b: Int, route: Route, capacity: Int) -> TradeMoves:
-  let quota = max_int(1, capacity / len(goods()))
+  let quota = max_int(1, capacity / good_count())
   let ab = for g in goods():
     move_ab(a, b, climate_a, climate_b, g, quota, route.fee)
   let ba = for g in goods():
@@ -3969,9 +4118,9 @@ fn trade_moves(a: Town, b: Town, climate_a: Int, climate_b: Int, route: Route, c
   TradeMoves(ab: ab, ba: ba, moved: total(ab) + total(ba))
 
 fn apply_moves(a: Town, b: Town, moves: TradeMoves) -> TradeResult:
-  let stock_a = for i in indices(len(goods())):
+  let stock_a = for i in indices(good_count()):
     max_int(nth_int(a.state.stock, i) - nth_int(moves.ab, i) + nth_int(moves.ba, i), 0)
-  let stock_b = for i in indices(len(goods())):
+  let stock_b = for i in indices(good_count()):
     max_int(nth_int(b.state.stock, i) + nth_int(moves.ab, i) - nth_int(moves.ba, i), 0)
   TradeResult(a: with_stock_list(a, stock_a), b: with_stock_list(b, stock_b), moved: moves.moved)
 
@@ -3984,16 +4133,36 @@ export fn flow_advance_towns(world: World, days: Int) -> List<Town>:
   for t in world.towns:
     advance_town_days(t, days)
 
+fn trade_town_row_loop(head: List<Int>, endow: List<Int>, stock: List<Int>, climate: Int, n: Int) -> List<Int>:
+  let gc = good_count()
+  for i in indices(n):
+    match i < 3:
+      true => nth_int(head, i)
+      false => match i < 3 + gc:
+        true => nth_int(endow, i - 3)
+        false => match i < 3 + gc * 2:
+          true => nth_int(stock, i - 3 - gc)
+          false => climate
+
 export fn trade_town_row(t: Town, seed: Int) -> List<Int>:
-  flatten_ints([[t.state.pop, t.state.prosperity, t.state.research], t.endow, t.state.stock, [town_climate(seed, t.x, t.y)]], 0, [])
+  let head = [t.state.pop, t.state.prosperity, t.state.research]
+  trade_town_row_loop(head, t.endow, t.state.stock, town_climate(seed, t.x, t.y), 3 + good_count() * 2 + 1)
+
+fn trade_route_row_loop(base: List<Int>, allow: List<Int>, fee: List<Int>, n: Int) -> List<Int>:
+  let gc = good_count()
+  for i in indices(n):
+    match i < 7:
+      true => nth_int(base, i)
+      false => match i < 7 + gc:
+        true => nth_int(allow, i - 7)
+        false => nth_int(fee, i - 7 - gc)
 
 export fn trade_route_row(towns: List<Town>, r: Route) -> List<Int>:
-  let base = [town_position(towns, r.a), town_position(towns, r.b), r.fee, r.traffic, r.capacity, r.upkeep, route_mode_code(r.mode)]
-  flatten_ints([base, r.rules.allow, r.rules.fee], 0, [])
+  let base = [r.a_ord, r.b_ord, r.fee, r.traffic, r.capacity, r.upkeep, route_mode_code(r.mode)]
+  trade_route_row_loop(base, r.rules.allow, r.rules.fee, 7 + good_count() * 2)
 
 fn flow_town_from_row(t: Town, values: List<Int>, stock_start: Int) -> Town:
-  let stocks = for i in indices(len(t.state.stock)):
-    nth_int(values, stock_start + i)
+  let stocks = list_slice(values, stock_start, len(t.state.stock))
   Town(id: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, endow: t.endow, state: TownState(pop: nth_int(values, 0), prosperity: nth_int(values, 1), research: nth_int(values, 2), stock: stocks))
 
 export fn flow_apply_towns(towns0: List<Town>, result: List<List<Int>>) -> List<Town>:
@@ -4009,7 +4178,7 @@ export fn flow_apply_routes(routes: List<Route>, result: List<List<Int>>, town_c
     let traffic_values = match list_get(result, town_count + 1 + i):
       Some(row) => row
       None => [0]
-    Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: r.fee, traffic: nth_int(traffic_values, 0), capacity: r.capacity, upkeep: r.upkeep, rules: r.rules, pipeline: [], flow: flow_from_result(traffic_values))
+    Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, plan: r.plan, fee: r.fee, traffic: nth_int(traffic_values, 0), capacity: r.capacity, upkeep: r.upkeep, rules: r.rules, a_ord: r.a_ord, b_ord: r.b_ord, pipeline: pipeline_text_from_result(traffic_values), flow: flow_text_from_result(traffic_values))
 
 fn max_research_small(towns: List<Town>, start: Int, count: Int) -> Int:
   match count <= 0:
@@ -4384,11 +4553,14 @@ export fn build_check_plan(world: World, projects: List<Project>, from: Text, to
             true => BuildCheck(ok: false, reason: "A route already connects these settlements.")
             false => match world.money < plan.money:
               true => BuildCheck(ok: false, reason: "Need " + int_text(plan.money) + " crowns; treasury has " + int_text(world.money) + ".")
-              false => match combined_stock(world, from, to, Timber) < plan.timber:
-                true => BuildCheck(ok: false, reason: "Need " + int_text(plan.timber) + " timber at the endpoints.")
-                false => match combined_stock(world, from, to, Stone) < plan.stone:
-                  true => BuildCheck(ok: false, reason: "Need " + int_text(plan.stone) + " stone at the endpoints.")
-                  false => BuildCheck(ok: true, reason: "Ready to start construction.")
+              false =>
+                let ta = find_town(world.towns, from)
+                let tb = find_town(world.towns, to)
+                match combined_stock_towns(ta, tb, Timber) < plan.timber:
+                  true => BuildCheck(ok: false, reason: "Need " + int_text(plan.timber) + " timber at the endpoints.")
+                  false => match combined_stock_towns(ta, tb, Stone) < plan.stone:
+                    true => BuildCheck(ok: false, reason: "Need " + int_text(plan.stone) + " stone at the endpoints.")
+                    false => BuildCheck(ok: true, reason: "Ready to start construction.")
 
 export fn can_build_plan(world: World, projects: List<Project>, from: Text, to: Text, plan: RoutePlan, ready: Bool) -> Bool:
   let check = build_check_plan(world, projects, from, to, plan, ready)
@@ -4472,18 +4644,18 @@ fn first_selection(world: World) -> Selection:
 
 export fn new_game(seed: Int) -> Game:
   let world = new_world(seed)
-  Game(world: world, sel: first_selection(world), notice: "New world generated. Connect complementary settlements to start the economy.", last_ok: true, route_groups: route_groups(world.routes), auto_upkeep: false, last_paid_tick: 0, upkeep_per_cycle: total_upkeep(world.routes), projects: [], inspect: inspect_view(world, "t0"))
+  Game(world: world, sel: first_selection(world), notice: "New world generated. Connect complementary settlements to start the economy.", last_ok: true, route_groups: route_groups(world.routes), auto_upkeep: false, last_paid_tick: 0, upkeep_per_cycle: total_upkeep(world.routes), projects: [], inspect: empty_inspect_view())
 
 export fn game_pick(game: Game, id: Text) -> Game:
   let sel = selection_pick(game.world, game.sel, id)
-  Game(world: game.world, sel: sel, notice: sel.notice, last_ok: game.last_ok, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: inspect_view(game.world, sel.selected))
+  Game(world: game.world, sel: sel, notice: sel.notice, last_ok: game.last_ok, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: empty_inspect_view())
 
 export fn game_cancel(game: Game) -> Game:
   Game(world: game.world, sel: empty_selection(), notice: "Route selection cleared.", last_ok: game.last_ok, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: empty_inspect_view())
 
 export fn game_start_route(game: Game) -> Game:
   let sel = selection_start(game.world, game.sel)
-  Game(world: game.world, sel: sel, notice: sel.notice, last_ok: game.last_ok, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: inspect_view(game.world, sel.selected))
+  Game(world: game.world, sel: sel, notice: sel.notice, last_ok: game.last_ok, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: empty_inspect_view())
 
 export fn game_bend(game: Game, delta: Int) -> Game:
   let sel = selection_bend(game.world, game.sel, delta)
@@ -4581,7 +4753,7 @@ export fn game_cancel_project(game: Game, id: Text) -> Game:
           true => refund_route_project(game.world, p, pct)
           false => refund_upgrade_project(game.world, p, pct)
         let projects = drop_projects(game.projects, id, 0, [])
-        Game(world: world2, sel: game.sel, notice: "Cancelled " + p.a_name + " to " + p.b_name + ". Refunded " + int_text(pct) + "% of costs.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: projects, inspect: inspect_view(world2, game.sel.selected))
+        Game(world: world2, sel: game.sel, notice: "Cancelled " + p.a_name + " to " + p.b_name + ". Refunded " + int_text(pct) + "% of costs.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: projects, inspect: empty_inspect_view())
 
 export fn game_fee(game: Game, id: Text, delta: Int) -> Game:
   Game(world: adjust_fee(game.world, id, delta), sel: game.sel, notice: "Toll adjusted on the selected route.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
@@ -4614,7 +4786,7 @@ export fn game_pay_upkeep(game: Game) -> Game:
       false => Game(world: set_money(game.world, game.world.money - due), sel: game.sel, notice: "Paid " + int_text(due) + " crowns of upkeep. Routes are maintained.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.world.tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
 
 export fn game_refresh(game: Game) -> Game:
-  Game(world: game.world, sel: game.sel, notice: "Inspector refreshed.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: inspect_view(game.world, game.sel.selected))
+  Game(world: game.world, sel: game.sel, notice: "Inspector refreshed.", last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: empty_inspect_view())
 
 export fn game_toggle_auto(game: Game) -> Game:
   let on = not game.auto_upkeep
@@ -4652,7 +4824,7 @@ export fn auto_text(on: Bool) -> Text:
 export fn game_new_seed(game: Game) -> Game:
   let seed = mod_int(game.world.seed + 1, map_count())
   let world = new_world(seed)
-  Game(world: world, sel: first_selection(world), notice: "Generated world " + int_text(seed) + ".", last_ok: true, route_groups: route_groups(world.routes), auto_upkeep: false, last_paid_tick: 0, upkeep_per_cycle: total_upkeep(world.routes), projects: [], inspect: inspect_view(world, "t0"))
+  Game(world: world, sel: first_selection(world), notice: "Generated world " + int_text(seed) + ".", last_ok: true, route_groups: route_groups(world.routes), auto_upkeep: false, last_paid_tick: 0, upkeep_per_cycle: total_upkeep(world.routes), projects: [], inspect: empty_inspect_view())
 
 
 fn nth_int_list(xs: List<List<Int>>, i: Int) -> List<Int>:
@@ -4663,7 +4835,7 @@ fn nth_int_list(xs: List<List<Int>>, i: Int) -> List<Int>:
 # ---------------------------------------------------------------- server bridge
 
 export fn server_game(world: World, projects: List<Project>, auto_upkeep: Bool, last_paid_tick: Int, upkeep_per_cycle: Int, sel: Selection, notice: Text, last_ok: Bool) -> Game:
-  Game(world: world, sel: sel, notice: notice, last_ok: last_ok, route_groups: route_groups(world.routes), auto_upkeep: auto_upkeep, last_paid_tick: last_paid_tick, upkeep_per_cycle: upkeep_per_cycle, projects: projects, inspect: inspect_view(world, sel.selected))
+  Game(world: world, sel: sel, notice: notice, last_ok: last_ok, route_groups: route_groups(world.routes), auto_upkeep: auto_upkeep, last_paid_tick: last_paid_tick, upkeep_per_cycle: upkeep_per_cycle, projects: projects, inspect: empty_inspect_view())
 
 export fn raw_game(world: World, projects: List<Project>, auto_upkeep: Bool, last_paid_tick: Int, upkeep_per_cycle: Int, sel: Selection, notice: Text, last_ok: Bool) -> Game:
   Game(world: world, sel: sel, notice: notice, last_ok: last_ok, route_groups: [], auto_upkeep: auto_upkeep, last_paid_tick: last_paid_tick, upkeep_per_cycle: upkeep_per_cycle, projects: projects, inspect: empty_inspect_view())
@@ -4676,10 +4848,10 @@ export fn survey_selection_plan(from: Text, to: Text, plan: RoutePlan) -> Select
   Selection(selected: to, from: from, to: to, draft: plan, ready: plan.length > 0, routing: true, notice: "")
 
 export fn server_apply(base: Game, fresh: Game) -> Game:
-  Game(world: fresh.world, sel: base.sel, notice: fresh.notice, last_ok: fresh.last_ok, route_groups: route_groups(fresh.world.routes), auto_upkeep: fresh.auto_upkeep, last_paid_tick: fresh.last_paid_tick, upkeep_per_cycle: fresh.upkeep_per_cycle, projects: fresh.projects, inspect: inspect_view(fresh.world, base.sel.selected))
+  Game(world: fresh.world, sel: base.sel, notice: fresh.notice, last_ok: fresh.last_ok, route_groups: [], auto_upkeep: fresh.auto_upkeep, last_paid_tick: fresh.last_paid_tick, upkeep_per_cycle: fresh.upkeep_per_cycle, projects: fresh.projects, inspect: empty_inspect_view())
 
 export fn server_adopt(fresh: Game) -> Game:
-  Game(world: fresh.world, sel: fresh.sel, notice: fresh.notice, last_ok: fresh.last_ok, route_groups: route_groups(fresh.world.routes), auto_upkeep: fresh.auto_upkeep, last_paid_tick: fresh.last_paid_tick, upkeep_per_cycle: fresh.upkeep_per_cycle, projects: fresh.projects, inspect: inspect_view(fresh.world, fresh.sel.selected))
+  Game(world: fresh.world, sel: fresh.sel, notice: fresh.notice, last_ok: fresh.last_ok, route_groups: [], auto_upkeep: fresh.auto_upkeep, last_paid_tick: fresh.last_paid_tick, upkeep_per_cycle: fresh.upkeep_per_cycle, projects: fresh.projects, inspect: empty_inspect_view())
 
 # Replace only the survey draft, keeping the loaded world. The preview RPC
 # returns a compact RoutePlan instead of a whole Game, which keeps the browser
@@ -4696,89 +4868,58 @@ export fn empty_game() -> Game:
 export fn with_tick(world: World, tick: Int) -> World:
   World(seed: world.seed, tick: tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: world.log, history: world.history, tech: world.tech)
 
-fn period_good(t: Town, i: Int, days: Int, can_tools: Bool, can_cloth: Bool, can_planks: Bool, can_steel: Bool, grain_eaten: Int, fish_eaten: Int, cloth_used: Int) -> Int:
-  let grain_at = good_index(Grain)
-  let timber_at = good_index(Timber)
-  let stone_at = good_index(Stone)
-  let ore_at = good_index(Ore)
-  let fiber_at = good_index(Fiber)
-  let tools_at = good_index(Tools)
-  let cloth_at = good_index(Cloth)
-  let fish_at = good_index(Fish)
-  let planks_at = good_index(Planks)
-  let steel_at = good_index(Steel)
-  let tools_flag = match can_tools:
-    true => 1
-    false => 0
-  let cloth_flag = match can_cloth:
-    true => 1
-    false => 0
-  let planks_flag = match can_planks:
-    true => 1
-    false => 0
-  let steel_flag = match can_steel:
-    true => 1
-    false => 0
-  let consumed = match i == timber_at:
-    true => tools_flag + planks_flag
-    false => match i == stone_at:
-      true => tools_flag + steel_flag
-      false => match i == ore_at:
-        true => tools_flag + steel_flag
-        false => match i == fiber_at:
-          true => cloth_flag
-          false => 0
-  let produced = match i == tools_at:
-    true => tools_flag
-    false => match i == cloth_at:
-      true => cloth_flag
-      false => match i == planks_at:
-        true => planks_flag
-        false => match i == steel_at:
-          true => steel_flag
-          false => 0
-  let raw = nth_int(t.state.stock, i) + endowment(t, nth_good(i)) * days
-  let prod_value = raw + (produced - consumed) * days
-  match i == grain_at:
-    true => max_int(prod_value - grain_eaten, 0)
-    false => match i == fish_at:
-      true => max_int(prod_value - fish_eaten, 0)
-      false => match i == cloth_at:
-        true => max_int(prod_value - cloth_used, 0)
-        false => prod_value
+type PeriodResult:
+  stock: List<Int>
+  grain_eaten: Int
+  fish_eaten: Int
+  cloth_used: Int
 
-fn period_after(t: Town, days: Int) -> List<Int>:
-  let timber_at = good_index(Timber)
-  let stone_at = good_index(Stone)
-  let ore_at = good_index(Ore)
-  let fiber_at = good_index(Fiber)
-  let cloth_at = good_index(Cloth)
+fn recipe_rows() -> List<List<Int>>:
+  [[good_index(Planks), good_index(Timber), 1], [good_index(Bricks), good_index(Clay), 1, good_index(Stone), 1], [good_index(Steel), good_index(Ore), 1, good_index(Stone), 1], [good_index(Cloth), good_index(Fiber), 1], [good_index(Flour), good_index(Grain), 1, good_index(Stone), 1], [good_index(Rope), good_index(Fiber), 1, good_index(Planks), 1], [good_index(Tools), good_index(Planks), 1, good_index(Steel), 1], [good_index(ShipParts), good_index(Planks), 1, good_index(Cloth), 1, good_index(Rope), 1], [good_index(Machinery), good_index(Steel), 1, good_index(Tools), 1], [good_index(Engines), good_index(Steel), 1, good_index(Machinery), 1, good_index(Tools), 1]]
+
+fn recipe_inputs_ok(available: List<Int>, row: List<Int>, days: Int, i: Int) -> Bool:
+  match i + 1 >= len(row):
+    true => true
+    false => match nth_int(available, nth_int(row, i)) >= nth_int(row, i + 1) * days:
+      true => recipe_inputs_ok(available, row, days, i + 2)
+      false => false
+
+fn recipe_consume(available: List<Int>, row: List<Int>, days: Int, i: Int) -> List<Int>:
+  match i + 1 >= len(row):
+    true => available
+    false =>
+      let good = nth_int(row, i)
+      let next = replace_int(available, good, nth_int(available, good) - nth_int(row, i + 1) * days)
+      recipe_consume(next, row, days, i + 2)
+
+fn apply_recipe(available: List<Int>, row: List<Int>, days: Int) -> List<Int>:
+  match recipe_inputs_ok(available, row, days, 1):
+    true =>
+      let consumed = recipe_consume(available, row, days, 1)
+      let output = nth_int(row, 0)
+      replace_int(consumed, output, nth_int(consumed, output) + days)
+    false => available
+
+fn apply_recipes(available: List<Int>, days: Int, i: Int) -> List<Int>:
+  match i >= len(recipe_rows()):
+    true => available
+    false => apply_recipes(apply_recipe(available, nth_int_list(recipe_rows(), i), days), days, i + 1)
+
+fn period_result(t: Town, days: Int) -> PeriodResult:
   let grain_at = good_index(Grain)
   let fish_at = good_index(Fish)
-  let timber_base = nth_int(t.state.stock, timber_at) + endowment(t, Timber) * days
-  let stone_base = nth_int(t.state.stock, stone_at) + endowment(t, Stone) * days
-  let ore_base = nth_int(t.state.stock, ore_at) + endowment(t, Ore) * days
-  let fiber_base = nth_int(t.state.stock, fiber_at) + endowment(t, Fiber) * days
-  let can_planks = timber_base >= days
-  let can_steel = stone_base >= days and ore_base >= days
-  let timber_need = match can_planks:
-    true => 2 * days
-    false => days
-  let metal_need = match can_steel:
-    true => 2 * days
-    false => days
-  let can_tools = timber_base >= timber_need and stone_base >= metal_need and ore_base >= metal_need
-  let can_cloth = fiber_base >= days
-  let grain_prod = nth_int(t.state.stock, grain_at) + endowment(t, Grain) * days
-  let fish_prod = nth_int(t.state.stock, fish_at) + endowment(t, Fish) * days
-  let cloth_prod = nth_int(t.state.stock, cloth_at) + endowment(t, Cloth) * days + match can_cloth:
-    true => days
-    false => 0
-  let grain_eaten = min_int(grain_prod, t.state.pop * days)
-  let fish_eaten = min_int(fish_prod, (t.state.pop / 3 + 1) * days)
-  let cloth_used = min_int(cloth_prod, (t.state.pop / 4) * days)
-  for i in indices(len(goods())):
-    period_good(t, i, days, can_tools, can_cloth, can_planks, can_steel, grain_eaten, fish_eaten, cloth_used)
+  let cloth_at = good_index(Cloth)
+  let available = for i in indices(good_count()):
+    nth_int(t.state.stock, i) + nth_int(t.endow, i) * days
+  let produced = apply_recipes(available, days, 0)
+  let grain_eaten = min_int(nth_int(produced, grain_at), t.state.pop * days)
+  let fish_eaten = min_int(nth_int(produced, fish_at), (t.state.pop / 3 + 1) * days)
+  let cloth_used = min_int(nth_int(produced, cloth_at), (t.state.pop / 4) * days)
+  let after_grain = replace_int(produced, grain_at, nth_int(produced, grain_at) - grain_eaten)
+  let after_fish = replace_int(after_grain, fish_at, nth_int(after_grain, fish_at) - fish_eaten)
+  let after_cloth = replace_int(after_fish, cloth_at, nth_int(after_fish, cloth_at) - cloth_used)
+  PeriodResult(stock: after_cloth, grain_eaten: grain_eaten, fish_eaten: fish_eaten, cloth_used: cloth_used)
+
 
 fn growth_stock(after: List<Int>) -> List<Int>:
   let grain_at = good_index(Grain)
@@ -4801,14 +4942,6 @@ fn period_grow(t: Town, after: List<Int>, prosperity: Int, research: Int) -> Tow
 fn period_shrink(t: Town, after: List<Int>, prosperity: Int, research: Int) -> Town:
   Town(id: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, endow: t.endow, state: TownState(pop: t.state.pop - 1, prosperity: clamp(prosperity - 1, 0, 30), research: research, stock: after))
 
-fn period_cloth_used(t: Town, days: Int) -> Int:
-  let cloth_at = good_index(Cloth)
-  let fiber_at = good_index(Fiber)
-  let cloth_prod = nth_int(t.state.stock, cloth_at) + endowment(t, Cloth) * days + match nth_int(t.state.stock, fiber_at) + endowment(t, Fiber) * days >= days:
-    true => days
-    false => 0
-  min_int(cloth_prod, (t.state.pop / 4) * days)
-
 fn advance_town_days(t: Town, days: Int) -> Town:
   match days <= 0:
     true => t
@@ -4816,13 +4949,11 @@ fn advance_town_days(t: Town, days: Int) -> Town:
       let grain_at = good_index(Grain)
       let fish_at = good_index(Fish)
       let tools_at = good_index(Tools)
-      let after = period_after(t, days)
-      let cloth_used = period_cloth_used(t, days)
+      let result = period_result(t, days)
+      let after = result.stock
       let need_grain = t.state.pop * days
       let need_fish = (t.state.pop / 3 + 1) * days
-      let grain_eaten = min_int(nth_int(t.state.stock, grain_at) + endowment(t, Grain) * days, need_grain)
-      let fish_eaten = min_int(nth_int(t.state.stock, fish_at) + endowment(t, Fish) * days, need_fish)
-      let fed = grain_eaten + fish_eaten * 2
+      let fed = result.grain_eaten + result.fish_eaten * 2
       let target = need_grain + need_fish * 2
       let food = match fed >= target:
         true => 2
@@ -4830,7 +4961,7 @@ fn advance_town_days(t: Town, days: Int) -> Town:
           true => 1
           false => 0
       let score = count_positive(after, 0)
-      let comfort = bool_int(nth_int(after, tools_at) > 0) + bool_int(cloth_used > 0)
+      let comfort = bool_int(nth_int(after, tools_at) > 0) + bool_int(result.cloth_used > 0)
       let delta = (food * 2 + min_int(score, 6) / 2 + comfort - 2) * days
       let prosperity = clamp(t.state.prosperity + delta, 0, 30)
       let research = t.state.research + (t.state.pop + score + prosperity / 6 + food) * days

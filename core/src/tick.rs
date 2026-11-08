@@ -9,7 +9,7 @@
 //! the same towns, routes, days, and scale produce the same result.
 
 /// Number of goods in the economy.
-pub const GOOD_COUNT: usize = 10;
+pub const GOOD_COUNT: usize = 18;
 
 pub const GRAIN: usize = 0;
 pub const TIMBER: usize = 1;
@@ -21,6 +21,70 @@ pub const CLOTH: usize = 6;
 pub const FISH: usize = 7;
 pub const PLANKS: usize = 8;
 pub const STEEL: usize = 9;
+pub const CLAY: usize = 10;
+pub const COAL: usize = 11;
+pub const BRICKS: usize = 12;
+pub const FLOUR: usize = 13;
+pub const ROPE: usize = 14;
+pub const SHIP_PARTS: usize = 15;
+pub const MACHINERY: usize = 16;
+pub const ENGINES: usize = 17;
+
+struct Recipe {
+    output: usize,
+    inputs: &'static [(usize, i64)],
+}
+
+const RECIPES: &[Recipe] = &[
+    Recipe {
+        output: PLANKS,
+        inputs: &[(TIMBER, 1)],
+    },
+    Recipe {
+        output: BRICKS,
+        inputs: &[(CLAY, 1), (STONE, 1)],
+    },
+    Recipe {
+        output: STEEL,
+        inputs: &[(ORE, 1), (STONE, 1)],
+    },
+    Recipe {
+        output: CLOTH,
+        inputs: &[(FIBER, 1)],
+    },
+    Recipe {
+        output: FLOUR,
+        inputs: &[(GRAIN, 1), (STONE, 1)],
+    },
+    Recipe {
+        output: ROPE,
+        inputs: &[(FIBER, 1), (PLANKS, 1)],
+    },
+    Recipe {
+        output: TOOLS,
+        inputs: &[(PLANKS, 1), (STEEL, 1)],
+    },
+    Recipe {
+        output: SHIP_PARTS,
+        inputs: &[(PLANKS, 1), (CLOTH, 1), (ROPE, 1)],
+    },
+    Recipe {
+        output: MACHINERY,
+        inputs: &[(STEEL, 1), (TOOLS, 1)],
+    },
+    Recipe {
+        output: ENGINES,
+        inputs: &[(STEEL, 1), (MACHINERY, 1), (TOOLS, 1)],
+    },
+];
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PeriodResult {
+    stock: [i64; GOOD_COUNT],
+    grain_eaten: i64,
+    fish_eaten: i64,
+    cloth_used: i64,
+}
 
 /// One town's mutable market state.
 ///
@@ -327,6 +391,36 @@ fn region_endow(water: i64, biome: i64) -> [i64; GOOD_COUNT] {
     endow
 }
 
+/// Encode a route's allow flags and per-good fees as the compact link-rules
+/// text used by the Diamond app (`one digit per good` then `two digits per fee`).
+/// Moving this formatting out of the interpreter removes one string-building
+/// pass from every route save.
+#[must_use]
+pub fn encode_link_rules(allow: &[i64], fee: &[i64]) -> String {
+    let mut output = String::with_capacity(allow.len() + fee.len() * 2);
+    for value in allow {
+        output.push(if *value > 0 { '1' } else { '0' });
+    }
+    for value in fee {
+        output.push_str(&format!("{value:02}"));
+    }
+    output
+}
+
+/// Encode a list of small non-negative integers as fixed four-character fields.
+///
+/// This is the Rust counterpart of the Diamond `encode_pipeline`/`encode_flow`
+/// helpers. Keeping string formatting out of the interpreter avoids spending
+/// managed-value budget on hundreds of tiny text concatenations.
+#[must_use]
+pub fn encode_ints4(values: &[i64]) -> String {
+    let mut output = String::with_capacity(values.len() * 4);
+    for value in values {
+        output.push_str(&format!("{value:04}"));
+    }
+    output
+}
+
 /// One transfer through an intermediate settlement.
 const FLOW_TRANSFER_PENALTY: i64 = 2;
 
@@ -496,13 +590,11 @@ fn flow_find(
 }
 
 fn advance_town_days(town: &TickTown, days: i64) -> TickTown {
-    let after = period_after(town, days);
-    let cloth_used = period_cloth_used(town, days);
+    let result = period_result(town, days);
+    let _after = result.stock;
     let need_grain = town.pop * days;
     let need_fish = (town.pop / 3 + 1) * days;
-    let grain_eaten = (town.stock[GRAIN] + town.endow[GRAIN] * days).min(need_grain);
-    let fish_eaten = (town.stock[FISH] + town.endow[FISH] * days).min(need_fish);
-    let fed = grain_eaten + fish_eaten * 2;
+    let fed = result.grain_eaten + result.fish_eaten * 2;
     let target = need_grain + need_fish * 2;
     let food = if fed >= target {
         2
@@ -511,8 +603,9 @@ fn advance_town_days(town: &TickTown, days: i64) -> TickTown {
     } else {
         0
     };
+    let after = result.stock;
     let score = after.iter().filter(|value| **value > 0).count() as i64;
-    let comfort = i64::from(after[TOOLS] > 0) + i64::from(cloth_used > 0);
+    let comfort = i64::from(after[TOOLS] > 0) + i64::from(result.cloth_used > 0);
     let delta = (food * 2 + score.min(6) / 2 + comfort - 2) * days;
     let prosperity = clamp(town.prosperity + delta, 0, 30);
     let research = town.research + (town.pop + score + prosperity / 6 + food) * days;
@@ -553,67 +646,35 @@ fn advance_town_days(town: &TickTown, days: i64) -> TickTown {
     }
 }
 
-fn period_after(town: &TickTown, days: i64) -> [i64; GOOD_COUNT] {
-    let timber_base = town.stock[TIMBER] + town.endow[TIMBER] * days;
-    let stone_base = town.stock[STONE] + town.endow[STONE] * days;
-    let ore_base = town.stock[ORE] + town.endow[ORE] * days;
-    let fiber_base = town.stock[FIBER] + town.endow[FIBER] * days;
-    let can_planks = timber_base >= days;
-    let can_steel = stone_base >= days && ore_base >= days;
-    let timber_need = if can_planks { 2 * days } else { days };
-    let metal_need = if can_steel { 2 * days } else { days };
-    let can_tools =
-        timber_base >= timber_need && stone_base >= metal_need && ore_base >= metal_need;
-    let can_cloth = fiber_base >= days;
-    let grain_prod = town.stock[GRAIN] + town.endow[GRAIN] * days;
-    let fish_prod = town.stock[FISH] + town.endow[FISH] * days;
-    let cloth_prod =
-        town.stock[CLOTH] + town.endow[CLOTH] * days + if can_cloth { days } else { 0 };
-    let grain_eaten = grain_prod.min(town.pop * days);
-    let fish_eaten = fish_prod.min((town.pop / 3 + 1) * days);
-    let cloth_used = cloth_prod.min((town.pop / 4) * days);
-
-    let tools_flag = i64::from(can_tools);
-    let cloth_flag = i64::from(can_cloth);
-    let planks_flag = i64::from(can_planks);
-    let steel_flag = i64::from(can_steel);
-
-    let mut after = [0_i64; GOOD_COUNT];
-    for (index, value) in after.iter_mut().enumerate() {
-        let consumed = match index {
-            TIMBER => tools_flag + planks_flag,
-            STONE | ORE => tools_flag + steel_flag,
-            FIBER => cloth_flag,
-            _ => 0,
-        };
-        let produced = match index {
-            TOOLS => tools_flag,
-            CLOTH => cloth_flag,
-            PLANKS => planks_flag,
-            STEEL => steel_flag,
-            _ => 0,
-        };
-        let raw = town.stock[index] + town.endow[index] * days;
-        let produced = raw + (produced - consumed) * days;
-        *value = match index {
-            GRAIN => (produced - grain_eaten).max(0),
-            FISH => (produced - fish_eaten).max(0),
-            CLOTH => (produced - cloth_used).max(0),
-            _ => produced,
-        };
+fn period_result(town: &TickTown, days: i64) -> PeriodResult {
+    let mut available = [0_i64; GOOD_COUNT];
+    for (index, value) in available.iter_mut().enumerate() {
+        *value = town.stock[index] + town.endow[index] * days;
     }
-    after
-}
-
-fn period_cloth_used(town: &TickTown, days: i64) -> i64 {
-    let cloth_prod = town.stock[CLOTH]
-        + town.endow[CLOTH] * days
-        + if town.stock[FIBER] + town.endow[FIBER] * days >= days {
-            days
-        } else {
-            0
-        };
-    cloth_prod.min((town.pop / 4) * days)
+    for recipe in RECIPES {
+        let ready = recipe
+            .inputs
+            .iter()
+            .all(|(good, quantity)| available[*good] >= quantity * days);
+        if ready {
+            for (good, quantity) in recipe.inputs {
+                available[*good] -= quantity * days;
+            }
+            available[recipe.output] += days;
+        }
+    }
+    let grain_eaten = available[GRAIN].min(town.pop * days);
+    let fish_eaten = available[FISH].min((town.pop / 3 + 1) * days);
+    let cloth_used = available[CLOTH].min((town.pop / 4) * days);
+    available[GRAIN] -= grain_eaten;
+    available[FISH] -= fish_eaten;
+    available[CLOTH] -= cloth_used;
+    PeriodResult {
+        stock: available,
+        grain_eaten,
+        fish_eaten,
+        cloth_used,
+    }
 }
 
 fn growth_stock(after: &[i64; GOOD_COUNT]) -> [i64; GOOD_COUNT] {
@@ -649,6 +710,14 @@ fn need_of(town: &TickTown, good: usize) -> i64 {
         }
         PLANKS => town.pop / 4 + 1,
         STEEL => town.pop / 8 + 1,
+        CLAY => town.pop / 6 + 1,
+        COAL => town.pop / 6 + 1,
+        BRICKS => town.pop / 4 + 1,
+        FLOUR => town.pop / 6 + 1,
+        ROPE => town.pop / 6 + 1,
+        SHIP_PARTS => town.pop / 8 + 1,
+        MACHINERY => town.pop / 10 + 1,
+        ENGINES => town.pop / 12 + 1,
         _ => base,
     }
 }
@@ -749,7 +818,7 @@ mod tests {
             pop,
             prosperity: 6,
             research: 0,
-            endow: [4, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            endow: [4, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             stock,
             climate: 0,
         }
@@ -775,7 +844,10 @@ mod tests {
     fn zero_days_is_a_no_op() {
         let mut state = TickState {
             money: 100,
-            towns: vec![town(2, [16, 0, 0, 0, 2, 0, 0, 4, 0, 0])],
+            towns: vec![town(
+                2,
+                [16, 0, 0, 0, 2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            )],
             routes: vec![route(0, 0)],
         };
         let before = state.clone();
@@ -788,8 +860,8 @@ mod tests {
         let mut state = TickState {
             money: 160,
             towns: vec![
-                town(4, [16, 4, 4, 4, 2, 0, 0, 4, 0, 0]),
-                town(4, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [16, 4, 4, 4, 2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
             ],
             routes: vec![route(0, 1)],
         };
@@ -823,10 +895,16 @@ mod tests {
 
     #[test]
     fn annual_finish_depletes_the_largest_endowment() {
-        let mut towns = vec![town(4, [16, 4, 4, 4, 2, 0, 0, 4, 0, 0])];
-        towns[0].endow = [4, 0, 0, 0, 1, 0, 0, 0, 0, 0];
+        let mut towns = vec![town(
+            4,
+            [16, 4, 4, 4, 2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        )];
+        towns[0].endow = [4, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         let summary = finish_towns(&mut towns, 7, 336 * 24, 1, 1, 0).expect("finish");
-        assert_eq!(towns[0].endow, [3, 0, 0, 0, 1, 0, 0, 0, 0, 0]);
+        assert_eq!(
+            towns[0].endow,
+            [3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
         assert_eq!(summary.total_prosperity, 6);
     }
 
@@ -837,24 +915,36 @@ mod tests {
                 pop: 4,
                 prosperity: 6,
                 research: 0,
-                endow: [4, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                stock: [16, 4, 4, 4, 2, 0, 0, 4, 0, 0],
+                endow: [4, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                stock: [16, 4, 4, 4, 2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                 climate: 0,
             },
             TickTown {
                 pop: 4,
                 prosperity: 6,
                 research: 0,
-                endow: [0, 3, 1, 0, 0, 0, 0, 0, 0, 0],
-                stock: [8, 6, 2, 0, 0, 0, 0, 0, 0, 0],
+                endow: [0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                stock: [8, 6, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                 climate: 0,
             },
         ];
         let summary = finish_towns(&mut towns, 7, 336 * 24, 1, 2, 0).expect("finish");
-        assert_eq!(towns[0].endow, [3, 0, 0, 0, 1, 0, 0, 0, 0, 0]);
-        assert_eq!(towns[0].stock, [19, 4, 4, 4, 2, 0, 0, 4, 0, 0]);
-        assert_eq!(towns[1].endow, [0, 2, 1, 0, 0, 0, 0, 0, 0, 0]);
-        assert_eq!(towns[1].stock, [11, 6, 2, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(
+            towns[0].endow,
+            [3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
+        assert_eq!(
+            towns[0].stock,
+            [19, 4, 4, 4, 2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
+        assert_eq!(
+            towns[1].endow,
+            [0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
+        assert_eq!(
+            towns[1].stock,
+            [11, 6, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
         assert_eq!(summary.total_prosperity, 12);
     }
 
@@ -867,23 +957,23 @@ mod tests {
                     pop: 4,
                     prosperity: 6,
                     research: 0,
-                    endow: [4, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                    stock: [16, 4, 4, 4, 2, 0, 0, 4, 0, 0],
+                    endow: [4, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                    stock: [16, 4, 4, 4, 2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                     climate: 0,
                 },
                 TickTown {
                     pop: 4,
                     prosperity: 6,
                     research: 0,
-                    endow: [0, 3, 1, 0, 0, 0, 0, 0, 0, 0],
-                    stock: [8, 6, 2, 0, 0, 0, 0, 0, 0, 0],
+                    endow: [0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                    stock: [8, 6, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                     climate: 0,
                 },
             ],
             routes: vec![route(0, 1)],
         };
         market(&mut state, 7, 100);
-        assert_eq!(state.money, 163);
+        assert_eq!(state.money, 164);
         assert_eq!(
             (
                 state.towns[0].pop,
@@ -892,17 +982,23 @@ mod tests {
             ),
             (5, 26, 98)
         );
-        assert_eq!(state.towns[0].stock, [12, 3, 3, 4, 2, 0, 0, 0, 1, 0]);
+        assert_eq!(
+            state.towns[0].stock,
+            [11, 3, 3, 4, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
         assert_eq!(
             (
                 state.towns[1].pop,
                 state.towns[1].prosperity,
                 state.towns[1].research
             ),
-            (3, 0, 49)
+            (4, 6, 63)
         );
-        assert_eq!(state.towns[1].stock, [2, 20, 9, 0, 0, 0, 0, 0, 6, 0]);
-        assert_eq!(state.routes[0].traffic, 3);
+        assert_eq!(
+            state.towns[1].stock,
+            [3, 20, 2, 0, 0, 0, 0, 0, 6, 0, 0, 0, 0, 7, 0, 0, 0, 0]
+        );
+        assert_eq!(state.routes[0].traffic, 4);
         let flow_total: i64 = state.routes[0].flow.iter().flatten().sum();
         assert_eq!(flow_total, state.routes[0].traffic);
     }
@@ -914,16 +1010,16 @@ mod tests {
                 pop: 4,
                 prosperity: 6,
                 research: 0,
-                endow: [4, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                stock: [16, 4, 4, 4, 2, 0, 0, 4, 0, 0],
+                endow: [4, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                stock: [16, 4, 4, 4, 2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                 climate: 0,
             },
             TickTown {
                 pop: 4,
                 prosperity: 6,
                 research: 0,
-                endow: [0, 3, 1, 0, 0, 0, 0, 0, 0, 0],
-                stock: [8, 6, 2, 0, 0, 0, 0, 0, 0, 0],
+                endow: [0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                stock: [8, 6, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                 climate: 0,
             },
         ];
@@ -931,9 +1027,15 @@ mod tests {
         assert_eq!(summary.max_research, 0);
         assert_eq!(summary.total_prosperity, 10);
         assert_eq!(towns[0].prosperity, 6);
-        assert_eq!(towns[0].stock, [19, 4, 4, 4, 2, 0, 0, 4, 0, 0]);
+        assert_eq!(
+            towns[0].stock,
+            [19, 4, 4, 4, 2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
         assert_eq!(towns[1].prosperity, 4);
-        assert_eq!(towns[1].stock, [11, 8, 3, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(
+            towns[1].stock,
+            [11, 8, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
     }
 
     #[test]
@@ -989,9 +1091,9 @@ mod tests {
         let mut state = TickState {
             money: 0,
             towns: vec![
-                town(4, [20, 4, 4, 4, 2, 0, 0, 4, 0, 0]),
-                town(4, [4, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-                town(4, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [20, 4, 4, 4, 2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
             ],
             routes: vec![route(0, 1), route(1, 2)],
         };
@@ -1011,9 +1113,9 @@ mod tests {
         let mut state = TickState {
             money: 0,
             towns: vec![
-                town(4, [20, 4, 4, 4, 2, 0, 0, 4, 0, 0]),
-                town(4, [4, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-                town(4, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [20, 4, 4, 4, 2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
             ],
             routes: vec![
                 rule_route(0, 1, allow, [0; GOOD_COUNT]),
@@ -1031,9 +1133,9 @@ mod tests {
         let mut state = TickState {
             money: 0,
             towns: vec![
-                town(4, [20, 4, 4, 4, 2, 0, 0, 4, 0, 0]),
-                town(4, [4, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-                town(4, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [20, 4, 4, 4, 2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
             ],
             // A direct a-c link exists, but its grain toll (10 delivered) is
             // above the whole deficit, so the two-hop chain must carry it.
@@ -1081,7 +1183,7 @@ mod tests {
         let mut state = TickState {
             money: 0,
             towns: vec![
-                town(4, [20, 4, 4, 4, 2, 0, 0, 4, 0, 0]),
+                town(4, [20, 4, 4, 4, 2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
                 town(40, [0; GOOD_COUNT]),
             ],
             routes: vec![TickRoute {
@@ -1102,8 +1204,8 @@ mod tests {
         let mut state = TickState {
             money: 0,
             towns: vec![
-                town(4, [20, 4, 4, 4, 2, 0, 0, 4, 0, 0]),
-                town(4, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [20, 4, 4, 4, 2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
             ],
             routes: vec![TickRoute {
                 capacity: 3,
@@ -1120,8 +1222,8 @@ mod tests {
         let mut state = TickState {
             money: 160,
             towns: vec![
-                town(4, [16, 4, 4, 4, 2, 0, 0, 4, 0, 0]),
-                town(4, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [16, 4, 4, 4, 2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                town(4, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
             ],
             routes: vec![route(0, 1)],
         };
@@ -1153,16 +1255,16 @@ mod tests {
             prosperity: 6,
             research: 0,
             endow: [0; GOOD_COUNT],
-            stock: [0, 4, 4, 4, 0, 0, 0, 0, 0, 0],
+            stock: [0, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             climate: 0,
         };
         let after = advance_town_days(&town, 1);
-        assert_eq!(after.stock[TIMBER], 2);
-        assert_eq!(after.stock[STONE], 2);
-        assert_eq!(after.stock[ORE], 2);
+        assert_eq!(after.stock[TIMBER], 3);
+        assert_eq!(after.stock[STONE], 3);
+        assert_eq!(after.stock[ORE], 3);
         assert_eq!(after.stock[TOOLS], 1);
-        assert_eq!(after.stock[PLANKS], 1);
-        assert_eq!(after.stock[STEEL], 1);
+        assert_eq!(after.stock[PLANKS], 0);
+        assert_eq!(after.stock[STEEL], 0);
     }
 
     #[test]
@@ -1172,7 +1274,7 @@ mod tests {
             prosperity: 6,
             research: 0,
             endow: [0; GOOD_COUNT],
-            stock: [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
+            stock: [0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             climate: 0,
         };
         let after = advance_town_days(&town, 1);
@@ -1189,7 +1291,7 @@ mod tests {
             prosperity: 6,
             research: 0,
             endow: [0; GOOD_COUNT],
-            stock: [0, 0, 2, 2, 0, 0, 0, 0, 0, 0],
+            stock: [0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             climate: 0,
         };
         let after = advance_town_days(&town, 1);
@@ -1201,22 +1303,22 @@ mod tests {
     }
 
     #[test]
-    fn basic_products_take_priority_when_raw_inputs_are_shared() {
+    fn recipes_run_in_order_and_feed_later_tiers() {
         let town = TickTown {
             pop: 4,
             prosperity: 6,
             research: 0,
             endow: [0; GOOD_COUNT],
-            stock: [0, 1, 1, 1, 0, 0, 0, 0, 0, 0],
+            stock: [0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             climate: 0,
         };
         let after = advance_town_days(&town, 1);
         assert_eq!(after.stock[TIMBER], 0);
         assert_eq!(after.stock[STONE], 0);
         assert_eq!(after.stock[ORE], 0);
-        assert_eq!(after.stock[TOOLS], 0);
-        assert_eq!(after.stock[PLANKS], 1);
-        assert_eq!(after.stock[STEEL], 1);
+        assert_eq!(after.stock[TOOLS], 1);
+        assert_eq!(after.stock[PLANKS], 0);
+        assert_eq!(after.stock[STEEL], 0);
     }
 
     #[test]
@@ -1227,8 +1329,8 @@ mod tests {
                 pop: 3 + (i % 5),
                 prosperity: 4 + (i % 7),
                 research: i,
-                endow: [4, 1, 1, 1, 1, 0, 0, 1, 0, 0],
-                stock: [12, 4, 4, 4, 2, 0, 0, 3, 0, 0],
+                endow: [4, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                stock: [12, 4, 4, 4, 2, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                 climate: 0,
             });
         }

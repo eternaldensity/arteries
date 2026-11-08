@@ -10,7 +10,7 @@ fn scale_routes(towns: List<Town>, count: Int) -> List<Route>:
   for i in indices(count):
     let a = nth_town(towns, i)
     let b = nth_town(towns, i + 1)
-    Route(id: "r" + int_text(i), a: a.id, b: b.id, a_name: a.name, b_name: b.name, mode: Road, plan: empty_plan(), fee: 1, traffic: 0, capacity: 20, upkeep: 1, rules: default_rules(), pipeline: [], flow: [])
+    Route(id: "r" + int_text(i), a: a.id, b: b.id, a_name: a.name, b_name: b.name, a_ord: i, b_ord: i + 1, mode: Road, plan: empty_plan(), fee: 1, traffic: 0, capacity: 20, upkeep: 1, rules: default_rules(), pipeline: "", flow: "")
 
 fn scale_world(seed: Int, towns: Int, routes: Int) -> World:
   let base = new_world(seed)
@@ -19,8 +19,7 @@ fn scale_world(seed: Int, towns: Int, routes: Int) -> World:
 
 fn main() -> Text:
   let world = scale_world(7, __SETTLEMENTS__, 3)
-  # Trade now runs in the Rust flow kernel, so the pure-Diamond staged tick that
-  # remains is production plus finish. This probe measures exactly that part.
-  let produced = World(seed: world.seed, tick: world.tick, money: world.money, towns: flow_advance_towns(world, 28), sites: world.sites, routes: world.routes, log: [], history: [], tech: empty_tech_state())
-  let finished = finish_period(produced, 28, 0)
+  # Production and trade run in the Rust market kernel now. The remaining
+  # pure-Diamond staged phase is finish/events, which this probe measures.
+  let finished = finish_period(world, 28, 0)
   "ok|" + int_text(finished.tick) + "|" + int_text(finished.money) + "|" + int_text(total_pop(finished))

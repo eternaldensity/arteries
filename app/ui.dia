@@ -236,7 +236,7 @@ export component LinkRulesDesk(link: Text, rules: LinkRules):
         <span>Link policy</span>
         <button class="ghost tiny" type="button" on-click={allow_all}>Allow all goods</button>
       </div>
-      <each items={indices(len(goods()))} as="good" key={int_text(good)}>
+      <each items={indices(good_count())} as="good" key={int_text(good)}>
         <div class="rules-row">
           <span class="rules-good">{good_short_at(good)}</span>
           <button class="tiny" type="button" on-click={toggle(good)}>{rule_label(rules, good)}</button>
@@ -247,6 +247,75 @@ export component LinkRulesDesk(link: Text, rules: LinkRules):
       </each>
       <p class="helper">Blocked goods cannot use this link. A surcharge is added to the base toll when routing that good.</p>
     </div>
+
+export component InspectorCard(iv: InspectView, hub: Text):
+  output refresh
+
+  on do_refresh:
+    emit refresh()
+
+  html:
+    <section class="card inspector">
+      <div class="card-head">
+        <h2>Inspector</h2>
+        <div class="head-actions">
+          <button class="tiny" type="button" on-click={do_refresh}>Refresh</button>
+          <when test={iv.ready}><span class={"status " + iv.tone}>{iv.status}</span></when>
+        </div>
+      </div>
+      <when test={iv.ready}>
+        <div class="inspector-title">
+          <div>
+            <h3>{iv.name}</h3>
+            <p>
+              <when test={iv.is_site}>{iv.resource} site · richness {iv.richness} · {iv.terrain}</when>
+              <when test={not iv.is_site}>{iv.connected} routes · {iv.terrain} · site value {iv.value}</when>
+            </p>
+          </div>
+          <div class="inspector-numbers">
+            <when test={not iv.is_site}>
+              <div><span>Pop</span><strong>{iv.pop}</strong></div>
+              <div><span>Prosperity</span><strong>{iv.prosperity}</strong></div>
+              <div><span>Research</span><strong>{iv.research}</strong></div>
+              <div><span>Climate</span><strong>{iv.climate}</strong></div>
+            </when>
+          </div>
+        </div>
+        <p class="insight">{iv.insight}</p>
+        <when test={not iv.is_site and hub != ""}>
+          <p class="helper">{hub}</p>
+        </when>
+        <when test={not iv.is_site}>
+          <p class="endow-line">Natural production per day: <strong>{inspect_endow_text(iv)}</strong></p>
+        </when>
+        <when test={iv.is_site}>
+          <div class="site-inspect">
+            <div><span>Resource</span><strong>{iv.resource}</strong></div>
+            <div><span>Richness</span><strong>{iv.richness}</strong></div>
+            <div><span>Terrain</span><strong>{iv.terrain}</strong></div>
+            <div><span>Status</span><strong>{iv.status}</strong></div>
+          </div>
+          <p class="helper">Choose this site as a route destination, or route through it, and a settlement is founded when construction completes.</p>
+        </when>
+        <when test={not iv.is_site}>
+          <div class="goods">
+            <each items={goods()} as="g" key={good_name(g)}>
+              <span class="good-chip" title={inspect_good_title(iv, g)}>{good_short(g)} <strong>{inspect_stock(iv, g)}</strong></span>
+            </each>
+          </div>
+          <div class="inspector-foot">
+            <span>Shortages: <strong>{iv.shortages}</strong></span>
+            <span>Connected routes: <strong>{iv.connected}</strong></span>
+          </div>
+        </when>
+      </when>
+      <when test={not iv.ready}>
+        <div class="empty-state">
+          <strong>No settlement selected</strong>
+          <p>Pick a settlement on the map or in the list. The inspector explains what is limiting it.</p>
+        </div>
+      </when>
+    </section>
 
 export component Root:
   state game: Game = empty_game()
@@ -285,20 +354,7 @@ export component Root:
   # handler, repeated across the template, or costly enough to be worth one
   # shared evaluation.
   derived world: World = game.world
-  derived iv: InspectView = game.inspect
   derived sel: Selection = game.sel
-  derived prosperity: Int = total_prosperity(world)
-  derived routes_count: Int = len(world.routes)
-  derived alert_items: List<Text> = alerts(world)
-  derived alert_idx: List<Int> = indices(len(alert_items))
-  derived upkeep_flag: Int = match upkeep_due(game) > 0:
-    true => 1
-    false => 0
-  derived signal_count: Int = len(alert_items) + upkeep_flag
-  derived feed_items: List<Text> = log_feed(world)
-  derived feed_idx: List<Int> = indices(len(feed_items))
-  derived build_check: BuildCheck = build_check_plan(world, game.projects, sel.from, sel.to, draft_plan, sel.ready)
-  derived build_duration: Text = construction_preview_plan(world, sel.from, sel.to, draft_plan, sel.ready)
   derived scale_button: Text = match scale_active:
     true => "Continue cycle"
     false => "Run 1 day"
@@ -815,7 +871,7 @@ export component Root:
         </article>
         <article class="stat">
           <span class="stat-label">Prosperity</span>
-          <strong>{prosperity}</strong>
+          <strong>{total_prosperity(world)}</strong>
           <span class="stat-sub">network total</span>
         </article>
         <article class="stat">
@@ -825,7 +881,7 @@ export component Root:
         </article>
         <article class="stat">
           <span class="stat-label">Routes</span>
-          <strong>{routes_count}</strong>
+          <strong>{len(world.routes)}</strong>
           <span class="stat-sub">active links</span>
         </article>
         <article class="stat wide">
@@ -854,7 +910,7 @@ export component Root:
           </div>
 
           <div class="map-frame">
-            <use component="MapCanvas" seed={world.seed} groups={game.route_groups} draft={map_draft_nodes(draft_nodes(draft_plan, sel.ready), game.projects)} markers={make_markers(world)} selected={sel.selected} on-picked={pick}></use>
+            <use component="MapCanvas" seed={world.seed} groups={route_groups(world.routes)} draft={map_draft_nodes(draft_nodes(draft_plan, sel.ready), game.projects)} markers={make_markers(world)} selected={sel.selected} on-picked={pick}></use>
             <div class="compass"><span>N</span><span class="north-needle"></span></div>
           </div>
 
@@ -893,7 +949,7 @@ export component Root:
                 <strong>No survey in progress</strong>
                 <p>Select a settlement to inspect it, then use <em>Survey route</em>. Sites can be inspected at any time without cancelling a survey.</p>
                 <div class="actions">
-                  <button class="primary" type="button" on-click={start_route} disabled={not iv.ready or iv.is_site}>{survey_action_text(iv)}</button>
+                  <button class="primary" type="button" on-click={start_route} disabled={not selected_ready(world, sel.selected) or selected_is_site(world, sel.selected)}>{survey_action_text_sel(world, sel)}</button>
                 </div>
               </div>
             </when>
@@ -907,8 +963,8 @@ export component Root:
                     <when test={sel.to != ""}>{marker_name(world, sel.to)}</when>
                   </span>
                 </div>
-                <when test={iv.is_site and sel.to != ""}>
-                  <p class="helper">This route ends at {iv.name} and founds it when construction completes.</p>
+                <when test={selected_is_site(world, sel.selected) and sel.to != ""}>
+                  <p class="helper">This route ends at {marker_name(world, sel.selected)} and founds it when construction completes.</p>
                 </when>
                 <when test={sel.ready}>
                   <div class="plan-grid">
@@ -918,7 +974,7 @@ export component Root:
                     <div><span>Stone</span><strong>{draft_plan.stone}</strong></div>
                     <div><span>Bridges</span><strong>{draft_plan.water}</strong></div>
                     <div><span>Forest</span><strong>{draft_plan.forest}</strong></div>
-                    <div><span>Build time</span><strong>{build_duration}</strong></div>
+                    <div><span>Build time</span><strong>{construction_preview_plan(world, sel.from, sel.to, draft_plan, sel.ready)}</strong></div>
                   </div>
                   <div class="shape-row">
                     <span>Shape <strong>{draft_plan.bend}</strong></span>
@@ -934,9 +990,9 @@ export component Root:
                   <when test={show_preview}>
                     <use component="SurveyPreviewPanel" from={sel.from} to={sel.to} plan={draft_plan} road={tech_unlocks_mode(world.tech, Road)} river={tech_unlocks_mode(world.tech, River)} rail={tech_unlocks_mode(world.tech, Rail)} on-choose={use_corridor}></use>
                   </when>
-                  <p class="blocker">{build_check.reason}</p>
+                  <p class="blocker">{build_blocker_plan(world, game.projects, sel.from, sel.to, draft_plan, sel.ready)}</p>
                   <div class="actions">
-                    <button class="primary" type="button" on-click={build_route} disabled={not build_check.ok}>{build_button_text_with(sel.ready, build_duration)}</button>
+                    <button class="primary" type="button" on-click={build_route} disabled={not can_build_plan(world, game.projects, sel.from, sel.to, draft_plan, sel.ready)}>{build_button_text_with(sel.ready, construction_preview_plan(world, sel.from, sel.to, draft_plan, sel.ready))}</button>
                     <button class="ghost" type="button" on-click={cancel_route}>Cancel</button>
                   </div>
                 </when>
@@ -961,10 +1017,10 @@ export component Root:
           </section>
 
           <section class="card">
-            <div class="card-head"><h2>Signals</h2><span class="badge warn">{signal_count}</span></div>
+            <div class="card-head"><h2>Signals</h2><span class="badge warn">{len(alerts(world)) + bool_int(upkeep_due(game) > 0)}</span></div>
             <ul class="alerts">
-              <each items={alert_idx} as="i" key={int_text(i)}>
-                <li>{nth_text(alert_items, i)}</li>
+              <each items={alerts(world)} as="a" key={a}>
+                <li>{a}</li>
               </each>
               <when test={upkeep_due(game) > 0}><li>{upkeep_signal_text(game)}</li></when>
             </ul>
@@ -973,70 +1029,9 @@ export component Root:
       </div>
 
       <div class="lower">
-        <section class="card inspector">
-          <div class="card-head">
-            <h2>Inspector</h2>
-            <div class="head-actions">
-              <button class="tiny" type="button" on-click={refresh_inspect}>Refresh</button>
-              <when test={iv.ready}><span class={"status " + iv.tone}>{iv.status}</span></when>
-            </div>
-          </div>
-          <when test={iv.ready}>
-            <div class="inspector-title">
-              <div>
-                <h3>{iv.name}</h3>
-                <p>
-                  <when test={iv.is_site}>{iv.resource} site · richness {iv.richness} · {iv.terrain}</when>
-                  <when test={not iv.is_site}>{iv.connected} routes · {iv.terrain} · site value {iv.value}</when>
-                </p>
-              </div>
-              <div class="inspector-numbers">
-                <when test={not iv.is_site}>
-                  <div><span>Pop</span><strong>{iv.pop}</strong></div>
-                  <div><span>Prosperity</span><strong>{iv.prosperity}</strong></div>
-                  <div><span>Research</span><strong>{iv.research}</strong></div>
-                  <div><span>Climate</span><strong>{iv.climate}</strong></div>
-                </when>
-              </div>
-            </div>
-            <p class="insight">{iv.insight}</p>
-            <when test={not iv.is_site and town_hub_text(world, sel.selected) != ""}>
-              <p class="helper">{town_hub_text(world, sel.selected)}</p>
-            </when>
-            <when test={not iv.is_site}>
-              <p class="endow-line">Natural production per day: <strong>{inspect_endow_text(iv)}</strong></p>
-            </when>
-            <when test={iv.is_site}>
-              <div class="site-inspect">
-                <div><span>Resource</span><strong>{iv.resource}</strong></div>
-                <div><span>Richness</span><strong>{iv.richness}</strong></div>
-                <div><span>Terrain</span><strong>{iv.terrain}</strong></div>
-                <div><span>Status</span><strong>{iv.status}</strong></div>
-              </div>
-              <p class="helper">Choose this site as a route destination, or route through it, and a settlement is founded when construction completes.</p>
-            </when>
-            <when test={not iv.is_site}>
-              <div class="goods">
-                <each items={goods()} as="g" key={good_name(g)}>
-                  <span class="good-chip" title={inspect_good_title(iv, g)}>{good_short(g)} <strong>{inspect_stock(iv, g)}</strong></span>
-                </each>
-              </div>
-              <div class="inspector-foot">
-                <span>Shortages: <strong>{iv.shortages}</strong></span>
-                <span>Connected routes: <strong>{iv.connected}</strong></span>
-              </div>
-            </when>
-          </when>
-          <when test={not iv.ready}>
-            <div class="empty-state">
-              <strong>No settlement selected</strong>
-              <p>Pick a settlement on the map or in the list. The inspector explains what is limiting it.</p>
-            </div>
-          </when>
-        </section>
-
+        <use component="InspectorCard" iv={inspect_view(world, game.sel.selected)} hub={town_hub_text(world, game.sel.selected)} on-refresh={refresh_inspect}></use>
         <section class="card routes-card">
-          <div class="card-head"><h2>Network</h2><span class="badge">{routes_count} / {max_routes()} routes</span></div>
+          <div class="card-head"><h2>Network</h2><span class="badge">{len(world.routes)} / {max_routes()} routes</span></div>
           <div class="maintenance">
             <div class="maint-block"><span>Upkeep due</span><strong>{upkeep_due(game)}</strong></div>
             <div class="maint-block"><span>Condition</span><strong class={"status " + maintenance_tone(game)}>{maintenance_text(game)}</strong></div>
@@ -1065,7 +1060,7 @@ export component Root:
               </each>
             </div>
           </when>
-          <when test={routes_count == 0}>
+          <when test={len(world.routes) == 0}>
             <div class="empty-state">
               <strong>The frontier is disconnected</strong>
               <p>Build your first route. Goods only move along links you create, and traffic pays your tolls.</p>
@@ -1098,9 +1093,6 @@ export component Root:
                 <when test={route_has_flow(r)}>
                   <p class="helper">Flow: {route_cargo_text(r)}</p>
                 </when>
-                <when test={in_transit(r) > 0}>
-                  <p class="helper">In transit: {int_text(in_transit(r))} units</p>
-                </when>
                 <p class="helper">{route_dependency_text(world, r)}</p>
 
                 <div class="route-bottom">
@@ -1126,8 +1118,8 @@ export component Root:
         <section class="card log-card">
           <div class="card-head"><h2>Chronicle</h2><span class="badge">{calendar_text(world)}</span></div>
           <ul class="chronicle">
-            <each items={feed_idx} as="i" key={int_text(i)}>
-              <li>{nth_text(feed_items, i)}</li>
+            <each items={log_feed(world)} as="line" key={line}>
+              <li>{line}</li>
             </each>
           </ul>
         </section>
