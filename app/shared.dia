@@ -612,6 +612,27 @@ export fn river_research() -> Int:
 export fn rail_research() -> Int:
   220
 
+export fn era_of_research(research: Int) -> Int:
+  match research >= 220:
+    true => 4
+    false => match research >= 110:
+      true => 3
+      false => match research >= 45:
+        true => 2
+        false => 1
+
+export fn era_name(era: Int) -> Text:
+  match era == 4:
+    true => "Era 4 · Rails"
+    false => match era == 3:
+      true => "Era 3 · Rivers"
+      false => match era == 2:
+        true => "Era 2 · Roads"
+        false => "Era 1 · Pack routes"
+
+export fn world_era(world: World) -> Int:
+  era_of_research(max_research(world.towns, 0))
+
 # ---------------------------------------------------------------- calendar
 
 export fn hours_per_day() -> Int:
@@ -3726,11 +3747,11 @@ fn tech_messages(world: World, best: Int) -> List<Text>:
   let river = world.tech_river or best >= river_research()
   let rail = world.tech_rail or best >= rail_research()
   match road and not world.tech_road:
-    true => ["Discovery: improved carts. Roads can now be built."]
+    true => ["Discovery: improved carts. Era 2 begins — roads can now be built."]
     false => match river and not world.tech_river:
-      true => ["Discovery: river navigation. Barges can now be built."]
+      true => ["Discovery: river navigation. Era 3 begins — barges can now be built."]
       false => match rail and not world.tech_rail:
-        true => ["Discovery: steam power. Rail can now be built."]
+        true => ["Discovery: steam power. Era 4 begins — rail can now be built."]
         false => []
 
 fn nth_town(towns: List<Town>, i: Int) -> Town:

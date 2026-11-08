@@ -1077,7 +1077,7 @@ export component Root:
 
       <footer class="footer">
         <span>Arteries prototype · every seed produces a different frontier</span>
-        <span class="mono">seed {world.seed} · {calendar_text(world)} · {tech_summary(world)}</span>
+        <span class="mono">seed {world.seed} · {calendar_text(world)} · {era_name(world_era(world))} · {tech_summary(world)}</span>
       </footer>
     </main>
     </when>
