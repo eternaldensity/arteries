@@ -297,6 +297,23 @@ function chooseFreeCells(markers, count) {
   );
   assert(stepped.scale.active, 'scale overlay closed after one step');
   assert((await page.textContent('#scale-log')).length > 0, 'scale chunk log is empty');
+  assert(stepped.scale.phase !== 0, 'one step did not leave the cycle mid-phase');
+  assert(stepped.scale.cursor, 'one step did not persist a server cursor');
+
+  // 8b. Reload mid-cycle and resume from the server-owned cursor.
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#scale-overlay:not(.hidden)', { timeout: 20000 });
+  await page.waitForFunction(
+    () => {
+      const scale = window.__webui?.getState().scale;
+      return scale?.active && scale.cursor;
+    },
+    undefined,
+    { timeout: 20000 }
+  );
+  const resumed = await state(page);
+  assert(resumed.scale.phase === stepped.scale.phase, 'reload changed the compact phase');
+  assert(resumed.scale.cursor === stepped.scale.cursor, 'reload lost the compact cursor');
 
   await page.click('#scale-day');
   const compactDone = await waitForState(
@@ -309,14 +326,70 @@ function chooseFreeCells(markers, count) {
   assert(compactDone.scale.status.includes('complete'), 'compact cycle did not report completion');
 
   const compactTickAfter = compactDone.scale.summary.tick;
+
+  // 9. Compact overview, forecast, and world switching.
+  await page.waitForFunction(
+    () => window.__webui.getState().scale.overview,
+    undefined,
+    { timeout: 10000 }
+  );
+  const compactOverview = compactDone.scale.overview;
+  assert(compactOverview.tech_total === 33, 'compact overview missed the tech catalog');
+  assert(compactOverview.pop > 0, 'compact overview missed population');
+  const tileText = await page.textContent('#scale-tiles');
+  assert(tileText.includes('Tech') && tileText.includes('Era'), 'compact tiles missed tech/era');
+
+  await page.click('#scale-forecast-day');
+  const forecasted = await waitForState(
+    page,
+    (current) => current.scale.forecast && current.scale.forecast.days === 1,
+    'compact forecast'
+  );
+  assert(
+    forecasted.scale.forecast.money === compactDone.scale.summary.money,
+    'forecast starting treasury disagrees with the compact summary'
+  );
+
+  await page.click('[data-scale-tab="worlds"]');
+  const oneWorld = await waitForState(
+    page,
+    (current) => current.scale.worlds.length === 1,
+    'world list'
+  );
+  const originalWorld = oneWorld.scale.worlds[0];
+  assert(originalWorld.current, 'world list did not mark the current world');
+
+  await page.click('#scale-new-seed');
+  const seeded = await waitForState(
+    page,
+    (current) =>
+      current.scale.worlds.length === 2 &&
+      current.scale.summary.seed !== originalWorld.seed &&
+      current.scale.worlds.some((world) => world.current),
+    'new compact seed'
+  );
+  const newWorld = seeded.scale.worlds.find((world) => world.current);
+  assert(newWorld && newWorld.seed !== originalWorld.seed, 'new seed did not become current');
+
+  await page.click(`[data-world-id="${originalWorld.id}"]`);
+  const switched = await waitForState(
+    page,
+    (current) =>
+      current.scale.summary.seed === originalWorld.seed &&
+      current.scale.summary.tick >= compactTickAfter,
+    'switch back to the original world'
+  );
+  assert(switched.scale.canExit, 'small world did not allow returning to the map');
+
   await page.click('#scale-close');
   const returned = await waitForState(
     page,
-    (current) => !current.scale.active && current.game.world.tick >= compactTickAfter,
+    (current) => !current.scale.active && current.game?.world?.tick >= compactTickAfter,
     'return to full map',
     15000
   );
   assert(returned.game.world.tick >= compactTickAfter, 'full map did not refresh after compact cycle');
+  await page.waitForSelector('#app:not(.hidden)', { timeout: 10000 });
 
   assert(errors.length === 0, 'browser errors: ' + errors.join('; '));
 

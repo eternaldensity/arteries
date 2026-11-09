@@ -1,8 +1,10 @@
 // Compact scale overlay.
 //
 // The overlay is driven by the shared store and the contract-driven RPC
-// adapter. It never loads a full Game: it reads load_compact and advances the
-// server in bounded advance_scale chunks.
+// adapter. It never loads a full Game: it reads compact summaries/overviews and
+// advances the server in bounded advance_scale chunks.
+
+export const COMPACT_THRESHOLD = 20;
 
 const PHASES = [
   { key: 'market', label: 'Market' },
@@ -22,6 +24,14 @@ function nextFrame() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
 export function createScale({ store, getRpc, onClose }) {
   const el = {
     overlay: document.getElementById('scale-overlay'),
@@ -35,6 +45,12 @@ export function createScale({ store, getRpc, onClose }) {
     cursor: document.getElementById('scale-cursor'),
     stats: document.getElementById('scale-stats'),
     log: document.getElementById('scale-log'),
+    forecast: document.getElementById('scale-forecast'),
+    forecastDay: document.getElementById('scale-forecast-day'),
+    forecastWeek: document.getElementById('scale-forecast-week'),
+    worlds: document.getElementById('scale-worlds'),
+    worldsRefresh: document.getElementById('scale-worlds-refresh'),
+    newSeed: document.getElementById('scale-new-seed'),
     step: document.getElementById('scale-step'),
     day: document.getElementById('scale-day'),
     week: document.getElementById('scale-week'),
@@ -64,6 +80,10 @@ export function createScale({ store, getRpc, onClose }) {
     return {
       active: false,
       summary: null,
+      overview: null,
+      forecast: null,
+      forecastStatus: '',
+      worlds: [],
       phase: 0,
       cursor: '',
       pop: 0,
@@ -96,6 +116,57 @@ export function createScale({ store, getRpc, onClose }) {
     el.stop.disabled = !state.running;
     el.refresh.disabled = state.running;
     el.close.disabled = state.running;
+    el.forecastDay.disabled = blocked;
+    el.forecastWeek.disabled = blocked;
+    el.worldsRefresh.disabled = state.running;
+    el.newSeed.disabled = state.running;
+  }
+
+  function renderForecast(state) {
+    if (state.forecastStatus) {
+      el.forecast.innerHTML = `<div class="scale-note">${escapeHtml(state.forecastStatus)}</div>`;
+      return;
+    }
+    const forecast = state.forecast;
+    if (!forecast) {
+      el.forecast.innerHTML = '<div class="scale-note">Run a 1-day or 1-week forecast. It does not charge events or upkeep.</div>';
+      return;
+    }
+    const rows = [
+      ['Treasury', `${forecast.money} → ${forecast.money_after}`],
+      ['Prosperity', `${forecast.prosperity} → ${forecast.prosperity_after}`],
+      ['Traffic', `${forecast.traffic} → ${forecast.traffic_after}`],
+    ];
+    const towns = forecast.towns.length
+      ? `<div class="scale-forecast-list">${forecast.towns.map((town) => `
+          <div>${escapeHtml(town.name)} <span>pop ${town.pop}→${town.pop_after} · pros ${town.prosperity}→${town.prosperity_after}</span></div>
+        `).join('')}</div>`
+      : '';
+    const routes = forecast.routes.length
+      ? `<div class="scale-forecast-list">${forecast.routes.map((route) => `
+          <div>${escapeHtml(route.a_name)}→${escapeHtml(route.b_name)} <span>traffic ${route.traffic}→${route.traffic_after}</span></div>
+        `).join('')}</div>`
+      : '';
+    el.forecast.innerHTML = `
+      <div class="scale-forecast-rows">
+        ${rows.map(([label, value]) => `<div><span>${label}</span><strong>${escapeHtml(value)}</strong></div>`).join('')}
+      </div>
+      ${towns}${routes}
+      <div class="scale-note">Forecast for ${forecast.days} day(s); no events or upkeep charged.</div>
+    `;
+  }
+
+  function renderWorlds(state) {
+    if (!state.worlds.length) {
+      el.worlds.innerHTML = '<div class="scale-note">No saved worlds.</div>';
+      return;
+    }
+    el.worlds.innerHTML = state.worlds.map((world) => `
+      <button class="scale-world-row${world.current ? ' current' : ''}" type="button" data-world-id="${escapeHtml(world.id)}">
+        <strong>Seed ${world.seed}${world.current ? ' · current' : ''}</strong>
+        <span>day ${Math.floor(world.tick / 24) + 1} · ${world.towns} settlements · ${world.money} crowns</span>
+      </button>
+    `).join('');
   }
 
   function draw() {
@@ -122,14 +193,18 @@ export function createScale({ store, getRpc, onClose }) {
     el.cursor.textContent = state.cursor ? `cursor ${state.cursor}` : '';
 
     if (state.summary) {
-      el.tiles.innerHTML = [
+      const overview = state.overview;
+      const tiles = [
         ['Crowns', state.summary.money],
         ['Settlements', state.summary.towns],
         ['Routes', state.summary.routes],
+        ['Tech', overview ? `${overview.tech_count}/${overview.tech_total}` : '—'],
+        ['Era', overview ? overview.era : '—'],
+        ['Projects', overview ? overview.projects : '—'],
+        ['Upkeep', overview ? (overview.auto_upkeep ? 'auto' : `${overview.upkeep_due} due`) : '—'],
         ['Phase', state.summary.phase === 0 ? 'idle' : state.summary.phase],
-        ['Population', state.pop],
-        ['Prosperity', state.prosperity],
-      ]
+      ];
+      el.tiles.innerHTML = tiles
         .map(([label, value]) => `<div class="scale-tile"><span>${label}</span><strong>${value}</strong></div>`)
         .join('');
     }
@@ -145,9 +220,11 @@ export function createScale({ store, getRpc, onClose }) {
       .join('');
 
     el.log.innerHTML = state.log.length
-      ? state.log.map((line) => `<div>${line}</div>`).join('')
+      ? state.log.map((line) => `<div>${escapeHtml(line)}</div>`).join('')
       : '<div class="muted">No chunks yet.</div>';
 
+    renderForecast(state);
+    renderWorlds(state);
     setButtonState(state);
     el.close.classList.toggle('hidden', !state.canExit);
     el.note.textContent = state.resumeUnsafe
@@ -159,7 +236,6 @@ export function createScale({ store, getRpc, onClose }) {
     for (const tab of el.tabs) {
       const active = tab.dataset.scaleTab === state.tab;
       tab.classList.toggle('active', active);
-      if (!tab.disabled && !active) tab.classList.remove('active');
     }
     for (const [name, panel] of Object.entries(el.panels)) {
       if (panel) panel.classList.toggle('hidden', name !== state.tab);
@@ -199,38 +275,65 @@ export function createScale({ store, getRpc, onClose }) {
     });
   }
 
+  async function loadOverview() {
+    const rpc = getRpc();
+    if (!rpc || !store.get().scale?.active) return;
+    try {
+      const overview = await rpc.call('compact_overview', []);
+      if (overview?.summary) {
+        update({ overview, summary: overview.summary });
+      }
+    } catch (error) {
+      update({ status: error.message, error: true });
+    }
+  }
+
+  async function loadWorlds() {
+    const rpc = getRpc();
+    if (!rpc || !store.get().scale?.active) return;
+    try {
+      const worlds = await rpc.call('list_worlds', []);
+      update({ worlds });
+    } catch (error) {
+      update({ status: error.message, error: true });
+    }
+  }
+
   async function enter() {
     const rpc = getRpc();
     if (!rpc) return;
     const summary = await rpc.call('load_compact', []);
-    const canExit = Boolean(store.get().game);
-    update({
-      ...emptyState(),
-      active: true,
-      summary,
-      phase: summary.phase,
-      canExit,
-      resumeUnsafe: summary.phase !== 0,
-      status: summary.phase === 0
-        ? 'Compact view ready.'
-        : 'A cycle is already in progress on the server.',
-    });
-    draw();
+    await open(summary);
   }
 
-  function open(summary, { canExit = false } = {}) {
+  async function open(summary, { overview = null } = {}) {
+    const rpc = getRpc();
+    let resolvedSummary = summary;
+    let resolvedOverview = overview;
+    if (!resolvedOverview && rpc) {
+      try {
+        resolvedOverview = await rpc.call('compact_overview', []);
+        if (resolvedOverview?.summary) resolvedSummary = resolvedOverview.summary;
+      } catch {
+        // The summary alone is enough to open the shell.
+      }
+    }
+    const canExit = resolvedSummary.towns <= COMPACT_THRESHOLD;
     update({
       ...emptyState(),
       active: true,
-      summary,
-      phase: summary.phase,
+      summary: resolvedSummary,
+      overview: resolvedOverview,
+      phase: resolvedSummary.phase,
+      cursor: resolvedSummary.cursor || '',
       canExit,
-      resumeUnsafe: summary.phase !== 0,
-      status: summary.phase === 0
+      resumeUnsafe: false,
+      status: resolvedSummary.phase === 0
         ? 'Compact view ready.'
-        : 'A cycle is already in progress on the server.',
+        : 'Cycle resumed from the server cursor.',
     });
     draw();
+    void loadWorlds();
   }
 
   function close() {
@@ -298,6 +401,10 @@ export function createScale({ store, getRpc, onClose }) {
               ? 'Stopped after the last chunk. The cycle is paused.'
               : store.get().scale.status,
         });
+        if (finished) {
+          void loadOverview();
+          void loadWorlds();
+        }
       }
     }
   }
@@ -307,19 +414,85 @@ export function createScale({ store, getRpc, onClose }) {
     const state = store.get().scale;
     if (!rpc || !state?.active || state.running) return;
     try {
-      const summary = await rpc.call('load_compact', []);
-      const phase = state.phase !== 0 ? state.phase : summary.phase;
-      const cursor = state.phase !== 0 ? state.cursor : '';
+      const overview = await rpc.call('compact_overview', []);
+      const summary = overview.summary;
       update({
-        summary: { ...summary, phase },
-        phase,
-        cursor,
+        summary,
+        overview,
+        phase: summary.phase,
+        cursor: summary.cursor || '',
         status: 'Refreshed from the server.',
         error: false,
-        resumeUnsafe: phase !== 0 && cursor === '',
+        resumeUnsafe: false,
       });
+      void loadWorlds();
     } catch (error) {
       update({ status: error.message, error: true });
+    }
+  }
+
+  async function switchWorld(id) {
+    const rpc = getRpc();
+    const state = store.get().scale;
+    if (!rpc || !state?.active || state.running) return;
+    try {
+      const summary = await rpc.call('switch_world_compact', [id]);
+      const overview = await rpc.call('compact_overview', []);
+      const current = overview.summary || summary;
+      update({
+        ...emptyState(),
+        active: true,
+        summary: current,
+        overview,
+        phase: current.phase,
+        cursor: current.cursor || '',
+        canExit: current.towns <= COMPACT_THRESHOLD,
+        resumeUnsafe: false,
+        status: 'World switched.',
+        tab: 'worlds',
+      });
+      void loadWorlds();
+    } catch (error) {
+      update({ status: error.message, error: true });
+    }
+  }
+
+  async function newSeed() {
+    const rpc = getRpc();
+    const state = store.get().scale;
+    if (!rpc || !state?.active || state.running) return;
+    try {
+      const summary = await rpc.call('new_seed_compact', []);
+      const overview = await rpc.call('compact_overview', []);
+      const current = overview.summary || summary;
+      update({
+        ...emptyState(),
+        active: true,
+        summary: current,
+        overview,
+        phase: current.phase,
+        cursor: current.cursor || '',
+        canExit: current.towns <= COMPACT_THRESHOLD,
+        resumeUnsafe: false,
+        status: 'New world created.',
+        tab: 'worlds',
+      });
+      void loadWorlds();
+    } catch (error) {
+      update({ status: error.message, error: true });
+    }
+  }
+
+  async function forecast(hours, cadence) {
+    const rpc = getRpc();
+    const state = store.get().scale;
+    if (!rpc || !state?.active || state.running) return;
+    update({ forecastStatus: 'Forecasting…', error: false });
+    try {
+      const value = await rpc.call('forecast_market', [hours, cadence]);
+      update({ forecast: value, forecastStatus: '' });
+    } catch (error) {
+      update({ forecastStatus: error.message, error: true });
     }
   }
 
@@ -332,6 +505,7 @@ export function createScale({ store, getRpc, onClose }) {
   function tab(name) {
     if (!el.panels[name]) return;
     update({ tab: name });
+    if (name === 'worlds') void loadWorlds();
   }
 
   el.step.addEventListener('click', () => void runSpan(24, 'daily', 1));
@@ -341,8 +515,18 @@ export function createScale({ store, getRpc, onClose }) {
   el.stop.addEventListener('click', stop);
   el.refresh.addEventListener('click', () => void refresh());
   el.close.addEventListener('click', close);
+  el.forecastDay.addEventListener('click', () => void forecast(24, 'daily'));
+  el.forecastWeek.addEventListener('click', () => void forecast(168, 'weekly'));
+  el.worldsRefresh.addEventListener('click', () => void loadWorlds());
+  el.newSeed.addEventListener('click', () => void newSeed());
+  el.worlds.addEventListener('click', (event) => {
+    const row = event.target.closest('[data-world-id]');
+    if (row) void switchWorld(row.dataset.worldId);
+  });
   for (const tabButton of el.tabs) {
-    tabButton.addEventListener('click', () => tab(tabButton.dataset.scaleTab));
+    tabButton.addEventListener('click', () => {
+      if (!tabButton.disabled) tab(tabButton.dataset.scaleTab);
+    });
   }
   store.subscribe(() => draw());
 

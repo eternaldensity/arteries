@@ -81,7 +81,7 @@ routes and panels, and keeping every handler inside one evaluation phase.
 
 The backend now follows the spike:
 
-- town rows carry `tech` and `exposure` text columns (storage v12);
+- town rows carry `tech` and `exposure` text columns (storage v12; storage v13 adds the compact-cycle cursor);
 - the `arteries.town_tech` export takes compact town rows, route pairs, and the
   catalog companion lists, and returns per-town tech/exposure plus the union;
 - discovery and one-link diffusion run in both the live and compact finish

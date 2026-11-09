@@ -45,6 +45,9 @@ advance_compact_chunk = "server.advance_compact_chunk"
 advance_finish_chunk = "server.advance_finish_chunk"
 advance_finish_commit = "server.advance_finish_commit"
 load_compact = "server.load_compact"
+compact_overview = "server.compact_overview"
+switch_world_compact = "server.switch_world_compact"
+new_seed_compact = "server.new_seed_compact"
 advance_scale = "server.advance_scale"
 planet_chunk = "server.planet_chunk"
 planet_summary = "server.planet_summary"
@@ -79,7 +82,7 @@ switch_world = "server.switch_world"
 
 [storage]
 profile = "relational-v1"
-version = 12
+version = 13
 
 [storage.resources.Worlds]
 scope = "id"

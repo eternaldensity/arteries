@@ -257,6 +257,29 @@
         font-size: 10px;
       }
       .scale-note { color: var(--muted); font-size: 11px; }
+      .scale-forecast-rows { display: grid; gap: 6px; }
+      .scale-forecast-rows > div { display: flex; justify-content: space-between; gap: 12px; }
+      .scale-forecast-rows span { color: var(--muted); font-size: 11px; }
+      .scale-forecast-rows strong { font-family: "SFMono-Regular", ui-monospace, monospace; font-size: 12px; }
+      .scale-forecast-list { margin-top: 10px; display: grid; gap: 4px; }
+      .scale-forecast-list div { color: #c7d7eb; font-size: 11px; }
+      .scale-forecast-list span { color: var(--muted); }
+      .scale-worlds { display: grid; gap: 7px; margin-top: 10px; }
+      .scale-world-row {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        text-align: left;
+        padding: 9px 11px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: rgba(8, 18, 31, .55);
+      }
+      .scale-world-row:hover { border-color: var(--accent); }
+      .scale-world-row.current { border-color: var(--accent2); background: rgba(105, 195, 179, .08); }
+      .scale-world-row strong { font-size: 12px; }
+      .scale-world-row span { color: var(--muted); font-size: 10px; }
       @media (max-width: 780px) {
         .scale-grid { grid-template-columns: 1fr; }
         .scale-header { flex-direction: column; }
@@ -364,7 +387,7 @@
 
         <nav class="scale-tabs" role="tablist" aria-label="Compact frontier views">
           <button class="scale-tab active" data-scale-tab="overview" type="button" role="tab">Overview</button>
-          <button class="scale-tab" data-scale-tab="worlds" type="button" role="tab" disabled>Worlds <span>stage 2</span></button>
+          <button class="scale-tab" data-scale-tab="worlds" type="button" role="tab">Worlds</button>
           <button class="scale-tab" data-scale-tab="region" type="button" role="tab" disabled>Region <span>stage 4</span></button>
         </nav>
 
@@ -390,7 +413,11 @@
 
             <section class="scale-card">
               <h2>Forecast</h2>
-              <p class="scale-note">Forecast arrives in stage 2. The cycle runner and summary are live now.</p>
+              <div class="scale-actions">
+                <button id="scale-forecast-day" type="button">1 day</button>
+                <button id="scale-forecast-week" type="button">1 week</button>
+              </div>
+              <div id="scale-forecast"></div>
               <h2 style="margin-top:18px">Budget</h2>
               <p class="scale-note">No full <code>Game</code> is loaded in this view. Each click advances at most one bounded chunk.</p>
             </section>
@@ -399,8 +426,17 @@
 
         <div id="scale-panel-worlds" class="scale-panel hidden">
           <section class="scale-card">
-            <h2>Worlds</h2>
-            <p class="scale-note">Compact world switching arrives in stage 2.</p>
+            <div class="scale-cycle-head">
+              <div>
+                <h2>Saved worlds</h2>
+                <p class="scale-note">Switch worlds without loading a full Game into the browser.</p>
+              </div>
+              <div class="scale-actions">
+                <button id="scale-worlds-refresh" type="button">Refresh</button>
+                <button id="scale-new-seed" class="primary" type="button">New seed</button>
+              </div>
+            </div>
+            <div id="scale-worlds" class="scale-worlds"></div>
           </section>
         </div>
 

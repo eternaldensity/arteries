@@ -1,9 +1,10 @@
 # Scale overlay design
 
-**Status:** stage 1 implemented. The external UI has the full-map, route, tech,
-production, and inspector panels, plus the compact shell and chunk runner
-described here. Forecast, compact world switching, resume hardening, and the
-region/planet tools remain staged work.
+**Status:** stages 1-3 implemented. The external UI has the full-map, route,
+tech, production, and inspector panels, plus the compact shell, chunk runner,
+summary/overview tiles, forecast, compact world switching, and server-owned
+cursor resume. The region/planet tools remain stage 4; the strategic visuals
+are stage 5.
 
 ## Context
 
@@ -217,14 +218,17 @@ reloaded mid-market or mid-finish, `load_compact` returns the phase but not the
 cursor. Restarting the page can replay the first page and apply production
 twice.
 
-Recommended fix before shipping the overlay:
+Implemented in stage 3:
 
-1. Add `settle_cursor` to `WorldRow` (storage v13).
-2. Write the cursor in `compact_edit_world` / `compact_chunk_page`.
-3. Add `cursor` to `ScaleSummary` and return it from `load_compact`.
-4. Treat the server cursor as authoritative; the client copy is display-only.
-5. Keep the phase/cursor inputs on `advance_scale` for compatibility, but
-   validate them against the server row.
+1. `settle_cursor` is on `WorldRow`, `NewWorldRow`, and `EditWorldRow`
+   (storage v13).
+2. `compact_edit_world` writes the cursor for market and finish pages; phase
+   transitions clear it for trade and commit.
+3. `ScaleSummary` carries `cursor`, and `load_compact` returns it.
+4. `advance_scale` reads the server row's phase/cursor and ignores stale client
+   values; the client copy is display-only.
+5. `world_edit_row` and `edit_world_draft` preserve the cursor across full-map
+   saves.
 
 Trade is a single route-set operation. If its response is lost, the next call
 observes the server phase and does not replay trade. Market and finish pages

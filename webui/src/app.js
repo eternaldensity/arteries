@@ -13,14 +13,13 @@ import {
 } from '../framework/scene.js';
 import { pickCell, pickScene } from '../framework/picking.js';
 import { createRenderer } from '../framework/renderer.js';
-import { createScale } from './scale.js';
+import { createScale, COMPACT_THRESHOLD } from './scale.js';
 
 const GOODS = [
   'Grain', 'Timber', 'Stone', 'Ore', 'Fiber', 'Tools', 'Cloth', 'Fish', 'Planks',
   'Steel', 'Clay', 'Coal', 'Bricks', 'Flour', 'Rope', 'Ship Parts', 'Machinery', 'Engines',
 ];
 const AUTO_BEND = 100;
-const COMPACT_THRESHOLD = 20;
 
 const el = {
   login: document.getElementById('login-form'),
@@ -494,6 +493,9 @@ async function refreshFullGame() {
       status: 'World refreshed after the compact cycle.',
       error: false,
     }));
+    el.login.classList.add('hidden');
+    el.app.classList.remove('hidden');
+    el.scaleOpen.classList.remove('hidden');
     render();
     void loadPanels(store.get().selected);
   } catch (error) {
@@ -856,7 +858,7 @@ async function startApp(csrf) {
     el.login.classList.add('hidden');
     el.app.classList.add('hidden');
     el.scaleOpen.classList.add('hidden');
-    scaleView.open(compact, { canExit: false });
+    await scaleView.open(compact);
     return;
   }
   const game = await active.call('load_game', []);

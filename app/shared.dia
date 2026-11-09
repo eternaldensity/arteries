@@ -91,6 +91,20 @@ export type ScaleSummary:
   towns: Int
   routes: Int
   phase: Int
+  cursor: Text = ""
+
+export type CompactOverview:
+  summary: ScaleSummary
+  tech_count: Int
+  tech_total: Int
+  era: Int
+  auto_upkeep: Bool
+  projects: Int
+  pop: Int
+  prosperity: Int
+  traffic: Int
+  max_research: Int
+  upkeep_due: Int
 
 export type FaceTile:
   face: Int
@@ -376,6 +390,7 @@ export type WorldSummary:
   tick: Int
   money: Int
   towns: Int
+  current: Bool
 
 export type BuildResult:
   world: World
@@ -1066,6 +1081,9 @@ export fn tech_state_count(state: Text) -> Int:
   let counts = for i in indices(len(state)):
     tech_popcount_hex(tech_hex_value(text_slice(state, i, 1)))
   total(counts)
+
+export fn tech_state_era(state: Text) -> Int:
+  max_int(1, max_tech_era(state))
 
 export fn tech_state_summary(state: Text) -> Text:
   int_text(tech_state_count(state)) + "/" + int_text(tech_row_count()) + " techs"
