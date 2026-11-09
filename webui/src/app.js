@@ -35,6 +35,8 @@ const el = {
   preview: document.getElementById('preview-info'),
   routes: document.getElementById('route-list'),
   inspector: document.getElementById('inspector'),
+  tech: document.getElementById('tech-info'),
+  production: document.getElementById('production-info'),
   start: document.getElementById('start-route'),
   reset: document.getElementById('reset-route'),
   origin: document.getElementById('origin-name'),
@@ -56,6 +58,9 @@ const store = createStore({
   plan: null,
   preview: null,
   surveySeq: 0,
+  inspect: null,
+  tech: null,
+  production: null,
   selected: '',
   selectedRoute: '',
   camera: fitCamera(),
@@ -232,41 +237,161 @@ function renderNetwork() {
     .join('');
 }
 
+function goodChips(values) {
+  return (values || [])
+    .map((amount, index) => {
+      if (!amount) return '';
+      return `<span class="good-chip">${escapeHtml(GOODS[index])} <b>${amount}</b></span>`;
+    })
+    .filter(Boolean)
+    .join('');
+}
+
 function renderInspector() {
   const state = store.get();
-  const world = worldOf(state);
-  const town = world?.towns.find((candidate) => candidate.id === state.selected);
-  const site = world?.sites.find((candidate) => candidate.id === state.selected);
-  if (town) {
-    const state = town.state || {};
-    const stock = (state.stock || [])
-      .map((amount, index) => (amount > 0 ? `${GOODS[index]} ${amount}` : ''))
-      .filter(Boolean)
-      .join(', ');
-    el.inspector.className = '';
+  const inspect = state.inspect;
+  if (!state.selected) {
+    el.inspector.className = 'muted';
+    el.inspector.textContent = 'Click a settlement or site.';
+    return;
+  }
+  if (!inspect || !inspect.ready) {
+    el.inspector.className = 'muted';
+    el.inspector.textContent = 'Loading marker…';
+    return;
+  }
+  el.inspector.className = '';
+  if (inspect.is_site) {
     el.inspector.innerHTML = `
-      <div class="row"><span>Settlement</span><span>${escapeHtml(town.name)}</span></div>
-      <div class="row"><span>Terrain</span><span>${escapeHtml(town.terrain)}</span></div>
-      <div class="row"><span>Population</span><span>${state.pop ?? 0}</span></div>
-      <div class="row"><span>Prosperity</span><span>${state.prosperity ?? 0}</span></div>
-      <div class="row"><span>Research</span><span>${state.research ?? 0}</span></div>
-      <div class="row"><span>Stock</span><span>${escapeHtml(stock || '—')}</span></div>
+      <div class="row"><span>Site</span><span>${escapeHtml(inspect.name)}</span></div>
+      <div class="row"><span>Status</span><span>${escapeHtml(inspect.status)}</span></div>
+      <div class="row"><span>Resource</span><span>${escapeHtml(inspect.resource)}</span></div>
+      <div class="row"><span>Richness</span><span>${inspect.richness}</span></div>
+      <div class="row"><span>Terrain</span><span>${escapeHtml(inspect.terrain)}</span></div>
+      <div class="small">${escapeHtml(inspect.insight)}</div>
     `;
     return;
   }
-  if (site) {
-    el.inspector.className = '';
-    el.inspector.innerHTML = `
-      <div class="row"><span>Site</span><span>${escapeHtml(site.name)}</span></div>
-      <div class="row"><span>Resource</span><span>${escapeHtml(site.resource)}</span></div>
-      <div class="row"><span>Richness</span><span>${site.richness}</span></div>
-      <div class="row"><span>Terrain</span><span>${escapeHtml(site.terrain)}</span></div>
-      <div class="row"><span>Status</span><span>${site.founded ? 'founded' : 'unclaimed'}</span></div>
-    `;
+  el.inspector.innerHTML = `
+    <div class="row"><span>Settlement</span><span>${escapeHtml(inspect.name)}</span></div>
+    <div class="row"><span>Terrain</span><span>${escapeHtml(inspect.terrain)}</span></div>
+    <div class="row"><span>Climate</span><span>${escapeHtml(inspect.climate)}</span></div>
+    <div class="row"><span>Population</span><span>${inspect.pop}</span></div>
+    <div class="row"><span>Prosperity</span><span>${inspect.prosperity}</span></div>
+    <div class="row"><span>Research</span><span>${inspect.research}</span></div>
+    <div class="row"><span>Status</span><span>${escapeHtml(inspect.status)}</span></div>
+    <div class="row"><span>Connected</span><span>${inspect.connected}</span></div>
+    <div class="small">${escapeHtml(inspect.insight)}</div>
+    <div class="small">${escapeHtml(inspect.shortages)}</div>
+    <div class="muted">Stock</div><div class="goods-grid">${goodChips(inspect.goods) || '<span class="muted">none</span>'}</div>
+    <div class="muted">Needs</div><div class="goods-grid">${goodChips(inspect.needs) || '<span class="muted">none</span>'}</div>
+    <div class="muted">Endowments</div><div class="goods-grid">${goodChips(inspect.endows) || '<span class="muted">none</span>'}</div>
+  `;
+}
+
+function effectLabel(entry) {
+  const labels = {
+    unlock_road: 'unlocks cart roads',
+    unlock_river: 'unlocks river barges',
+    unlock_rail: 'unlocks rail',
+    planks: 'plank output',
+    bricks: 'brick output',
+    steel: 'steel output',
+    cloth: 'cloth output',
+    flour: 'flour output',
+    rope: 'rope output',
+    tools: 'tool output',
+    ship: 'ship-part output',
+    machinery: 'machinery output',
+    engines: 'engine output',
+    research: 'research',
+    capacity: 'route capacity',
+    rail_capacity: 'rail capacity',
+    toll: 'tolls',
+    growth: 'growth',
+    food: 'food',
+    tools_machinery: 'tools and machinery',
+  };
+  const label = labels[entry.effect] || entry.effect;
+  if (entry.effect.startsWith('unlock_')) return label;
+  return `${label} +${entry.value}%`;
+}
+
+function renderTech() {
+  const panel = store.get().tech;
+  if (!panel) {
+    el.tech.className = 'muted';
+    el.tech.textContent = 'Loading technology…';
     return;
   }
-  el.inspector.className = 'muted';
-  el.inspector.textContent = 'Click a settlement or site.';
+  el.tech.className = '';
+  const view = panel.view;
+  const next = view.next < 0
+    ? 'All technologies discovered'
+    : `${view.name} · ${view.cost} research`;
+  const eras = new Map();
+  for (const entry of panel.entries) {
+    if (!eras.has(entry.era)) eras.set(entry.era, []);
+    eras.get(entry.era).push(entry);
+  }
+  let html = `
+    <div class="row"><span>Known</span><span>${view.count}/${view.total}</span></div>
+    <div class="row"><span>Era</span><span>${panel.era}</span></div>
+    <div class="row"><span>Best research</span><span>${panel.max_research}</span></div>
+    <div class="row"><span>Next</span><span>${escapeHtml(next)}</span></div>
+  `;
+  for (const era of [...eras.keys()].sort((a, b) => a - b)) {
+    html += `<div class="tech-era">Era ${era}</div>`;
+    for (const entry of eras.get(era)) {
+      const cls = entry.discovered ? 'discovered' : entry.ready ? 'ready' : 'locked';
+      const towns = entry.towns.length > 0 ? ` · ${escapeHtml(entry.towns.join(', '))}` : '';
+      const prereqs = entry.prereqs.length > 0
+        ? `needs ${escapeHtml(entry.prereqs.join(', '))}`
+        : 'no prerequisites';
+      html += `
+        <div class="tech-row ${cls}">
+          <div class="tech-name"><b>${escapeHtml(entry.name)}</b><span>${entry.cost}</span></div>
+          <div class="tech-meta"><b>${escapeHtml(effectLabel(entry))}</b> · ${escapeHtml(entry.gate_text)}</div>
+          <div class="tech-meta">${prereqs}${towns}</div>
+        </div>
+      `;
+    }
+  }
+  el.tech.innerHTML = html;
+}
+
+function renderProduction() {
+  const panel = store.get().production;
+  if (!panel) {
+    el.production.className = 'muted';
+    el.production.textContent = 'Loading production…';
+    return;
+  }
+  el.production.className = '';
+  const chains = panel.chains
+    .filter((chain) => !chain.recipe.startsWith('raw'))
+    .map((chain) => `<div class="prod-chain">${escapeHtml(chain.good)} · ${escapeHtml(chain.recipe)}</div>`)
+    .join('');
+  const towns = panel.towns
+    .map((town) => `
+      <details class="prod-town">
+        <summary>${escapeHtml(town.name)} <span>pop ${town.pop} · pros ${town.prosperity} · res ${town.research}</span></summary>
+        <div class="row"><span>Climate</span><span>${escapeHtml(town.climate)}</span></div>
+        <div class="row"><span>Status</span><span>${escapeHtml(town.status)}</span></div>
+        <div class="muted">Stock</div><div class="goods-grid">${goodChips(town.goods) || '<span class="muted">none</span>'}</div>
+        <div class="muted">Needs</div><div class="goods-grid">${goodChips(town.needs) || '<span class="muted">none</span>'}</div>
+        <div class="muted">Endowments</div><div class="goods-grid">${goodChips(town.endows) || '<span class="muted">none</span>'}</div>
+        <div class="small">${escapeHtml(town.insight)}</div>
+      </details>
+    `)
+    .join('');
+  el.production.innerHTML = `
+    <details class="prod-town">
+      <summary>Production chains <span>${panel.chains.length} goods</span></summary>
+      ${chains}
+    </details>
+    ${towns}
+  `;
 }
 
 function render() {
@@ -278,6 +403,8 @@ function render() {
     renderRoute();
     renderPreview();
     renderNetwork();
+    renderTech();
+    renderProduction();
     renderInspector();
     updateLabels();
     if (renderer) renderer.setScene(buildScene(store.get()));
@@ -296,6 +423,54 @@ function screenPoint(event) {
 
 function worldPoint(event) {
   return screenToWorld(store.get().camera, screenPoint(event));
+}
+
+async function refreshInspect(id) {
+  if (!rpc) return;
+  if (!id) {
+    store.update((state) => ({ ...state, inspect: null }));
+    renderInspector();
+    return;
+  }
+  try {
+    const inspect = await rpc.call('inspect_marker', [id]);
+    if (store.get().selected !== id) return;
+    store.update((state) => ({ ...state, inspect }));
+    renderInspector();
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+async function fetchTechPanel() {
+  let page = await rpc.call('tech_page', [0, 16]);
+  const first = page;
+  const entries = [...page.entries];
+  while (page.next < page.total) {
+    page = await rpc.call('tech_page', [page.next, 16]);
+    entries.push(...page.entries);
+  }
+  return { ...first, next: first.total, entries };
+}
+
+async function loadPanels(selectedId = store.get().selected) {
+  if (!rpc) return;
+  try {
+    const [inspect, tech, production] = await Promise.all([
+      selectedId ? rpc.call('inspect_marker', [selectedId]) : Promise.resolve(null),
+      fetchTechPanel(),
+      rpc.call('production_snapshot', []),
+    ]);
+    store.update((state) => ({
+      ...state,
+      tech,
+      production,
+      inspect: state.selected === selectedId ? inspect : state.inspect,
+    }));
+    render();
+  } catch (error) {
+    setStatus(error.message, true);
+  }
 }
 
 function selectedFromScene(point) {
@@ -383,6 +558,7 @@ async function pickMarker(marker) {
       error: false,
     }));
     render();
+    void refreshInspect(marker.id);
     return;
   }
   if (marker.id === state.from) {
@@ -398,6 +574,7 @@ async function pickMarker(marker) {
       error: false,
     }));
     render();
+    void refreshInspect(marker.id);
     return;
   }
   store.update((current) => ({
@@ -408,6 +585,7 @@ async function pickMarker(marker) {
     error: false,
   }));
   await refreshPlan();
+  void refreshInspect(marker.id);
 }
 
 function selectRoute(route) {
@@ -415,6 +593,7 @@ function selectRoute(route) {
     ...state,
     selected: '',
     selectedRoute: route.id,
+    inspect: null,
     status: `${route.a_name} → ${route.b_name} selected.`,
     error: false,
   }));
@@ -445,6 +624,7 @@ async function startRoute() {
         : {}),
     }));
     render();
+    void loadPanels(store.get().selected);
   } catch (error) {
     setStatus(error.message, true);
   }
@@ -468,6 +648,7 @@ async function advanceDay() {
       error: !game.last_ok,
     }));
     render();
+    void loadPanels(store.get().selected);
   } catch (error) {
     setStatus(error.message, true);
   } finally {
@@ -489,6 +670,7 @@ async function routeAction(routeId, action) {
       error: !game.last_ok,
     }));
     render();
+    void loadPanels(store.get().selected);
   } catch (error) {
     setStatus(error.message, true);
   }
@@ -658,6 +840,7 @@ async function startApp(csrf) {
   el.login.classList.add('hidden');
   el.app.classList.remove('hidden');
   render();
+  void loadPanels(game.sel?.selected || '');
 }
 
 el.login.addEventListener('submit', async (event) => {

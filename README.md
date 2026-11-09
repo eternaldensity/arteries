@@ -50,8 +50,10 @@ passes, fords, harbors, biome counts, validity, and a checksum.
 Diamond server. It uses a contract-driven RPC adapter, an explicit store, a
 declarative scene, pure picking, and a renderer interface with a WebGPU backend
 and a Canvas2D fallback. It currently covers the map, route desk, network list,
-inspector, and cycle control, and is the seed for moving the full-map UI off the
-Diamond browser component tree.
+inspector, technology catalog, production summaries, and cycle control, and is
+the seed for moving the full-map UI off the Diamond browser component tree. The
+server exposes narrow reads for marker inspection, paged technology, and
+production so the external UI does not need the Diamond browser runtime.
 
 ```sh
 ./webui/run.sh   # http://127.0.0.1:3010/

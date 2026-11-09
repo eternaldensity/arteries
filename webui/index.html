@@ -118,6 +118,41 @@
       .route-row .traffic { font-family: "SFMono-Regular", ui-monospace, monospace; font-size: 11px; color: var(--muted); }
       .preview-warn { color: #ffc2cc; }
       .preview-ok { color: #9fe3d9; }
+      .tech-era { margin: 8px 0 2px; color: var(--muted); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+      .tech-row {
+        margin: 4px 0;
+        padding: 5px 7px;
+        border-left: 3px solid #2a3a50;
+        border-radius: 5px;
+        background: rgba(8, 18, 31, .62);
+      }
+      .tech-row.discovered { border-left-color: var(--accent2); }
+      .tech-row.ready { border-left-color: var(--accent); }
+      .tech-row .tech-name { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+      .tech-row .tech-name span { color: var(--muted); font-family: "SFMono-Regular", ui-monospace, monospace; font-size: 10px; }
+      .tech-row .tech-meta { color: var(--muted); font-size: 10px; }
+      .tech-row .tech-meta b { color: #c7d7eb; font-weight: 500; }
+      .prod-chain { color: var(--muted); font-size: 11px; padding: 2px 0; }
+      .prod-town {
+        margin: 6px 0;
+        padding: 6px 7px;
+        border: 1px solid #1d3149;
+        border-radius: 7px;
+        background: rgba(8, 18, 31, .55);
+      }
+      .prod-town summary { cursor: pointer; font-size: 12px; }
+      .prod-town summary span { color: var(--muted); font-size: 10px; }
+      .goods-grid { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+      .good-chip {
+        padding: 2px 5px;
+        border: 1px solid #203651;
+        border-radius: 4px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .good-chip b { color: #d7e6fb; font-family: "SFMono-Regular", ui-monospace, monospace; }
+      .good-chip.short { border-color: #6a3040; color: #ffc2cc; }
+      .small { color: var(--muted); font-size: 11px; margin-top: 6px; }
     </style>
   </head>
   <body>
@@ -177,6 +212,16 @@
         <section class="side-card">
           <h2>Preview</h2>
           <div id="preview-info" class="muted">Survey a corridor to see capacity, upkeep, and trade.</div>
+        </section>
+
+        <section class="side-card">
+          <h2>Technology</h2>
+          <div id="tech-info" class="muted">Loading technology…</div>
+        </section>
+
+        <section class="side-card">
+          <h2>Production</h2>
+          <div id="production-info" class="muted">Loading production…</div>
         </section>
 
         <section class="side-card">

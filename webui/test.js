@@ -134,6 +134,29 @@ function chooseFreeCells(markers, count) {
   assert(world.towns.length >= 2, 'the fixture needs at least two settlements');
   const fromTown = world.towns[0];
   const toTown = world.towns[1];
+
+  // 0. The narrow read RPCs populate the tech, production, and inspector panels.
+  await page.waitForFunction(
+    () => {
+      const current = window.__webui.getState();
+      return current.tech && current.production && current.tech.entries.length > 30;
+    },
+    undefined,
+    { timeout: 15000 }
+  );
+  const panels = await state(page);
+  assert(panels.tech.entries.length === panels.tech.view.total, 'tech entries disagree with the summary');
+  assert(panels.tech.entries.some((entry) => entry.name === 'Roads'), 'tech catalog is missing Roads');
+  assert(panels.production.towns.length === world.towns.length, 'production panel missed settlements');
+  assert(panels.production.goods.length === 18, 'production panel missed the good catalog');
+  await page.waitForFunction(
+    () => document.querySelector('#tech-info').textContent.includes('Crop rotation'),
+    undefined,
+    { timeout: 10000 }
+  );
+  const productionText = await page.textContent('#production-info');
+  assert(productionText.includes(fromTown.name), 'production panel missed the origin town');
+  assert(productionText.includes('Grain'), 'production panel missed the good list');
   const markers = [
     ...world.towns.map((town) => ({ x: town.x, y: town.y })),
     ...world.sites.filter((site) => !site.founded).map((site) => ({ x: site.x, y: site.y })),
@@ -175,6 +198,15 @@ function chooseFreeCells(markers, count) {
   const fromPoint = clientPoint(rect, fromTown.x, fromTown.y);
   await page.mouse.click(fromPoint.x, fromPoint.y);
   await waitForState(page, (current) => current.from === fromTown.id, 'origin selection');
+  await page.waitForFunction(
+    () => document.querySelector('#inspector').textContent.includes('Climate'),
+    undefined,
+    { timeout: 10000 }
+  );
+  assert(
+    (await page.textContent('#inspector')).includes(fromTown.name),
+    'inspector did not load the selected settlement'
+  );
 
   // 3. Pick the destination; the app surveys the corridor.
   const toPoint = clientPoint(rect, toTown.x, toTown.y);
@@ -183,6 +215,11 @@ function chooseFreeCells(markers, count) {
     page,
     (current) => current.to === toTown.id && current.plan && current.plan.length > 0,
     'corridor survey'
+  );
+  await page.waitForFunction(
+    (name) => document.querySelector('#inspector').textContent.includes(name),
+    toTown.name,
+    { timeout: 10000 }
   );
   assert(surveyed.from === fromTown.id, 'origin changed while picking the destination');
   assert(surveyed.preview && surveyed.preview.capacity > 0, 'the survey preview did not load');
@@ -254,6 +291,8 @@ function chooseFreeCells(markers, count) {
     lengthAfterDrag: dragged.plan.length,
     capacity: dragged.preview.capacity,
     upkeep: dragged.preview.upkeep,
+    techEntries: panels.tech.entries.length,
+    productionTowns: panels.production.towns.length,
     tickBefore,
     tickAfter: advanced.game.world.tick,
   };

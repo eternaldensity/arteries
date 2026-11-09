@@ -235,6 +235,13 @@ The browser receives `world.tech` (the union) and derives the header count with
 a nibble popcount, so every World copy stays small. Per-town tech and exposure
 stay in the town rows and are not part of the full-map `Game` payload.
 
+The external UI reads the catalog through `tech_page(start, count)`, which caps
+each response at 16 entries so the managed-value evaluation budget is respected.
+Each entry carries prerequisites, material gate text, effect, description, the
+union discovery flag, and the settlements that actually know it. Production
+uses `production_snapshot()`, which reuses `InspectView` for every town, and
+marker inspection uses `inspect_marker(id)`.
+
 ## Why this fits Arteries
 
 - The tech tree is a **DAG of material combinations**, not a linear unlock list.

@@ -590,6 +590,15 @@ export type InspectView:
   needs: List<Int>
   endows: List<Int>
 
+export type ProductionChain:
+  good: Text
+  recipe: Text
+
+export type ProductionPanel:
+  goods: List<Text>
+  chains: List<ProductionChain>
+  towns: List<InspectView>
+
 export type Game:
   world: World
   sel: Selection
@@ -953,6 +962,30 @@ export type TechView:
   river: Bool
   rail: Bool
 
+export type TechEntry:
+  id: Int
+  name: Text
+  era: Int
+  cost: Int
+  prereqs: List<Text>
+  gate: Text
+  gate_text: Text
+  effect: Text
+  value: Int
+  description: Text
+  discovered: Bool
+  towns: List<Text>
+  ready: Bool
+
+export type TechPage:
+  view: TechView
+  era: Int
+  max_research: Int
+  start: Int
+  next: Int
+  total: Int
+  entries: List<TechEntry>
+
 type TechScan:
   count: Int
   ready: Int
@@ -1089,6 +1122,30 @@ export fn tech_gate_progress_text(gate: Text, stock: List<Int>) -> Text:
   match len(flat) == 0:
     true => "ready"
     false => join_text(flat, ", ")
+
+fn tech_prereq_names_from(text: Text, start: Int, acc: List<Text>) -> List<Text>:
+  match start >= len(text):
+    true => acc
+    false =>
+      let end = tech_comma_at(text, start)
+      match end > start:
+        true => tech_prereq_names_from(text, end + 1, list_append(acc, tech_name_at(int_of(text_slice(text, start, end - start)))))
+        false => tech_prereq_names_from(text, end + 1, acc)
+
+export fn tech_prereq_names_at(i: Int) -> List<Text>:
+  tech_prereq_names_from(tech_prereqs_at(i), 0, [])
+
+export fn tech_entry_with_towns(state: Text, id: Int, towns: List<Text>) -> TechEntry:
+  let row = tech_row_at(id)
+  let gate = tech_gate_row(row)
+  TechEntry(id: tech_id_row(row), name: tech_name_row(row), era: tech_era_row(row), cost: tech_cost_row(row), prereqs: tech_prereq_names_at(id), gate: gate, gate_text: tech_gate_text(gate), effect: tech_effect_row(row), value: tech_value_row(row), description: tech_description_row(row), discovered: tech_has(state, id), towns: towns, ready: tech_prereqs_ok(state, id))
+
+export fn tech_entry_at(state: Text, id: Int) -> TechEntry:
+  tech_entry_with_towns(state, id, [])
+
+export fn tech_entries_range(state: Text, start: Int, count: Int) -> List<TechEntry>:
+  for i in indices(count):
+    tech_entry_at(state, start + i)
 
 fn best_research_index(towns: List<Town>, i: Int, best: Int, best_research: Int) -> Int:
   match i >= len(towns):
@@ -3066,6 +3123,15 @@ export fn good_recipe_text(g: Good) -> Text:
     Machinery => "made from Steel + Tools"
     Engines => "made from Steel + Machinery + Tools"
     _ => "raw resource"
+
+export fn production_view(world: World) -> ProductionPanel:
+  let chains = for g in goods():
+    ProductionChain(good: good_name(g), recipe: good_recipe_text(g))
+  let towns = for t in world.towns:
+    inspect_view(world, t.id)
+  let goods_names = for g in goods():
+    good_name(g)
+  ProductionPanel(goods: goods_names, chains: chains, towns: towns)
 
 export fn inspect_good_title(iv: InspectView, g: Good) -> Text:
   good_name(g) + ": " + int_text(inspect_stock(iv, g)) + " stock · endowment " + int_text(inspect_endow(iv, g))

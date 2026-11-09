@@ -57,7 +57,12 @@ path automatically.
 - drag waypoint handles, re-query `survey_waypoint_edit`, and show the returned
   plan plus `survey_preview` capacity, upkeep, trade, material, and warnings;
 - start construction through `start_route_via`;
-- inspect settlements and sites;
+- inspect settlements and sites with `inspect_marker`;
+- browse the technology catalog in bounded `tech_page` chunks, including
+  prerequisites, material gates, effects, and which settlements discovered each
+  tech;
+- browse production with `production_snapshot`: chains, per-town stock, needs,
+  endowments, shortages, and insights;
 - select a route, upgrade it or remove it, and advance one day through
   `run_cycle`.
 
@@ -97,12 +102,22 @@ either `webgpu` or `canvas2d` and prints the mode plus a route summary.
 
 ## Migration boundary
 
-This app currently covers the map, route desk, network list, and inspector. It
-is not yet a replacement for the whole Diamond browser component tree. The
-remaining full-map panels (tech tree, production, scale overlay, saves, world
-switcher, forecast, rules editor) can be added as ordinary modules on the same
-store/scene/RPC seams. Server-side inspection that currently depends on the
-Diamond selection object may need narrow read RPCs as those panels move.
+This app currently covers the map, route desk, network list, inspector, tech
+catalog, and production summaries. It is not yet a replacement for the whole
+Diamond browser component tree. The remaining full-map panels (scale overlay,
+saves, world switcher, forecast, rules editor) can be added as ordinary modules
+on the same store/scene/RPC seams.
+
+The server now exposes narrow reads for the panels that used to depend on the
+Diamond selection object:
+
+- `inspect_marker(id) -> InspectView`
+- `tech_page(start, count) -> TechPage` (at most 16 entries per page)
+- `production_snapshot() -> ProductionPanel`
+
+`tech_page` is deliberately paged: a full 33-entry catalog in one response
+exceeds the managed-value evaluation budget, while 16-entry pages stay well
+inside it.
 
 ## Not production yet
 

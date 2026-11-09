@@ -1992,6 +1992,54 @@ export fn cancel_project(id: Text) -> Result<Game, DataError>:
 export fn terrain_region(seed: Int, u0: Int, v0: Int, w: Int, h: Int) -> Result<Text, DataError>:
   host.compute<Text>("arteries", "terrain_region", seed, 1, 0, u0, v0, w, h)
 
+fn tech_owner_names(rows: List<TownRow>, id: Int, i: Int, acc: List<Text>) -> List<Text>:
+  match list_get(rows, i):
+    None => acc
+    Some(row) => match tech_has(row.tech, id):
+      true => tech_owner_names(rows, id, i + 1, list_append(acc, row.name))
+      false => tech_owner_names(rows, id, i + 1, acc)
+
+# Narrow read for the external UI: a bounded page of the catalog, the union
+# summary, and which settlements actually discovered each technology. The page
+# cap keeps the evaluation inside the managed-value budget.
+export fn tech_page(start: Int, count: Int) -> Result<TechPage, DataError>:
+  let state = load_state()?
+  let rows = towns.page(world: state.id, order: "ord", after: "", limit: 100)?
+  let total = tech_row_count()
+  let from = match start < 0:
+    true => 0
+    false => match start > total:
+      true => total
+      false => start
+  let remaining = total - from
+  let wanted = match count < 0:
+    true => 0
+    false => match count > 16:
+      true => 16
+      false => count
+  let amount = match wanted > remaining:
+    true => remaining
+    false => wanted
+  let entries = for i in indices(amount):
+    tech_entry_with_towns(state.world.tech, from + i, tech_owner_names(rows, from + i, 0, []))
+  let next = match from + amount >= total:
+    true => total
+    false => from + amount
+  Ok(TechPage(view: tech_view(state.world.tech), era: world_era(state.world), max_research: max_town_research(state.world), start: from, next: next, total: total, entries: entries))
+
+# Narrow read for the production panel. It reuses InspectView so the external
+# UI sees the same status, shortages, needs, endowments, and insight text as
+# the inspector.
+export fn production_snapshot() -> Result<ProductionPanel, DataError>:
+  let state = load_state()?
+  Ok(production_view(state.world))
+
+# Narrow read for marker inspection, replacing the selection object that only
+# the Diamond browser runtime currently knows how to build.
+export fn inspect_marker(id: Text) -> Result<InspectView, DataError>:
+  let state = load_state()?
+  Ok(inspect_view(state.world, id))
+
 # Replace one link's whole flow policy (allow flags and per-good surcharges).
 # The desk sends complete lists so a stale browser copy cannot partially merge.
 export fn set_route_rules(route: Text, allow: List<Int>, fees: List<Int>) -> Result<Game, DataError>:
