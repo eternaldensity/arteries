@@ -14,6 +14,7 @@ type RouteId = Id<"route">
 type ProjectId = Id<"project">
 type LogId = Id<"log">
 type HistoryId = Id<"history">
+type SnapshotId = Id<"snapshot">
 
 # ---------------------------------------------------------------- records
 
@@ -327,6 +328,28 @@ type NewHistoryRow:
   seq: Int
   value: Int
 
+type SnapshotRow:
+  id: SnapshotId
+  owner: UserId @created_by_principal
+  world: WorldId
+  seq: Int
+  tick: Int
+  money: Int
+  pop: Int
+  prosperity: Int
+  traffic: Int
+  research: Int
+
+type NewSnapshotRow:
+  world: WorldId
+  seq: Int
+  tick: Int
+  money: Int
+  pop: Int
+  prosperity: Int
+  traffic: Int
+  research: Int
+
 type EditTownRow:
   ord: Int
   key: Text
@@ -451,6 +474,7 @@ resource Routes: RouteRow
 resource Projects: ProjectRow
 resource Logs: LogRow
 resource History: HistoryRow
+resource Snapshots: SnapshotRow
 
 policy Worlds:
   read(row, by principal):
@@ -519,6 +543,16 @@ policy Logs:
     principal.is_user(row.owner)
 
 policy History:
+  read(row, by principal):
+    principal.is_user(row.owner)
+  create(row, by principal):
+    principal.is_user(row.owner)
+  update(before, after, by principal):
+    before.owner == after.owner and principal.is_user(before.owner)
+  delete(row, by principal):
+    principal.is_user(row.owner)
+
+policy Snapshots:
   read(row, by principal):
     principal.is_user(row.owner)
   create(row, by principal):
@@ -722,6 +756,7 @@ fn create_world(game: Game, epoch: Int) -> Result<WorldId, DataError>:
   save_logs(game.world.log, created.id, epoch, log_base, 0)?
   let history_base = history.count(world: created.id, epoch: epoch)?
   save_history(game.world.history, created.id, epoch, history_base, 0)?
+  let _ = save_snapshot_from_world(created.id, game.world)?
   Ok(created.id)
 
 # Read the current world row without materialising the whole World. Compact
@@ -906,6 +941,16 @@ fn save_history(items: List<Int>, world: WorldId, epoch: Int, base: Int, i: Int)
     Some(value) =>
       let created = history.create(NewHistoryRow(world: world, epoch: epoch, seq: base + i, value: value))?
       save_history(items, world, epoch, base, i + 1)
+
+fn save_snapshot(world_id: WorldId, tick: Int, money: Int, pop: Int, prosperity: Int, traffic: Int, research: Int) -> Result<Bool, DataError>:
+  let seq = snapshots.count(world: world_id)?
+  let _ = snapshots.create(NewSnapshotRow(world: world_id, seq: seq, tick: tick, money: money, pop: pop, prosperity: prosperity, traffic: traffic, research: research))?
+  Ok(true)
+
+fn save_snapshot_from_world(world_id: WorldId, world: World) -> Result<Bool, DataError>:
+  let traffic_values = for r in world.routes:
+    r.traffic
+  save_snapshot(world_id, world.tick, world.money, total_pop(world), total_prosperity(world), total(traffic_values), max_town_research(world))
 
 fn save_children(world: WorldId, game: Game) -> Result<Bool, DataError>:
   let town_rows = towns.page(world: world, order: "ord", after: "", limit: 100)?
@@ -1268,6 +1313,80 @@ fn max_research_rows(rows: List<TownRow>, i: Int, best: Int) -> Int:
         false => best
       max_research_rows(rows, i + 1, next)
 
+fn any_congested_rows(rows: List<RouteRow>, i: Int) -> Bool:
+  match list_get(rows, i):
+    None => false
+    Some(row) =>
+      match row.capacity > 0 and row.traffic * 4 > row.capacity * 3:
+        true => true
+        false => any_congested_rows(rows, i + 1)
+
+fn any_hungry_rows(rows: List<TownRow>, i: Int) -> Bool:
+  match list_get(rows, i):
+    None => false
+    Some(row) =>
+      match food_ok(town_from_row(row)) == 0:
+        true => true
+        false => any_hungry_rows(rows, i + 1)
+
+fn alert_if(alerts: List<CompactAlert>, ok: Bool, kind: Text, tone: Text, text: Text) -> List<CompactAlert>:
+  match ok:
+    true => list_append(alerts, CompactAlert(kind: kind, tone: tone, text: text))
+    false => alerts
+
+export fn compact_network() -> Result<CompactNetwork, DataError>:
+  let rows = current_world_rows()?
+  match list_get(rows, 0):
+    None => Ok(CompactNetwork(towns: [], routes: []))
+    Some(row) =>
+      let town_rows = towns.page(world: row.id, order: "ord", after: "", limit: 100)?
+      let route_rows = routes.page(world: row.id, order: "ord", after: "", limit: 100)?
+      let town_values = for r in town_rows:
+        CompactTown(id: r.key, name: r.name, x: r.x, y: r.y, pop: r.pop, prosperity: r.prosperity, research: r.research)
+      let route_values = for r in route_rows:
+        CompactRoute(id: r.key, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: r.mode, traffic: r.traffic, capacity: r.capacity)
+      Ok(CompactNetwork(towns: town_values, routes: route_values))
+
+export fn compact_history(limit: Int) -> Result<List<CompactHistoryRow>, DataError>:
+  let rows = current_world_rows()?
+  match list_get(rows, 0):
+    None => Ok([])
+    Some(row) =>
+      let page_limit = match limit < 1:
+        true => 1
+        false => match limit > 24:
+          true => 24
+          false => limit
+      let history_rows = snapshots.page(world: row.id, order: "seq", descending: true, after: "", limit: page_limit)?
+      let ordered = list_reverse(history_rows)
+      let values = for r in ordered:
+        CompactHistoryRow(tick: r.tick, money: r.money, pop: r.pop, prosperity: r.prosperity, traffic: r.traffic, research: r.research)
+      Ok(values)
+
+export fn compact_alerts() -> Result<List<CompactAlert>, DataError>:
+  let rows = current_world_rows()?
+  match list_get(rows, 0):
+    None => Ok([])
+    Some(row) =>
+      let town_rows = towns.page(world: row.id, order: "ord", after: "", limit: 100)?
+      let route_rows = routes.page(world: row.id, order: "ord", after: "", limit: 100)?
+      let upkeeps = for r in route_rows:
+        r.upkeep
+      let upkeep = total(upkeeps)
+      let weeks_raw = row.tick / hours_per_week() - row.last_paid_tick / hours_per_week()
+      let weeks = match weeks_raw < 0:
+        true => 0
+        false => weeks_raw
+      let due = match row.auto_upkeep:
+        true => 0
+        false => upkeep * weeks
+      let alerts0 = alert_if([], row.money < 0, "treasury", "danger", "Treasury is negative. Upkeep is eating the network.")
+      let alerts1 = alert_if(alerts0, due > 0, "upkeep", "warn", "Upkeep due: " + int_text(due) + " crowns.")
+      let alerts2 = alert_if(alerts1, any_congested_rows(route_rows, 0), "congestion", "warn", "A route is past three quarters of its capacity.")
+      let alerts3 = alert_if(alerts2, any_hungry_rows(town_rows, 0), "food", "danger", "At least one settlement is out of food.")
+      let alerts4 = alert_if(alerts3, row.phase != 0, "phase", "info", "Cycle is mid-phase (" + int_text(row.phase) + ").")
+      Ok(alerts4)
+
 export fn compact_overview() -> Result<CompactOverview, DataError>:
   let summary = load_compact()?
   let rows = current_world_rows()?
@@ -1605,6 +1724,11 @@ fn finish_apply(row: WorldRow, max_research: Int, total_prosperity: Int) -> Resu
   save_history([total_prosperity], row.id, row.epoch, history_base, 0)?
   let upkeep = finish_upkeep(row)
   let updated = worlds.update(row.id, EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: row.tick, money: nth_int(upkeep, 0), tech_road: false, tech_river: false, tech_rail: false, tech: union, auto_upkeep: row.auto_upkeep, last_paid_tick: nth_int(upkeep, 1), upkeep_per_cycle: row.upkeep_per_cycle, phase: 0, epoch: row.epoch, settle_days: 0, settle_from: 0, settle_cursor: "", draft_from: row.draft_from, draft_to: row.draft_to, draft_via: row.draft_via))?
+  let pops = for t in town_rows:
+    t.pop
+  let traffics = for r in route_rows:
+    r.traffic
+  let snapshotted = save_snapshot(row.id, updated.tick, updated.money, total(pops), total_prosperity, total(traffics), max_research)?
   Ok([int_text(updated.tick), int_text(updated.money), int_text(max_research), int_text(total_prosperity)])
 
 export fn advance_finish_commit(max_research: Int, total_prosperity: Int) -> Result<List<Text>, DataError>:

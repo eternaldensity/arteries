@@ -106,6 +106,42 @@ export type CompactOverview:
   max_research: Int
   upkeep_due: Int
 
+export type CompactTown:
+  id: Text
+  name: Text
+  x: Int
+  y: Int
+  pop: Int
+  prosperity: Int
+  research: Int
+
+export type CompactRoute:
+  id: Text
+  a: Text
+  b: Text
+  a_name: Text
+  b_name: Text
+  mode: RouteMode
+  traffic: Int
+  capacity: Int
+
+export type CompactNetwork:
+  towns: List<CompactTown>
+  routes: List<CompactRoute>
+
+export type CompactAlert:
+  kind: Text
+  tone: Text
+  text: Text
+
+export type CompactHistoryRow:
+  tick: Int
+  money: Int
+  pop: Int
+  prosperity: Int
+  traffic: Int
+  research: Int
+
 export type FaceTile:
   face: Int
   water: Int

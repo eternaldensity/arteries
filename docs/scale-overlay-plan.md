@@ -1,10 +1,10 @@
 # Scale overlay design
 
-**Status:** stages 1-4 implemented. The external UI has the full-map, route,
+**Status:** stages 1-5 implemented. The external UI has the full-map, route,
 tech, production, and inspector panels, plus the compact shell, chunk runner,
 summary/overview tiles, forecast, compact world switching, server-owned cursor
-resume, and the region/planet/globe/terrain tools. The strategic network pulse,
-alerts, and history sparklines remain stage 5.
+resume, the region/planet/globe/terrain tools, and the compact network pulse,
+alert strip, and history sparklines.
 
 ## Context
 
@@ -302,6 +302,14 @@ CompactHistoryRow
 
 The overview/network reads cap rows (for example 100 towns and 100 routes per
 page) and return cursors if the target scale grows beyond that.
+
+### History snapshots
+
+`compact_history` reads the `Snapshots` resource (storage v14). A snapshot row
+records tick, crowns, population, prosperity, traffic, and max research. The
+initial world and each compact finish commit write a snapshot, so the sparklines
+survive reloads. Full-map cycles still use the older prosperity-only `History`
+stream; unifying the two histories is a later cleanup.
 
 ## Budget rules
 

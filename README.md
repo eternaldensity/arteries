@@ -249,13 +249,13 @@ treasury, and current day; selecting one makes it the current world and reloads
 it. The server stores the current-save pointer per account, so signing out and
 back in resumes the world you last selected.
 
-Worlds are stored in the relational schema (storage v13). Expanding the shared
+Worlds are stored in the relational schema (storage v14). Expanding the shared
 `Good` enum changes the site-resource constraint, and the tech state is a
 packed hex bitset, so saves written before this build need a fresh database or
 an explicit conversion. Version 10 added `world.tech`; version 11 added the
 town endowment/stock columns; version 12 adds per-town tech and exposure
-columns; version 13 adds the compact-cycle cursor. A fresh database starts with
-one world.
+columns; version 13 adds the compact-cycle cursor; version 14 adds compact
+snapshot rows for network/history reads. A fresh database starts with one world.
 
 ### Technology tree
 

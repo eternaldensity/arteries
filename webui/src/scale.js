@@ -106,6 +106,9 @@ export function createScale({ store, getRpc, onClose }) {
     planetSummary: document.getElementById('scale-planet-summary'),
     regionSummary: document.getElementById('scale-region-summary'),
     regionGrid: document.getElementById('scale-region-grid'),
+    alerts: document.getElementById('scale-alerts'),
+    network: document.getElementById('scale-network'),
+    sparklines: document.getElementById('scale-sparklines'),
     regionStatus: document.getElementById('scale-region-status'),
     regionPath: document.getElementById('scale-region-path'),
     regionTradeInfo: document.getElementById('scale-region-trade-info'),
@@ -169,6 +172,9 @@ export function createScale({ store, getRpc, onClose }) {
       worldgen: null,
       regionStatus: '',
       regionError: false,
+      network: null,
+      alerts: [],
+      history: [],
       phase: 0,
       cursor: '',
       pop: 0,
@@ -263,6 +269,77 @@ export function createScale({ store, getRpc, onClose }) {
         <span>day ${Math.floor(world.tick / 24) + 1} · ${world.towns} settlements · ${world.money} crowns</span>
       </button>
     `).join('');
+  }
+
+  function renderAlerts(state) {
+    if (!state.alerts.length) {
+      el.alerts.innerHTML = '<div class="scale-alert info">No alerts.</div>';
+      return;
+    }
+    el.alerts.innerHTML = state.alerts
+      .map((alert) => `<div class="scale-alert ${escapeHtml(alert.tone)}">${escapeHtml(alert.text)}</div>`)
+      .join('');
+  }
+
+  function renderNetworkPulse(state) {
+    const network = state.network;
+    if (!network || network.towns.length === 0) {
+      el.network.innerHTML = '<div class="scale-note">No compact network read yet.</div>';
+      return;
+    }
+    const byId = new Map(network.towns.map((town) => [town.id, town]));
+    const colors = {
+      Path: '#8fb3db',
+      Road: '#61c2b3',
+      River: '#6da0e5',
+      Rail: '#e0ac5c',
+    };
+    const lines = network.routes.map((route) => {
+      const a = byId.get(route.a);
+      const b = byId.get(route.b);
+      if (!a || !b) return '';
+      const ratio = route.capacity > 0 ? Math.min(1, route.traffic / route.capacity) : 0;
+      const width = 0.07 + ratio * 0.22;
+      return `<line x1="${a.x + 0.5}" y1="${a.y + 0.5}" x2="${b.x + 0.5}" y2="${b.y + 0.5}" stroke="${colors[route.mode] || colors.Path}" stroke-width="${width}" stroke-linecap="round"><title>${escapeHtml(route.a_name)} ↔ ${escapeHtml(route.b_name)} · ${route.traffic}/${route.capacity}</title></line>`;
+    }).join('');
+    const towns = network.towns.map((town) => {
+      const radius = 0.16 + Math.min(0.18, town.pop / 40);
+      return `<circle class="network-town" cx="${town.x + 0.5}" cy="${town.y + 0.5}" r="${radius}"><title>${escapeHtml(town.name)} · pop ${town.pop} · prosperity ${town.prosperity} · research ${town.research}</title></circle>`;
+    }).join('');
+    el.network.innerHTML = `<svg viewBox="0 0 10 6" role="img" aria-label="Compact network pulse">${lines}${towns}</svg>`;
+  }
+
+  function sparkline(values, color) {
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min || 1;
+    const points = values
+      .map((value, index) => {
+        const x = values.length === 1 ? 50 : (index / (values.length - 1)) * 100;
+        const y = 24 - ((value - min) / span) * 20;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(' ');
+    return `<svg class="scale-sparkline" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.8" vector-effect="non-scaling-stroke"></polyline></svg>`;
+  }
+
+  function renderSparklines(state) {
+    const history = state.history;
+    if (history.length < 2) {
+      el.sparklines.innerHTML = '<div class="scale-note">Run a cycle to build history.</div>';
+      return;
+    }
+    const metrics = [
+      ['Money', 'money', '#e0ac5c'],
+      ['Population', 'pop', '#69c3b3'],
+      ['Prosperity', 'prosperity', '#8fb3db'],
+      ['Traffic', 'traffic', '#d79c6a'],
+      ['Research', 'research', '#b89be0'],
+    ];
+    el.sparklines.innerHTML = metrics.map(([label, key, color]) => {
+      const values = history.map((row) => row[key]);
+      return `<div class="scale-spark-row"><span>${label}</span>${sparkline(values, color)}<b>${values[values.length - 1]}</b></div>`;
+    }).join('');
   }
 
   function renderRegion(state) {
@@ -373,6 +450,9 @@ export function createScale({ store, getRpc, onClose }) {
       ? state.log.map((line) => `<div>${escapeHtml(line)}</div>`).join('')
       : '<div class="muted">No chunks yet.</div>';
 
+    renderAlerts(state);
+    renderNetworkPulse(state);
+    renderSparklines(state);
     renderForecast(state);
     renderWorlds(state);
     renderRegion(state);
@@ -445,6 +525,21 @@ export function createScale({ store, getRpc, onClose }) {
     try {
       const worlds = await rpc.call('list_worlds', []);
       update({ worlds });
+    } catch (error) {
+      update({ status: error.message, error: true });
+    }
+  }
+
+  async function loadStrategic() {
+    const rpc = getRpc();
+    if (!rpc || !store.get().scale?.active) return;
+    try {
+      const [network, alerts, history] = await Promise.all([
+        rpc.call('compact_network', []),
+        rpc.call('compact_alerts', []),
+        rpc.call('compact_history', [12]),
+      ]);
+      update({ network, alerts, history });
     } catch (error) {
       update({ status: error.message, error: true });
     }
@@ -607,6 +702,7 @@ export function createScale({ store, getRpc, onClose }) {
     });
     draw();
     void loadWorlds();
+    void loadStrategic();
   }
 
   function close() {
@@ -677,6 +773,7 @@ export function createScale({ store, getRpc, onClose }) {
         if (finished) {
           void loadOverview();
           void loadWorlds();
+          void loadStrategic();
         }
       }
     }
@@ -699,6 +796,7 @@ export function createScale({ store, getRpc, onClose }) {
         resumeUnsafe: false,
       });
       void loadWorlds();
+      void loadStrategic();
     } catch (error) {
       update({ status: error.message, error: true });
     }
@@ -725,6 +823,7 @@ export function createScale({ store, getRpc, onClose }) {
         tab: 'worlds',
       });
       void loadWorlds();
+      void loadStrategic();
     } catch (error) {
       update({ status: error.message, error: true });
     }
@@ -751,6 +850,7 @@ export function createScale({ store, getRpc, onClose }) {
         tab: 'worlds',
       });
       void loadWorlds();
+      void loadStrategic();
     } catch (error) {
       update({ status: error.message, error: true });
     }
@@ -780,6 +880,7 @@ export function createScale({ store, getRpc, onClose }) {
     update({ tab: name });
     if (name === 'worlds') void loadWorlds();
     if (name === 'region') void loadRegionData();
+    if (name === 'overview') void loadStrategic();
   }
 
   el.step.addEventListener('click', () => void runSpan(24, 'daily', 1));

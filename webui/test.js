@@ -398,7 +398,25 @@ function chooseFreeCells(markers, count) {
 
   await page.click('[data-scale-tab="overview"]');
 
-  // 10. Compact overview, forecast, and world switching.
+  // 10. Compact network pulse, alerts, and history sparklines.
+  await page.waitForFunction(
+    () => {
+      const scale = window.__webui.getState().scale;
+      return scale.network && scale.history.length > 0;
+    },
+    undefined,
+    { timeout: 20000 }
+  );
+  const strategic = await state(page);
+  assert(
+    strategic.scale.network.towns.length === compactStart.scale.summary.towns,
+    'network pulse missed settlements'
+  );
+  assert(Array.isArray(strategic.scale.alerts), 'alerts did not load');
+  assert((await page.locator('#scale-network circle').count()) === strategic.scale.network.towns.length, 'network pulse missed town nodes');
+  assert((await page.locator('#scale-sparklines .scale-spark-row').count()) === 5, 'history sparklines are incomplete');
+
+  // 11. Compact overview, forecast, and world switching.
   await page.waitForFunction(
     () => window.__webui.getState().scale.overview,
     undefined,

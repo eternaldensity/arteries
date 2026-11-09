@@ -4,7 +4,7 @@ name = "ArteriesWeb"
 server = "server"
 browser = "ui"
 component = "Root"
-provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<CurrentWorlds>", "DbWrite<CurrentWorlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>", "Compute<arteries.encode_ints4>", "Compute<arteries.encode_link_rules>", "Compute<arteries.tech_effect_mask>", "Compute<arteries.tech_effect_masks>", "Compute<arteries.town_tech>", "Compute<arteries.region_trade>", "Compute<arteries.planet>", "Compute<arteries.planet_summary>", "Compute<arteries.face_neighbors>", "Compute<arteries.face_path>", "Compute<arteries.face_summaries>", "Compute<arteries.face_components>", "Compute<arteries.globe_raster>", "Compute<arteries.worldgen>", "Compute<arteries.worldgen_summary>", "Compute<arteries.pathfind_features>", "Compute<arteries.noise>", "Compute<arteries.route_cost_features>"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<CurrentWorlds>", "DbWrite<CurrentWorlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "DbRead<Snapshots>", "DbWrite<Snapshots>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>", "Compute<arteries.encode_ints4>", "Compute<arteries.encode_link_rules>", "Compute<arteries.tech_effect_mask>", "Compute<arteries.tech_effect_masks>", "Compute<arteries.town_tech>", "Compute<arteries.region_trade>", "Compute<arteries.planet>", "Compute<arteries.planet_summary>", "Compute<arteries.face_neighbors>", "Compute<arteries.face_path>", "Compute<arteries.face_summaries>", "Compute<arteries.face_components>", "Compute<arteries.globe_raster>", "Compute<arteries.worldgen>", "Compute<arteries.worldgen_summary>", "Compute<arteries.pathfind_features>", "Compute<arteries.noise>", "Compute<arteries.route_cost_features>"]
 styles = ["app.css"]
 
 [modules.tech_tables]
@@ -28,7 +28,7 @@ target = "shared"
 path = "server.dia"
 target = "server"
 imports = ["shared", "rt_tables"]
-provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<CurrentWorlds>", "DbWrite<CurrentWorlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>", "Compute<arteries.encode_ints4>", "Compute<arteries.encode_link_rules>", "Compute<arteries.tech_effect_mask>", "Compute<arteries.tech_effect_masks>", "Compute<arteries.town_tech>", "Compute<arteries.region_trade>", "Compute<arteries.planet>", "Compute<arteries.planet_summary>", "Compute<arteries.face_neighbors>", "Compute<arteries.face_path>", "Compute<arteries.face_summaries>", "Compute<arteries.face_components>", "Compute<arteries.globe_raster>", "Compute<arteries.worldgen>", "Compute<arteries.worldgen_summary>", "Compute<arteries.pathfind_features>", "Compute<arteries.noise>", "Compute<arteries.route_cost_features>"]
+provides = ["DbRead<Worlds>", "DbWrite<Worlds>", "DbRead<CurrentWorlds>", "DbWrite<CurrentWorlds>", "DbRead<Towns>", "DbWrite<Towns>", "DbRead<Sites>", "DbWrite<Sites>", "DbRead<Routes>", "DbWrite<Routes>", "DbRead<Projects>", "DbWrite<Projects>", "DbRead<Logs>", "DbWrite<Logs>", "DbRead<History>", "DbWrite<History>", "DbRead<Snapshots>", "DbWrite<Snapshots>", "Compute<arteries.terrain_region>", "Compute<arteries.pathfind>", "Compute<arteries.route_cost>", "Compute<arteries.market>", "Compute<arteries.finish>", "Compute<arteries.trade>", "Compute<arteries.encode_ints4>", "Compute<arteries.encode_link_rules>", "Compute<arteries.tech_effect_mask>", "Compute<arteries.tech_effect_masks>", "Compute<arteries.town_tech>", "Compute<arteries.region_trade>", "Compute<arteries.planet>", "Compute<arteries.planet_summary>", "Compute<arteries.face_neighbors>", "Compute<arteries.face_path>", "Compute<arteries.face_summaries>", "Compute<arteries.face_components>", "Compute<arteries.globe_raster>", "Compute<arteries.worldgen>", "Compute<arteries.worldgen_summary>", "Compute<arteries.pathfind_features>", "Compute<arteries.noise>", "Compute<arteries.route_cost_features>"]
 
 [modules.ui]
 path = "ui.dia"
@@ -48,6 +48,9 @@ load_compact = "server.load_compact"
 compact_overview = "server.compact_overview"
 switch_world_compact = "server.switch_world_compact"
 new_seed_compact = "server.new_seed_compact"
+compact_network = "server.compact_network"
+compact_history = "server.compact_history"
+compact_alerts = "server.compact_alerts"
 advance_scale = "server.advance_scale"
 planet_chunk = "server.planet_chunk"
 planet_summary = "server.planet_summary"
@@ -82,7 +85,7 @@ switch_world = "server.switch_world"
 
 [storage]
 profile = "relational-v1"
-version = 13
+version = 14
 
 [storage.resources.Worlds]
 scope = "id"
@@ -135,6 +138,14 @@ scope = "world"
 unique = [["world", "epoch", "seq"]]
 
 [storage.resources.History.references.world]
+resource = "Worlds"
+fields = { world = "id" }
+
+[storage.resources.Snapshots]
+scope = "world"
+unique = [["world", "seq"]]
+
+[storage.resources.Snapshots.references.world]
 resource = "Worlds"
 fields = { world = "id" }
 
