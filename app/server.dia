@@ -1363,6 +1363,36 @@ export fn compact_history(limit: Int) -> Result<List<CompactHistoryRow>, DataErr
         CompactHistoryRow(tick: r.tick, money: r.money, pop: r.pop, prosperity: r.prosperity, traffic: r.traffic, research: r.research)
       Ok(values)
 
+# Capture the current completed world as a rich history point. The full-map
+# finish path is already at the managed-value budget, so it cannot traverse the
+# World to build this row. The external UI calls this bounded read/write after a
+# full-map cycle and before it reads compact history.
+export fn compact_capture() -> Result<Bool, DataError>:
+  let rows = current_world_rows()?
+  match list_get(rows, 0):
+    None => Ok(false)
+    Some(row) =>
+      match row.phase != 0:
+        true => Ok(false)
+        false =>
+          let latest = snapshots.page(world: row.id, order: "seq", descending: true, after: "", limit: 1)?
+          let already = match list_get(latest, 0):
+            Some(last) => last.tick == row.tick and last.money == row.money
+            None => false
+          match already:
+            true => Ok(false)
+            false =>
+              let town_rows = towns.page(world: row.id, order: "ord", after: "", limit: 100)?
+              let route_rows = routes.page(world: row.id, order: "ord", after: "", limit: 100)?
+              let pops = for t in town_rows:
+                t.pop
+              let props = for t in town_rows:
+                t.prosperity
+              let traffics = for r in route_rows:
+                r.traffic
+              let _ = save_snapshot(row.id, row.tick, row.money, total(pops), total(props), total(traffics), max_research_rows(town_rows, 0, 0))?
+              Ok(true)
+
 export fn compact_alerts() -> Result<List<CompactAlert>, DataError>:
   let rows = current_world_rows()?
   match list_get(rows, 0):

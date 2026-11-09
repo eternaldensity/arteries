@@ -111,7 +111,9 @@ stop, shows a compact overview and forecast, switches worlds without loading a
 full Game, resumes from the server-owned cursor after a reload, includes the
 planet summary, 30-face region map, sea-lane/region-trade planner, orthographic
 globe views, and terrain summary, and renders the compact network pulse, alert
-strip, and money/population/prosperity/traffic/research sparklines.
+strip, and money/population/prosperity/traffic/research sparklines. Full-map
+cycles are captured through the bounded `compact_capture` RPC when the overlay
+opens or after an external full-map day.
 
 ## Migration boundary
 

@@ -534,6 +534,11 @@ export function createScale({ store, getRpc, onClose }) {
     const rpc = getRpc();
     if (!rpc || !store.get().scale?.active) return;
     try {
+      await rpc.call('compact_capture', []);
+    } catch {
+      // Capture is best-effort; the existing history still renders.
+    }
+    try {
       const [network, alerts, history] = await Promise.all([
         rpc.call('compact_network', []),
         rpc.call('compact_alerts', []),

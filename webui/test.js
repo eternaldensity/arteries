@@ -413,6 +413,10 @@ function chooseFreeCells(markers, count) {
     'network pulse missed settlements'
   );
   assert(Array.isArray(strategic.scale.alerts), 'alerts did not load');
+  assert(
+    strategic.scale.history.some((row) => row.tick === compactTick),
+    'full-map cycle snapshot is missing from compact history'
+  );
   assert((await page.locator('#scale-network circle').count()) === strategic.scale.network.towns.length, 'network pulse missed town nodes');
   assert((await page.locator('#scale-sparklines .scale-spark-row').count()) === 5, 'history sparklines are incomplete');
 

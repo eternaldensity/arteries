@@ -678,6 +678,7 @@ async function advanceDay() {
       error: !game.last_ok,
     }));
     render();
+    void rpc.call('compact_capture', []).catch(() => {});
     void loadPanels(store.get().selected);
   } catch (error) {
     setStatus(error.message, true);

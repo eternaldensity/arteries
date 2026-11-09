@@ -308,8 +308,14 @@ page) and return cursors if the target scale grows beyond that.
 `compact_history` reads the `Snapshots` resource (storage v14). A snapshot row
 records tick, crowns, population, prosperity, traffic, and max research. The
 initial world and each compact finish commit write a snapshot, so the sparklines
-survive reloads. Full-map cycles still use the older prosperity-only `History`
-stream; unifying the two histories is a later cleanup.
+survive reloads.
+
+The full-map finish path is already at the managed-value budget, so it cannot
+walk the world to build a rich snapshot. Instead, `compact_capture` writes one
+bounded snapshot from the stored town/route rows when the world is idle and its
+latest snapshot is stale. The external UI calls it after full-map cycles and
+when it opens the scale overlay. Cycles run through the Diamond full-map UI are
+captured the next time the external scale overlay loads history.
 
 ## Budget rules
 
