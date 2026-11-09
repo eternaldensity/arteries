@@ -1,9 +1,9 @@
 # Scale overlay design
 
-**Status:** planned. The external UI currently has the full-map, route, tech,
-production, and inspector panels; the scale overlay described here is the next
-major view. This document covers the intended feature set, data flow, server
-reads, and staged implementation.
+**Status:** stage 1 implemented. The external UI has the full-map, route, tech,
+production, and inspector panels, plus the compact shell and chunk runner
+described here. Forecast, compact world switching, resume hardening, and the
+region/planet tools remain staged work.
 
 ## Context
 

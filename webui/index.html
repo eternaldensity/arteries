@@ -153,6 +153,114 @@
       .good-chip b { color: #d7e6fb; font-family: "SFMono-Regular", ui-monospace, monospace; }
       .good-chip.short { border-color: #6a3040; color: #ffc2cc; }
       .small { color: var(--muted); font-size: 11px; margin-top: 6px; }
+
+      /* Compact scale overlay */
+      .scale-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        overflow: auto;
+        padding: 22px;
+        background:
+          radial-gradient(900px 500px at 10% -10%, rgba(94, 234, 212, .12), transparent 60%),
+          radial-gradient(800px 500px at 100% 0%, rgba(232, 180, 90, .08), transparent 55%),
+          var(--bg);
+      }
+      .scale-shell {
+        max-width: 1120px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .scale-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 18px;
+        padding: 18px 20px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(17, 34, 58, .95), rgba(8, 18, 31, .96));
+      }
+      .scale-header h1 { margin: 4px 0 4px; font-size: 24px; letter-spacing: .04em; }
+      .scale-header p { margin: 0; color: var(--muted); font-size: 12px; }
+      .scale-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+      .scale-kicker { color: var(--accent2); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; }
+      .scale-tiles {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+        gap: 8px;
+      }
+      .scale-tile {
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgba(17, 34, 58, .72);
+      }
+      .scale-tile span { display: block; color: var(--muted); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
+      .scale-tile strong { font-size: 20px; font-variant-numeric: tabular-nums; }
+      .scale-tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+      .scale-tab {
+        background: transparent;
+        border: 1px solid transparent;
+        color: var(--muted);
+        padding: 7px 12px;
+      }
+      .scale-tab.active { border-color: var(--line); color: var(--text); background: var(--panel2); }
+      .scale-tab span { color: var(--faint, #5f7190); font-size: 9px; margin-left: 4px; text-transform: uppercase; }
+      .scale-tab:disabled { opacity: .45; }
+      .scale-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr); gap: 14px; }
+      .scale-card {
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(17, 34, 58, .9), rgba(8, 18, 31, .95));
+      }
+      .scale-card h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+      .scale-phase { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+      .scale-phase-step {
+        padding: 3px 8px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .scale-phase-step.active { border-color: var(--accent); color: var(--accent); }
+      .scale-phase-step.done { border-color: rgba(105, 195, 179, .45); color: var(--accent2); }
+      .scale-phase-arrow { color: var(--faint, #5f7190); }
+      .scale-status { min-height: 20px; margin: 0 0 10px; color: #c7d7eb; font-size: 13px; }
+      .scale-status.error { color: #ffc2cc; }
+      .scale-progress {
+        height: 6px;
+        border-radius: 999px;
+        background: #08131f;
+        border: 1px solid #1d3149;
+        overflow: hidden;
+        margin-bottom: 8px;
+      }
+      .scale-progress > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width .2s ease; }
+      .scale-meta { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 10px; font-family: "SFMono-Regular", ui-monospace, monospace; }
+      .scale-actions { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
+      .scale-actions button { padding: 6px 9px; font-size: 12px; }
+      .scale-stats { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--muted); font-size: 11px; margin-bottom: 10px; }
+      .scale-stats strong { color: var(--text); font-variant-numeric: tabular-nums; }
+      .scale-log {
+        max-height: 150px;
+        overflow: auto;
+        padding: 8px;
+        border: 1px solid #1d3149;
+        border-radius: 8px;
+        background: #07111d;
+        color: var(--muted);
+        font-family: "SFMono-Regular", ui-monospace, monospace;
+        font-size: 10px;
+      }
+      .scale-note { color: var(--muted); font-size: 11px; }
+      @media (max-width: 780px) {
+        .scale-grid { grid-template-columns: 1fr; }
+        .scale-header { flex-direction: column; }
+      }
     </style>
   </head>
   <body>
@@ -161,6 +269,7 @@
         <h1>Arteries · external UI</h1>
         <div class="sub">contract-driven scene · WebGPU map layer · route desk</div>
       </div>
+      <button id="scale-open" class="hidden" type="button">Scale view</button>
       <form id="login-form">
         <input id="username" name="username" value="yria" autocomplete="username" aria-label="Account">
         <input id="password" name="password" type="password" placeholder="Password" autocomplete="current-password" aria-label="Password">
@@ -235,6 +344,74 @@
         </section>
       </aside>
     </main>
+
+    <section id="scale-overlay" class="scale-overlay hidden" aria-label="Compact frontier">
+      <div class="scale-shell">
+        <header class="scale-header">
+          <div>
+            <div class="scale-kicker">Scale mode · server-authoritative chunks</div>
+            <h1>Compact frontier</h1>
+            <p id="scale-seed">seed —</p>
+            <p id="scale-calendar">day — · tick —</p>
+          </div>
+          <div class="scale-header-actions">
+            <span id="scale-exit-note" class="badge">compact view</span>
+            <button id="scale-close" type="button">Back to map</button>
+          </div>
+        </header>
+
+        <div id="scale-tiles" class="scale-tiles"></div>
+
+        <nav class="scale-tabs" role="tablist" aria-label="Compact frontier views">
+          <button class="scale-tab active" data-scale-tab="overview" type="button" role="tab">Overview</button>
+          <button class="scale-tab" data-scale-tab="worlds" type="button" role="tab" disabled>Worlds <span>stage 2</span></button>
+          <button class="scale-tab" data-scale-tab="region" type="button" role="tab" disabled>Region <span>stage 4</span></button>
+        </nav>
+
+        <div id="scale-panel-overview" class="scale-panel">
+          <div class="scale-grid">
+            <section class="scale-card">
+              <h2>Cycle</h2>
+              <div id="scale-phase" class="scale-phase"></div>
+              <p id="scale-status" class="scale-status">Compact view ready.</p>
+              <div class="scale-progress"><div id="scale-progress-bar"></div></div>
+              <div class="scale-meta"><span id="scale-chunk-count">0 chunks</span><span id="scale-cursor"></span></div>
+              <div class="scale-actions">
+                <button id="scale-step" class="primary" type="button">Step</button>
+                <button id="scale-day" type="button">Run day</button>
+                <button id="scale-week" type="button">Run week</button>
+                <button id="scale-month" type="button">Run month</button>
+                <button id="scale-stop" type="button" disabled>Stop</button>
+                <button id="scale-refresh" type="button">Refresh</button>
+              </div>
+              <div id="scale-stats" class="scale-stats"></div>
+              <div id="scale-log" class="scale-log"></div>
+            </section>
+
+            <section class="scale-card">
+              <h2>Forecast</h2>
+              <p class="scale-note">Forecast arrives in stage 2. The cycle runner and summary are live now.</p>
+              <h2 style="margin-top:18px">Budget</h2>
+              <p class="scale-note">No full <code>Game</code> is loaded in this view. Each click advances at most one bounded chunk.</p>
+            </section>
+          </div>
+        </div>
+
+        <div id="scale-panel-worlds" class="scale-panel hidden">
+          <section class="scale-card">
+            <h2>Worlds</h2>
+            <p class="scale-note">Compact world switching arrives in stage 2.</p>
+          </section>
+        </div>
+
+        <div id="scale-panel-region" class="scale-panel hidden">
+          <section class="scale-card">
+            <h2>Region and planet</h2>
+            <p class="scale-note">Region, globe, planet, and terrain tools arrive in stage 4.</p>
+          </section>
+        </div>
+      </div>
+    </section>
 
     <script type="module" src="/src/app.js"></script>
   </body>

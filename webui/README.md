@@ -102,11 +102,13 @@ either `webgpu` or `canvas2d` and prints the mode plus a route summary.
 
 ## Scale overlay
 
-The planned compact overlay for large worlds is documented in
-[`../docs/scale-overlay-plan.md`](../docs/scale-overlay-plan.md). It keeps the
-full frontier out of the browser, runs market/trade/finish in bounded chunks,
-and keeps forecasts, worlds, planet, region, and globe tools in one strategic
-view.
+The compact overlay for large worlds is documented in
+[`../docs/scale-overlay-plan.md`](../docs/scale-overlay-plan.md). Stage 1 is
+live: it opens automatically for large or mid-cycle worlds, summarizes the
+compact frontier, runs market/trade/finish in bounded `advance_scale` chunks,
+supports step/day/week/month runs with a cooperative stop, and reloads the
+full map when leaving the overlay. Forecast, compact world switching, resume
+hardening, and the region/planet tools are the remaining stages.
 
 ## Migration boundary
 

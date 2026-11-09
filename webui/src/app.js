@@ -13,12 +13,14 @@ import {
 } from '../framework/scene.js';
 import { pickCell, pickScene } from '../framework/picking.js';
 import { createRenderer } from '../framework/renderer.js';
+import { createScale } from './scale.js';
 
 const GOODS = [
   'Grain', 'Timber', 'Stone', 'Ore', 'Fiber', 'Tools', 'Cloth', 'Fish', 'Planks',
   'Steel', 'Clay', 'Coal', 'Bricks', 'Flour', 'Rope', 'Ship Parts', 'Machinery', 'Engines',
 ];
 const AUTO_BEND = 100;
+const COMPACT_THRESHOLD = 20;
 
 const el = {
   login: document.getElementById('login-form'),
@@ -46,6 +48,7 @@ const el = {
   zoomIn: document.getElementById('zoom-in'),
   zoomOut: document.getElementById('zoom-out'),
   zoomFit: document.getElementById('zoom-fit'),
+  scaleOpen: document.getElementById('scale-open'),
 };
 
 const store = createStore({
@@ -69,12 +72,18 @@ const store = createStore({
   status: 'Sign in to load the frontier.',
   rendererMode: 'starting',
   error: false,
+  scale: { active: false },
 });
 
 let renderer = null;
 let rpc = null;
 let pending = null;
 let rendering = false;
+const scaleView = createScale({
+  store,
+  getRpc: () => rpc,
+  onClose: () => void refreshFullGame(),
+});
 
 const rendererPromise = createRenderer(el.canvas).then((created) => {
   renderer = created;
@@ -396,6 +405,7 @@ function renderProduction() {
 
 function render() {
   if (rendering) return;
+  if (store.get().scale?.active) return;
   rendering = true;
   try {
     renderStatus();
@@ -468,6 +478,24 @@ async function loadPanels(selectedId = store.get().selected) {
       inspect: state.selected === selectedId ? inspect : state.inspect,
     }));
     render();
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+async function refreshFullGame() {
+  if (!rpc) return;
+  try {
+    const game = await rpc.call('load_game', []);
+    store.update((state) => ({
+      ...state,
+      game,
+      selected: game.sel?.selected || '',
+      status: 'World refreshed after the compact cycle.',
+      error: false,
+    }));
+    render();
+    void loadPanels(store.get().selected);
   } catch (error) {
     setStatus(error.message, true);
   }
@@ -792,6 +820,7 @@ el.canvas.addEventListener('wheel', (event) => {
 
 el.canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 
+el.scaleOpen.addEventListener('click', () => void scaleView.enter());
 el.reset.addEventListener('click', resetRoute);
 el.start.addEventListener('click', () => void startRoute());
 el.advance.addEventListener('click', () => void advanceDay());
@@ -821,12 +850,20 @@ async function startApp(csrf) {
   await rendererPromise;
   const contract = await fetchContract();
   const active = createRpc({ contract, csrf });
+  const compact = await active.call('load_compact', []);
+  rpc = active;
+  if (compact.towns > COMPACT_THRESHOLD || compact.phase !== 0) {
+    el.login.classList.add('hidden');
+    el.app.classList.add('hidden');
+    el.scaleOpen.classList.add('hidden');
+    scaleView.open(compact, { canExit: false });
+    return;
+  }
   const game = await active.call('load_game', []);
   const terrainText = await active.call('terrain_region', [
     game.world.seed, 0, 0, MAP.cols, MAP.rows,
   ]);
   const terrain = terrainText.split(';').map((row) => row.split(',').map(Number));
-  rpc = active;
   store.update((state) => ({
     ...state,
     csrf,
@@ -839,6 +876,7 @@ async function startApp(csrf) {
   }));
   el.login.classList.add('hidden');
   el.app.classList.remove('hidden');
+  el.scaleOpen.classList.remove('hidden');
   render();
   void loadPanels(game.sel?.selected || '');
 }
@@ -868,6 +906,7 @@ el.login.addEventListener('submit', async (event) => {
 
 window.__webui = {
   store,
+  scale: scaleView,
   getState: () => store.get(),
   get scene() {
     return buildScene(store.get());

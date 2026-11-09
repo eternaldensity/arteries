@@ -279,6 +279,45 @@ function chooseFreeCells(markers, count) {
   );
   assert(advanced.game.last_ok, `cycle returned an error: ${advanced.status}`);
 
+  // 8. Compact scale overlay: one step, then a run-to-completion span, then a
+  // full-game reload when returning to the map.
+  await page.click('#scale-open');
+  await page.waitForSelector('#scale-overlay:not(.hidden)', { timeout: 10000 });
+  await waitForState(page, (current) => current.scale?.active, 'scale overlay');
+  const compactStart = await state(page);
+  assert(compactStart.scale.summary.towns === world.towns.length, 'compact summary missed settlements');
+  assert(compactStart.scale.summary.phase === 0, 'compact view did not start idle');
+  const compactTick = compactStart.scale.summary.tick;
+
+  await page.click('#scale-step');
+  const stepped = await waitForState(
+    page,
+    (current) => current.scale.chunkCount >= 1 && current.scale.summary.tick > compactTick,
+    'compact step'
+  );
+  assert(stepped.scale.active, 'scale overlay closed after one step');
+  assert((await page.textContent('#scale-log')).length > 0, 'scale chunk log is empty');
+
+  await page.click('#scale-day');
+  const compactDone = await waitForState(
+    page,
+    (current) => current.scale.phase === 0 && !current.scale.running && current.scale.chunkCount > 1,
+    'compact run to completion',
+    30000
+  );
+  assert(compactDone.scale.summary.tick > compactTick, 'compact cycle did not advance the tick');
+  assert(compactDone.scale.status.includes('complete'), 'compact cycle did not report completion');
+
+  const compactTickAfter = compactDone.scale.summary.tick;
+  await page.click('#scale-close');
+  const returned = await waitForState(
+    page,
+    (current) => !current.scale.active && current.game.world.tick >= compactTickAfter,
+    'return to full map',
+    15000
+  );
+  assert(returned.game.world.tick >= compactTickAfter, 'full map did not refresh after compact cycle');
+
   assert(errors.length === 0, 'browser errors: ' + errors.join('; '));
 
   const summary = {
@@ -295,8 +334,11 @@ function chooseFreeCells(markers, count) {
     productionTowns: panels.production.towns.length,
     tickBefore,
     tickAfter: advanced.game.world.tick,
+    compactTick,
+    compactTickAfter,
+    compactChunks: compactDone.scale.chunkCount,
   };
-  console.log('PASS: external UI exercised camera, picking, route edits, and a cycle');
+  console.log('PASS: external UI exercised map, route edits, cycle, and compact overlay');
   console.log(JSON.stringify(summary));
   await browser.close();
 })().catch((error) => {
