@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Arteries WebGPU framework spike</title>
+    <style>
+      :root {
+        --bg: #060d16;
+        --panel: #0c1726;
+        --panel2: #11223a;
+        --line: #27405f;
+        --text: #e8f0fb;
+        --muted: #8da3c1;
+        --accent: #e0ac5c;
+        --accent2: #69c3b3;
+        --danger: #e07a8a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at 12% 8%, #173252 0, var(--bg) 46%);
+        color: var(--text);
+        font: 14px/1.45 Inter, "Segoe UI", system-ui, sans-serif;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        padding: 14px 22px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(6, 13, 22, 0.86);
+        backdrop-filter: blur(10px);
+      }
+      header h1 { margin: 0; font-size: 16px; letter-spacing: .04em; }
+      header .sub { color: var(--muted); font-size: 12px; }
+      header form { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+      input {
+        background: #07111d;
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 7px 9px;
+        font: inherit;
+      }
+      button {
+        background: var(--panel2);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 7px 11px;
+        font: inherit;
+        cursor: pointer;
+      }
+      button.primary { background: var(--accent); color: #1a1206; border-color: var(--accent); font-weight: 650; }
+      button.danger { border-color: #6a3040; color: #ffc2cc; }
+      button:disabled { opacity: .45; cursor: default; }
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: 16px;
+        padding: 16px;
+        max-width: 1500px;
+        margin: 0 auto;
+      }
+      .map-card, .side-card {
+        background: linear-gradient(180deg, rgba(17, 34, 58, .95), rgba(8, 18, 31, .96));
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, .28);
+      }
+      .map-card { padding: 12px; position: relative; }
+      .map-wrap { position: relative; width: 100%; aspect-ratio: 10 / 6; border-radius: 8px; overflow: hidden; background: #071321; }
+      #map { width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+      #labels { position: absolute; inset: 0; pointer-events: none; }
+      .map-label {
+        position: absolute;
+        transform: translate(-50%, -135%);
+        padding: 2px 6px;
+        border-radius: 5px;
+        background: rgba(4, 10, 18, .72);
+        border: 1px solid rgba(39, 64, 95, .65);
+        color: #dce8f8;
+        font-size: 11px;
+        white-space: nowrap;
+        text-shadow: 0 1px 2px #000;
+      }
+      .map-label.site { color: #9fe3d9; }
+      .side { display: flex; flex-direction: column; gap: 12px; }
+      .side-card { padding: 12px; }
+      h2 { margin: 0 0 8px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+      .row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
+      .row span:last-child { font-family: "SFMono-Regular", ui-monospace, monospace; color: #d7e6fb; }
+      .muted { color: var(--muted); }
+      .status { min-height: 36px; padding: 8px 10px; border-radius: 8px; background: #08131f; border: 1px solid #1d3149; color: #c7d7eb; }
+      .status.error { border-color: #6a3040; color: #ffc2cc; }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+      .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+      .badge { display: inline-block; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+      .hidden { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Arteries · WebGPU framework spike</h1>
+        <div class="sub">declarative scene · GPU map layer · draggable waypoints</div>
+      </div>
+      <form id="login-form">
+        <input id="username" name="username" value="yria" autocomplete="username" aria-label="Account">
+        <input id="password" name="password" type="password" placeholder="Password" autocomplete="current-password" aria-label="Password">
+        <button class="primary" type="submit">Sign in</button>
+      </form>
+    </header>
+
+    <main id="app" class="hidden">
+      <section class="map-card">
+        <div class="map-wrap">
+          <canvas id="map"></canvas>
+          <div id="labels"></div>
+        </div>
+        <div class="hint">Click a settlement to set the origin, a second to set the destination, then click empty cells to add waypoints and drag the orange handles.</div>
+      </section>
+
+      <aside class="side">
+        <section class="side-card">
+          <h2>Status</h2>
+          <div id="status" class="status">Sign in to load the frontier.</div>
+          <div class="hint">Renderer: <span id="renderer-mode" class="badge">starting</span></div>
+        </section>
+
+        <section class="side-card">
+          <h2>World</h2>
+          <div id="world-info"></div>
+        </section>
+
+        <section class="side-card">
+          <h2>Route</h2>
+          <div id="route-info"></div>
+          <div class="actions">
+            <button id="start-route" class="primary" disabled>Start construction</button>
+            <button id="reset-route" class="danger">Reset route</button>
+          </div>
+        </section>
+
+        <section class="side-card">
+          <h2>Controls</h2>
+          <div class="row"><span>Origin</span><span id="origin-name">—</span></div>
+          <div class="row"><span>Destination</span><span id="destination-name">—</span></div>
+          <div class="row"><span>Waypoints</span><span id="waypoint-count">0</span></div>
+        </section>
+      </aside>
+    </main>
+
+    <script type="module" src="/src/app.js"></script>
+  </body>
+</html>
