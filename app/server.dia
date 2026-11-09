@@ -139,6 +139,8 @@ type TownRow:
   stock15: Int = 0
   stock16: Int = 0
   stock17: Int = 0
+  tech: Text = ""
+  exposure: Text = ""
 
 type NewTownRow:
   world: WorldId
@@ -187,6 +189,8 @@ type NewTownRow:
   stock15: Int
   stock16: Int
   stock17: Int
+  tech: Text = ""
+  exposure: Text = ""
 
 type SiteRow:
   id: SiteId
@@ -366,6 +370,8 @@ type EditTownRow:
   stock15: Int
   stock16: Int
   stock17: Int
+  tech: Text = ""
+  exposure: Text = ""
 
 type EditSiteRow:
   ord: Int
@@ -652,6 +658,7 @@ fn row_tech(row: WorldRow) -> Text:
 fn load_world_current(row: WorldRow) -> Result<Loaded, DataError>:
   let tech = row_tech(row)
   let town_rows = towns.page(world: row.id, order: "ord", after: "", limit: 100)?
+  let _ = seed_town_tech(town_rows, tech, 0)
   let site_rows = sites.page(world: row.id, order: "ord", after: "", limit: 100)?
   let route_rows = routes.page(world: row.id, order: "ord", after: "", limit: 100)?
   let project_rows = projects.page(world: row.id, order: "ord", after: "", limit: 100)?
@@ -779,12 +786,12 @@ fn clear_projects(rows: List<ProjectRow>, i: Int) -> Result<Bool, DataError>:
 fn new_town_row(t: Town, world: WorldId, ord: Int) -> NewTownRow:
   let e = t.endow
   let s = t.state.stock
-  NewTownRow(world: world, ord: ord, key: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, endow0: nth_int(e, 0), endow1: nth_int(e, 1), endow2: nth_int(e, 2), endow3: nth_int(e, 3), endow4: nth_int(e, 4), endow5: nth_int(e, 5), endow6: nth_int(e, 6), endow7: nth_int(e, 7), endow8: nth_int(e, 8), endow9: nth_int(e, 9), endow10: nth_int(e, 10), endow11: nth_int(e, 11), endow12: nth_int(e, 12), endow13: nth_int(e, 13), endow14: nth_int(e, 14), endow15: nth_int(e, 15), endow16: nth_int(e, 16), endow17: nth_int(e, 17), stock0: nth_int(s, 0), stock1: nth_int(s, 1), stock2: nth_int(s, 2), stock3: nth_int(s, 3), stock4: nth_int(s, 4), stock5: nth_int(s, 5), stock6: nth_int(s, 6), stock7: nth_int(s, 7), stock8: nth_int(s, 8), stock9: nth_int(s, 9), stock10: nth_int(s, 10), stock11: nth_int(s, 11), stock12: nth_int(s, 12), stock13: nth_int(s, 13), stock14: nth_int(s, 14), stock15: nth_int(s, 15), stock16: nth_int(s, 16), stock17: nth_int(s, 17))
+  NewTownRow(world: world, ord: ord, key: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, endow0: nth_int(e, 0), endow1: nth_int(e, 1), endow2: nth_int(e, 2), endow3: nth_int(e, 3), endow4: nth_int(e, 4), endow5: nth_int(e, 5), endow6: nth_int(e, 6), endow7: nth_int(e, 7), endow8: nth_int(e, 8), endow9: nth_int(e, 9), endow10: nth_int(e, 10), endow11: nth_int(e, 11), endow12: nth_int(e, 12), endow13: nth_int(e, 13), endow14: nth_int(e, 14), endow15: nth_int(e, 15), endow16: nth_int(e, 16), endow17: nth_int(e, 17), stock0: nth_int(s, 0), stock1: nth_int(s, 1), stock2: nth_int(s, 2), stock3: nth_int(s, 3), stock4: nth_int(s, 4), stock5: nth_int(s, 5), stock6: nth_int(s, 6), stock7: nth_int(s, 7), stock8: nth_int(s, 8), stock9: nth_int(s, 9), stock10: nth_int(s, 10), stock11: nth_int(s, 11), stock12: nth_int(s, 12), stock13: nth_int(s, 13), stock14: nth_int(s, 14), stock15: nth_int(s, 15), stock16: nth_int(s, 16), stock17: nth_int(s, 17), tech: "", exposure: "")
 
-fn edit_town_row(t: Town, ord: Int) -> EditTownRow:
+fn edit_town_row(t: Town, row: TownRow, ord: Int) -> EditTownRow:
   let e = t.endow
   let s = t.state.stock
-  EditTownRow(ord: ord, key: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, endow0: nth_int(e, 0), endow1: nth_int(e, 1), endow2: nth_int(e, 2), endow3: nth_int(e, 3), endow4: nth_int(e, 4), endow5: nth_int(e, 5), endow6: nth_int(e, 6), endow7: nth_int(e, 7), endow8: nth_int(e, 8), endow9: nth_int(e, 9), endow10: nth_int(e, 10), endow11: nth_int(e, 11), endow12: nth_int(e, 12), endow13: nth_int(e, 13), endow14: nth_int(e, 14), endow15: nth_int(e, 15), endow16: nth_int(e, 16), endow17: nth_int(e, 17), stock0: nth_int(s, 0), stock1: nth_int(s, 1), stock2: nth_int(s, 2), stock3: nth_int(s, 3), stock4: nth_int(s, 4), stock5: nth_int(s, 5), stock6: nth_int(s, 6), stock7: nth_int(s, 7), stock8: nth_int(s, 8), stock9: nth_int(s, 9), stock10: nth_int(s, 10), stock11: nth_int(s, 11), stock12: nth_int(s, 12), stock13: nth_int(s, 13), stock14: nth_int(s, 14), stock15: nth_int(s, 15), stock16: nth_int(s, 16), stock17: nth_int(s, 17))
+  EditTownRow(ord: ord, key: t.id, name: t.name, x: t.x, y: t.y, terrain: t.terrain, pop: t.state.pop, prosperity: t.state.prosperity, research: t.state.research, endow0: nth_int(e, 0), endow1: nth_int(e, 1), endow2: nth_int(e, 2), endow3: nth_int(e, 3), endow4: nth_int(e, 4), endow5: nth_int(e, 5), endow6: nth_int(e, 6), endow7: nth_int(e, 7), endow8: nth_int(e, 8), endow9: nth_int(e, 9), endow10: nth_int(e, 10), endow11: nth_int(e, 11), endow12: nth_int(e, 12), endow13: nth_int(e, 13), endow14: nth_int(e, 14), endow15: nth_int(e, 15), endow16: nth_int(e, 16), endow17: nth_int(e, 17), stock0: nth_int(s, 0), stock1: nth_int(s, 1), stock2: nth_int(s, 2), stock3: nth_int(s, 3), stock4: nth_int(s, 4), stock5: nth_int(s, 5), stock6: nth_int(s, 6), stock7: nth_int(s, 7), stock8: nth_int(s, 8), stock9: nth_int(s, 9), stock10: nth_int(s, 10), stock11: nth_int(s, 11), stock12: nth_int(s, 12), stock13: nth_int(s, 13), stock14: nth_int(s, 14), stock15: nth_int(s, 15), stock16: nth_int(s, 16), stock17: nth_int(s, 17), tech: row.tech, exposure: row.exposure)
 
 fn new_site_row(x: Site, world: WorldId, ord: Int) -> NewSiteRow:
   NewSiteRow(world: world, ord: ord, key: x.id, name: x.name, x: x.x, y: x.y, terrain: x.terrain, resource: x.resource, richness: x.richness, founded: x.founded)
@@ -817,7 +824,7 @@ fn save_towns(items: List<Town>, world: WorldId, existing: List<TownRow>, i: Int
     Some(t) =>
       match list_get(existing, i):
         Some(row) =>
-          let updated = towns.update(row.id, edit_town_row(t, i))?
+          let updated = towns.update(row.id, edit_town_row(t, row, i))?
           save_towns(items, world, existing, i + 1)
         None =>
           let created = towns.create(new_town_row(t, world, i))?
@@ -1007,7 +1014,7 @@ fn compact_town_edit(row: TownRow, values: List<Int>) -> EditTownRow:
   let endow17 = match has_endow:
     true => nth_int(values, 20)
     false => row.endow17
-  EditTownRow(ord: row.ord, key: row.key, name: row.name, x: row.x, y: row.y, terrain: row.terrain, pop: nth_int(values, 0), prosperity: nth_int(values, 1), research: nth_int(values, 2), endow0: endow0, endow1: endow1, endow2: endow2, endow3: endow3, endow4: endow4, endow5: endow5, endow6: endow6, endow7: endow7, endow8: endow8, endow9: endow9, endow10: endow10, endow11: endow11, endow12: endow12, endow13: endow13, endow14: endow14, endow15: endow15, endow16: endow16, endow17: endow17, stock0: nth_int(values, stock_base), stock1: nth_int(values, stock_base + 1), stock2: nth_int(values, stock_base + 2), stock3: nth_int(values, stock_base + 3), stock4: nth_int(values, stock_base + 4), stock5: nth_int(values, stock_base + 5), stock6: nth_int(values, stock_base + 6), stock7: nth_int(values, stock_base + 7), stock8: nth_int(values, stock_base + 8), stock9: nth_int(values, stock_base + 9), stock10: nth_int(values, stock_base + 10), stock11: nth_int(values, stock_base + 11), stock12: nth_int(values, stock_base + 12), stock13: nth_int(values, stock_base + 13), stock14: nth_int(values, stock_base + 14), stock15: nth_int(values, stock_base + 15), stock16: nth_int(values, stock_base + 16), stock17: nth_int(values, stock_base + 17))
+  EditTownRow(ord: row.ord, key: row.key, name: row.name, x: row.x, y: row.y, terrain: row.terrain, pop: nth_int(values, 0), prosperity: nth_int(values, 1), research: nth_int(values, 2), endow0: endow0, endow1: endow1, endow2: endow2, endow3: endow3, endow4: endow4, endow5: endow5, endow6: endow6, endow7: endow7, endow8: endow8, endow9: endow9, endow10: endow10, endow11: endow11, endow12: endow12, endow13: endow13, endow14: endow14, endow15: endow15, endow16: endow16, endow17: endow17, stock0: nth_int(values, stock_base), stock1: nth_int(values, stock_base + 1), stock2: nth_int(values, stock_base + 2), stock3: nth_int(values, stock_base + 3), stock4: nth_int(values, stock_base + 4), stock5: nth_int(values, stock_base + 5), stock6: nth_int(values, stock_base + 6), stock7: nth_int(values, stock_base + 7), stock8: nth_int(values, stock_base + 8), stock9: nth_int(values, stock_base + 9), stock10: nth_int(values, stock_base + 10), stock11: nth_int(values, stock_base + 11), stock12: nth_int(values, stock_base + 12), stock13: nth_int(values, stock_base + 13), stock14: nth_int(values, stock_base + 14), stock15: nth_int(values, stock_base + 15), stock16: nth_int(values, stock_base + 16), stock17: nth_int(values, stock_base + 17), tech: row.tech, exposure: row.exposure)
 
 fn compact_route_edit(row: RouteRow, values: List<Int>) -> EditRouteRow:
   EditRouteRow(ord: row.ord, key: row.key, a: row.a, b: row.b, a_name: row.a_name, b_name: row.b_name, mode: row.mode, bend: row.bend, fee: row.fee, traffic: nth_int(values, 0), capacity: row.capacity, upkeep: row.upkeep, waypoints: row.waypoints, a_ord: row.a_ord, b_ord: row.b_ord, rules: row.rules, pipeline: row.pipeline, flow: encode_flow(flow_from_result(values)))
@@ -1380,29 +1387,11 @@ export fn advance_finish_chunk(after: Text, limit: Int) -> Result<List<Text>, Da
             true => finish_chunk_page(row, after, page_limit)
             false => Ok(["", int_text(row.phase), "0", "0"])
 
-fn town_stock_values(row: TownRow) -> List<Int>:
-  [row.stock0, row.stock1, row.stock2, row.stock3, row.stock4, row.stock5, row.stock6, row.stock7, row.stock8, row.stock9, row.stock10, row.stock11, row.stock12, row.stock13, row.stock14, row.stock15, row.stock16, row.stock17]
-
-fn best_stock_scan(rows: List<TownRow>, max_research: Int, i: Int) -> List<Int>:
-  match list_get(rows, i):
-    None => []
-    Some(row) => match row.research == max_research:
-      true => town_stock_values(row)
-      false => best_stock_scan(rows, max_research, i + 1)
-
-fn best_stock_server(row: WorldRow, max_research: Int) -> Result<List<Int>, DataError>:
-  let rows = towns.page(world: row.id, order: "ord", after: "", limit: 100)?
-  Ok(best_stock_scan(rows, max_research, 0))
-
-fn finish_tech_messages(row: WorldRow, max_research: Int, stock: List<Int>) -> List<Text>:
-  match max_research <= 0:
+fn finish_tech_messages(row: WorldRow, union: Text) -> List<Text>:
+  let tech = row_tech(row)
+  match union == tech:
     true => []
-    false =>
-      let tech = row_tech(row)
-      let next = tech_advance_pass_stock(tech, max_research, stock)
-      match next == tech:
-        true => []
-        false => tech_discovery_messages(tech, next)
+    false => tech_discovery_messages(tech, union)
 
 
 fn finish_event_messages(row: WorldRow) -> List<Text>:
@@ -1420,9 +1409,9 @@ fn finish_event_messages(row: WorldRow) -> List<Text>:
     true => list_append(log2, "A caravan brings timber and stone to the frontier.")
     false => log2
 
-fn finish_messages(row: WorldRow, max_research: Int, stock: List<Int>) -> List<Text>:
+fn finish_messages(row: WorldRow, union: Text) -> List<Text>:
   let events = finish_event_messages(row)
-  let tech = finish_tech_messages(row, max_research, stock)
+  let tech = finish_tech_messages(row, union)
   append_messages(events, tech, 0)
 
 fn finish_upkeep(row: WorldRow) -> List<Int>:
@@ -1438,19 +1427,96 @@ fn finish_upkeep(row: WorldRow) -> List<Int>:
     false => row.last_paid_tick
   [money, paid]
 
-fn finish_apply(row: WorldRow, max_research: Int, total_prosperity: Int) -> Result<List<Text>, DataError>:
-  let stock = match max_research <= 0:
+fn edit_town_tech_row(row: TownRow, tech: Text, exposure: Text) -> EditTownRow:
+  EditTownRow(ord: row.ord, key: row.key, name: row.name, x: row.x, y: row.y, terrain: row.terrain, pop: row.pop, prosperity: row.prosperity, research: row.research, endow0: row.endow0, endow1: row.endow1, endow2: row.endow2, endow3: row.endow3, endow4: row.endow4, endow5: row.endow5, endow6: row.endow6, endow7: row.endow7, endow8: row.endow8, endow9: row.endow9, endow10: row.endow10, endow11: row.endow11, endow12: row.endow12, endow13: row.endow13, endow14: row.endow14, endow15: row.endow15, endow16: row.endow16, endow17: row.endow17, stock0: row.stock0, stock1: row.stock1, stock2: row.stock2, stock3: row.stock3, stock4: row.stock4, stock5: row.stock5, stock6: row.stock6, stock7: row.stock7, stock8: row.stock8, stock9: row.stock9, stock10: row.stock10, stock11: row.stock11, stock12: row.stock12, stock13: row.stock13, stock14: row.stock14, stock15: row.stock15, stock16: row.stock16, stock17: row.stock17, tech: tech, exposure: exposure)
+
+fn all_town_tech_empty(rows: List<TownRow>, i: Int) -> Bool:
+  match list_get(rows, i):
+    None => true
+    Some(row) => match row.tech == "":
+      true => all_town_tech_empty(rows, i + 1)
+      false => false
+
+fn seed_town_tech_rows(rows: List<TownRow>, tech: Text, i: Int) -> Result<Bool, DataError>:
+  match list_get(rows, i):
+    None => Ok(true)
+    Some(row) =>
+      let _ = towns.update(row.id, edit_town_tech_row(row, tech, ""))?
+      seed_town_tech_rows(rows, tech, i + 1)
+
+fn seed_town_tech(rows: List<TownRow>, tech: Text, i: Int) -> Result<Bool, DataError>:
+  match tech == "" or len(rows) == 0 or not all_town_tech_empty(rows, 0):
+    true => Ok(true)
+    false => seed_town_tech_rows(rows, tech, i)
+
+fn save_town_tech(rows: List<TownRow>, values: List<Text>, town_count: Int, i: Int) -> Result<Bool, DataError>:
+  match list_get(rows, i):
+    None => Ok(true)
+    Some(row) =>
+      let tech = nth_text(values, i)
+      let exposure = nth_text(values, town_count + i)
+      let _ = towns.update(row.id, edit_town_tech_row(row, tech, exposure))?
+      save_town_tech(rows, values, town_count, i + 1)
+
+fn town_tech_compute(town_values: List<List<Int>>, techs: List<Text>, exposures: List<Text>, links: List<List<Int>>, days: Int) -> Result<List<Text>, DataError>:
+  host.compute<List<Text>>("arteries", "town_tech", town_values, techs, exposures, links, tech_cost_values(), tech_prereq_values(), tech_gate_values(), days, 7)
+
+fn town_tech_apply(row: WorldRow, town_rows: List<TownRow>, route_rows: List<RouteRow>, days: Int) -> Result<List<Text>, DataError>:
+  let town_values = for t in town_rows:
+    town_state_row(t, row.seed)
+  let techs = for t in town_rows:
+    t.tech
+  let exposures = for t in town_rows:
+    t.exposure
+  let links = for r in route_rows:
+    [r.a_ord, r.b_ord]
+  town_tech_compute(town_values, techs, exposures, links, days)
+
+fn town_tech_apply_values(world: World, town_rows: List<TownRow>, route_rows: List<RouteRow>, days: Int) -> Result<List<Text>, DataError>:
+  let town_values = for t in world.towns:
+    trade_town_row(t, world.seed)
+  let techs = for t in town_rows:
+    t.tech
+  let exposures = for t in town_rows:
+    t.exposure
+  let links = for r in route_rows:
+    [r.a_ord, r.b_ord]
+  town_tech_compute(town_values, techs, exposures, links, days)
+
+fn town_tech_apply_game(world_id: WorldId, game: Game, days: Int) -> Result<Game, DataError>:
+  let world = game.world
+  let town_rows = towns.page(world: world_id, order: "ord", after: "", limit: 100)?
+  let route_rows = routes.page(world: world_id, order: "ord", after: "", limit: 100)?
+  let values = town_tech_apply_values(world, town_rows, route_rows, days)?
+  save_town_tech(town_rows, values, len(town_rows), 0)?
+  let union = match list_get(values, len(values) - 1):
+    Some(value) => value
+    None => world.tech
+  let msgs = match union == world.tech:
     true => []
-    false => best_stock_server(row, max_research)?
+    false => tech_discovery_messages(world.tech, union)
+  let log = append_messages(world.log, msgs, 0)
+  let updated = World(seed: world.seed, tick: world.tick, money: world.money, towns: world.towns, sites: world.sites, routes: world.routes, log: log, history: world.history, tech: union)
+  Ok(Game(world: updated, sel: game.sel, notice: game.notice, last_ok: game.last_ok, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect))
+
+fn finish_apply(row: WorldRow, max_research: Int, total_prosperity: Int) -> Result<List<Text>, DataError>:
+  let town_rows = towns.page(world: row.id, order: "ord", after: "", limit: 100)?
+  let route_rows = routes.page(world: row.id, order: "ord", after: "", limit: 100)?
+  let tech_values = match len(town_rows) == 0:
+    true => [row_tech(row)]
+    false => town_tech_apply(row, town_rows, route_rows, row.settle_days)?
+  let union = match list_get(tech_values, len(tech_values) - 1):
+    Some(value) => value
+    None => row_tech(row)
+  let _ = match len(town_rows) == 0:
+    true => Ok(true)
+    false => save_town_tech(town_rows, tech_values, len(town_rows), 0)
   let log_base = logs.count(world: row.id, epoch: row.epoch)?
-  save_logs(finish_messages(row, max_research, stock), row.id, row.epoch, log_base, 0)?
+  save_logs(finish_messages(row, union), row.id, row.epoch, log_base, 0)?
   let history_base = history.count(world: row.id, epoch: row.epoch)?
   save_history([total_prosperity], row.id, row.epoch, history_base, 0)?
   let upkeep = finish_upkeep(row)
-  let tech = match max_research <= 0:
-    true => row_tech(row)
-    false => tech_advance_pass_stock(row_tech(row), max_research, stock)
-  let updated = worlds.update(row.id, EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: row.tick, money: nth_int(upkeep, 0), tech_road: false, tech_river: false, tech_rail: false, tech: tech, auto_upkeep: row.auto_upkeep, last_paid_tick: nth_int(upkeep, 1), upkeep_per_cycle: row.upkeep_per_cycle, phase: 0, epoch: row.epoch, settle_days: 0, settle_from: 0, draft_from: row.draft_from, draft_to: row.draft_to, draft_via: row.draft_via))?
+  let updated = worlds.update(row.id, EditWorldRow(seed: row.seed, generation_version: row.generation_version, tick: row.tick, money: nth_int(upkeep, 0), tech_road: false, tech_river: false, tech_rail: false, tech: union, auto_upkeep: row.auto_upkeep, last_paid_tick: nth_int(upkeep, 1), upkeep_per_cycle: row.upkeep_per_cycle, phase: 0, epoch: row.epoch, settle_days: 0, settle_from: 0, draft_from: row.draft_from, draft_to: row.draft_to, draft_via: row.draft_via))?
   Ok([int_text(updated.tick), int_text(updated.money), int_text(max_research), int_text(total_prosperity)])
 
 export fn advance_finish_commit(max_research: Int, total_prosperity: Int) -> Result<List<Text>, DataError>:
@@ -1739,7 +1805,8 @@ export fn advance_finish() -> Result<Game, DataError>:
     false => attach_streams(state.id, state.epoch, state_game(state, "Advanced to " + calendar_text(current.world) + "."))
     true =>
       let game = game_finish_period(current, state.settle_days, state.settle_from)
-      save_game_window(game, 0, state.epoch, 0, 0)
+      let tech_game = town_tech_apply_game(state.id, game, state.settle_days)?
+      save_game_window(tech_game, 0, state.epoch, 0, 0)
 
 # Survey reads only need the seed, the town rows, and the site rows. Building a
 # compact World avoids materialising route groups, projects, logs, and history

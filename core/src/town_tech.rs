@@ -262,3 +262,155 @@ mod tests {
         assert!(towns.iter().all(|t| t.tech == (1_u64 << 33) - 1));
     }
 }
+
+/// Compact result of one per-settlement tech pass.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TownTechRows {
+    /// Packed tech state per settlement.
+    pub techs: Vec<String>,
+    /// Packed goods-exposure state per settlement.
+    pub exposures: Vec<String>,
+    /// Union of every settlement's tech state.
+    pub union: String,
+}
+
+/// Apply discovery, exposure, and diffusion to compact town rows.
+///
+/// `town_values` uses the existing market town row:
+/// `[pop, prosperity, research, 18 endowments, 18 stocks, climate]`.
+/// Catalog companion lists are supplied by the Diamond table so the tech data
+/// stays single-sourced.
+///
+/// # Errors
+/// Returns a message for malformed row widths, mismatched catalog lengths, or
+/// malformed prerequisite/gate text.
+#[allow(clippy::too_many_arguments)]
+pub fn advance_town_tech_rows(
+    town_values: &[Vec<i64>],
+    tech_states: &[String],
+    exposure_states: &[String],
+    route_rows: &[Vec<i64>],
+    costs: &[i64],
+    prereqs: &[String],
+    gates: &[String],
+    days: i64,
+    diffusion_period: i64,
+) -> Result<TownTechRows, String> {
+    if town_values.len() != tech_states.len() || town_values.len() != exposure_states.len() {
+        return Err("town and tech row counts differ".into());
+    }
+    if costs.len() != prereqs.len() || costs.len() != gates.len() {
+        return Err("catalog companion lists differ".into());
+    }
+    let catalog = catalog_from_lists(costs, prereqs, gates)?;
+    let mut towns = Vec::with_capacity(town_values.len());
+    for (index, row) in town_values.iter().enumerate() {
+        if row.len() != crate::tick::TOWN_ROW_LEN {
+            return Err("town row width".into());
+        }
+        let mut stock = [0_i64; GOOD_COUNT];
+        stock.copy_from_slice(&row[3 + GOOD_COUNT..3 + GOOD_COUNT * 2]);
+        towns.push(TownTech {
+            research: row[2],
+            stock,
+            tech: parse_hex_bits(&tech_states[index], catalog.len()),
+            exposure: parse_hex_bits(&exposure_states[index], GOOD_COUNT),
+        });
+    }
+    let routes: Vec<(usize, usize)> = route_rows
+        .iter()
+        .filter_map(|row| {
+            if row.len() < 2 || row[0] < 0 || row[1] < 0 {
+                return None;
+            }
+            Some((usize::try_from(row[0]).ok()?, usize::try_from(row[1]).ok()?))
+        })
+        .collect();
+    let summary = advance_town_tech(&mut towns, &routes, &catalog, days, diffusion_period);
+    let techs = towns
+        .iter()
+        .map(|town| encode_hex_bits(town.tech, catalog.len()))
+        .collect();
+    let exposures = towns
+        .iter()
+        .map(|town| encode_hex_bits(town.exposure, GOOD_COUNT))
+        .collect();
+    Ok(TownTechRows {
+        techs,
+        exposures,
+        union: encode_hex_bits(summary.union, catalog.len()),
+    })
+}
+
+fn catalog_from_lists(
+    costs: &[i64],
+    prereqs: &[String],
+    gates: &[String],
+) -> Result<Vec<TechRow>, String> {
+    let mut catalog = Vec::with_capacity(costs.len());
+    for (index, cost) in costs.iter().enumerate() {
+        let prereq_text = prereqs.get(index).map(String::as_str).unwrap_or("");
+        let mut prereq_ids = Vec::new();
+        for part in prereq_text.split(',') {
+            let part = part.trim();
+            if part.is_empty() {
+                continue;
+            }
+            let id = part
+                .parse::<usize>()
+                .map_err(|_| format!("bad prerequisite at {index}"))?;
+            if id >= costs.len() {
+                return Err(format!("prerequisite out of range at {index}"));
+            }
+            prereq_ids.push(id);
+        }
+        let gate_text = gates.get(index).map(String::as_str).unwrap_or("");
+        let mut gate = Vec::new();
+        for (good, byte) in gate_text.bytes().enumerate().take(GOOD_COUNT) {
+            if byte.is_ascii_digit() {
+                let amount = i64::from(byte - b'0');
+                if amount > 0 {
+                    gate.push((good, amount));
+                }
+            }
+        }
+        catalog.push(TechRow {
+            cost: *cost,
+            prereqs: prereq_ids,
+            gate,
+        });
+    }
+    Ok(catalog)
+}
+
+#[cfg(test)]
+mod row_tests {
+    use super::*;
+
+    fn row(research: i64, timber: i64) -> Vec<i64> {
+        let mut values = vec![0_i64; crate::tick::TOWN_ROW_LEN];
+        values[2] = research;
+        values[3 + GOOD_COUNT + 1] = timber;
+        values
+    }
+
+    #[test]
+    fn compact_rows_match_the_kernel() {
+        let result = advance_town_tech_rows(
+            &[row(25, 4), row(0, 0)],
+            &["".into(), "".into()],
+            &["".into(), "".into()],
+            &[vec![0, 1]],
+            &[25],
+            &["".into()],
+            &["040000000000000000".into()],
+            7,
+            7,
+        )
+        .expect("tech rows");
+        assert_eq!(result.techs, vec!["1".to_string(), "1".to_string()]);
+        assert_eq!(result.exposures[0], "20000");
+        assert_eq!(result.exposures[1], "00000");
+        assert_eq!(result.union, "1");
+    }
+}

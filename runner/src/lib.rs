@@ -6,6 +6,7 @@
 //! project that declares `[compute.arteries]` exports must be served through
 //! this binary instead.
 
+use arteries_core::town_tech::advance_town_tech_rows;
 use arteries_core::{
     encode_ints4, encode_link_rules, face_components, face_neighbors, face_path, face_summary, fbm,
     finish_towns, generate_faces, generate_world, globe_raster, market_with_effects, pathfind,
@@ -349,6 +350,64 @@ impl TechEffectMask {
 }
 
 impl Compute for TechEffectMask {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
+/// Pure-compute export `arteries.town_tech`.
+///
+/// Arguments: `(towns, techs, exposures, routes, costs, prereqs, gates,
+/// days, diffusion_period)`. Towns use the existing compact market row;
+/// techs/exposures are packed hex; routes are `[a, b]` ordinal pairs.
+///
+/// Reply: one packed tech per town, then one packed exposure per town, then
+/// the union tech state.
+pub struct TownTechKernel;
+
+impl TownTechKernel {
+    /// Validate arguments and run one per-settlement tech pass.
+    ///
+    /// # Errors
+    /// Returns [`ComputeError::InvalidInput`] for malformed rows or catalog
+    /// companion lists.
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 9 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let town_values = nested_int_list_arg(arguments, 0)?;
+        let techs = text_list_arg(arguments, 1)?;
+        let exposures = text_list_arg(arguments, 2)?;
+        let routes = nested_int_list_arg(arguments, 3)?;
+        let costs = int_list_arg(arguments, 4)?;
+        let prereqs = text_list_arg(arguments, 5)?;
+        let gates = text_list_arg(arguments, 6)?;
+        let days = int_arg(arguments, 7)?;
+        let period = int_arg(arguments, 8)?;
+        let result = advance_town_tech_rows(
+            &town_values,
+            &techs,
+            &exposures,
+            &routes,
+            &costs,
+            &prereqs,
+            &gates,
+            days,
+            period,
+        )
+        .map_err(|_| ComputeError::InvalidInput)?;
+        let mut output = result.techs;
+        output.extend(result.exposures);
+        output.push(result.union);
+        Ok(Json::Array(output.into_iter().map(Json::String).collect()))
+    }
+}
+
+impl Compute for TownTechKernel {
     fn call(
         &self,
         _context: &ComputeContext<'_>,
@@ -1326,6 +1385,23 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
     )?;
     grants.register_compute(
         "arteries",
+        "town_tech",
+        &[
+            "List<List<Int>>",
+            "List<Text>",
+            "List<Text>",
+            "List<List<Int>>",
+            "List<Int>",
+            "List<Text>",
+            "List<Text>",
+            "Int",
+            "Int",
+        ],
+        "List<Text>",
+        TownTechKernel,
+    )?;
+    grants.register_compute(
+        "arteries",
         "finish",
         &["Int", "Int", "Int", "Int", "Int", "List<List<Int>>"],
         "List<List<Int>>",
@@ -1430,4 +1506,30 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
         PathfindFeatures,
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn town_tech_kernel_accepts_the_wire_shape() {
+        let mut row = vec![json!("0"); 40];
+        row[2] = json!("25");
+        row[3 + GOOD_COUNT + 1] = json!("4");
+        let arguments = vec![
+            json!([row]),
+            json!([""]),
+            json!([""]),
+            json!([]),
+            json!(["25"]),
+            json!([""]),
+            json!(["040000000000000000"]),
+            json!("1"),
+            json!("7"),
+        ];
+        let result = TownTechKernel::evaluate(&arguments);
+        assert!(result.is_ok(), "{result:?}");
+    }
 }

@@ -219,19 +219,20 @@ exactly which missing good is blocking a branch.
 
 The catalog is `app/tech_tables.dia` (33 rows). Rows are ordered
 topologically and each row carries its goods gate as an 18-digit string in
-`goods()` order. `world.tech` is the authoritative packed hex bitset (four techs per nibble). Discovery uses the
-best-research settlement's stock, then a single pass over the catalog per
-settlement because catalog order is topological. The effect mask is decoded in
-the Rust `tech_effect_mask` kernel and passed to the `market` and `trade`
-kernels, which apply research, production, capacity, toll, food, and growth
-bonuses.
+`goods()` order. Each town row stores its own packed tech bitset and packed
+goods-exposure bitset. Discovery checks that town's research, prerequisites,
+and stock; diffusion moves one known technology per connected link per period.
+Catalog order is topological, so one pass per town unlocks a chain.
 
-The browser receives the same packed hex bitset (nine characters at full
-size) and derives the header count with a nibble popcount, so every World copy
-stays small. Mode unlocks are read from fixed catalog ids. Per-settlement tech
-ownership and diffusion remain future work; the current gate is deliberately a
-network-level approximation so the full-map UI stays inside Diamond's
-managed-value budget.
+Both the live and compact finish paths run the Rust `town_tech` kernel, which
+keeps the loops and row payload cheap. `world.tech` is the union of the town
+bitsets and feeds the `tech_effect_mask` kernel into the `market` and `trade`
+kernels. Effects and route gates are still union-level; per-town effects and
+endpoint-specific route gates are the next step.
+
+The browser receives `world.tech` (the union) and derives the header count with
+a nibble popcount, so every World copy stays small. Per-town tech and exposure
+stay in the town rows and are not part of the full-map `Game` payload.
 
 ## Why this fits Arteries
 

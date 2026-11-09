@@ -77,19 +77,18 @@ routes and panels, and keeping every handler inside one evaluation phase.
 3. If the full-map UI stays in Diamond for now, keep per-town tech out of the
    `Game` payload and fetch a selected settlement's knowledge panel on demand.
 
-## If we build it for real
+## Production follow-up
 
-- Add a `TownTech` table/resource with `world`, `ord`, `tech`, and `exposure`
-  (storage v12), rather than expanding the 18-good town row again.
-- Add a Rust `town_tech` compute export that takes compact town rows, route
-  pairs, and the catalog table, and returns per-town tech/exposure plus the
-  union.
-- Run discovery and diffusion in the existing finish/market phase. One pass
-  per settlement is enough because the catalog is topological.
-- Keep `world.tech` as the union for the header summary; use per-town bits only
-  for the selected settlement and route gating.
-- Budget-test at 4 towns/3 routes and 100 towns/50 routes, including the
-  knowledge-panel RPC and one full-map interaction.
+The backend now follows the spike:
+
+- town rows carry `tech` and `exposure` text columns (storage v12);
+- the `arteries.town_tech` export takes compact town rows, route pairs, and the
+  catalog companion lists, and returns per-town tech/exposure plus the union;
+- discovery and one-link diffusion run in both the live and compact finish
+  paths;
+- `world.tech` remains the union used by effects, route gates, and the header;
+- per-town effects and endpoint-specific route gates are still future work;
+- the full-map UI still receives only `world.tech`, not per-town bits.
 
 ## UI direction
 

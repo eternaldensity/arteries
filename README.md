@@ -230,24 +230,26 @@ treasury, and current day; selecting one makes it the current world and reloads
 it. The server stores the current-save pointer per account, so signing out and
 back in resumes the world you last selected.
 
-Worlds are stored in the relational schema (storage v11). Expanding the shared
-`Good` enum changes the site-resource constraint, and the tech state is now a
+Worlds are stored in the relational schema (storage v12). Expanding the shared
+`Good` enum changes the site-resource constraint, and the tech state is a
 packed hex bitset, so saves written before this build need a fresh database or
-an explicit conversion. Version 10 was additive and added `world.tech`;
-version 11 adds the new town endowment/stock columns. A fresh database starts
-with one world.
+an explicit conversion. Version 10 added `world.tech`; version 11 added the
+town endowment/stock columns; version 12 adds per-town tech and exposure
+columns. A fresh database starts with one world.
 
 ### Technology tree
 
 The catalog is data-driven in `app/tech_tables.dia` and now holds 33
 discoveries across five branches and four eras. Each row records its research
 cost, topological prerequisites, an 18-good material gate, and one effect
-(research, production, capacity, toll, food, growth, or a route unlock). The
-server evaluates discovery against the best-research settlement's stock and
-passes the resulting effect mask into the Rust market kernel, so research,
-production, and trade bonuses are part of the authoritative simulation. The
-full-map UI receives a compact tech state and mode bits rather than the full
-bitset.
+(research, production, capacity, toll, food, growth, or a route unlock). Every settlement owns a packed tech bitset and a packed goods-exposure bitset
+in its town row. Discovery checks that settlement's research, prerequisites,
+and stock. Diffusion copies one known technology per connected link per period.
+The Rust `town_tech` kernel runs both the live and compact finish paths. The
+world-level `world.tech` is the union of the towns and still feeds the effect
+mask into the market kernel; `world.tech` is also what the full-map UI shows.
+Effects and route gates are union-level for now; per-town effects and
+endpoint-specific route gates are the next step.
 
 See [`docs/tech-production-tree.md`](docs/tech-production-tree.md) and
 [`docs/tech-production-tree.svg`](docs/tech-production-tree.svg) for the
@@ -261,23 +263,23 @@ Technology is data-driven rather than a trio of booleans. The catalog lives in
 `app/tech_tables.dia` as compact field rows:
 
 ```text
-[id, name, era, cost, prerequisites, effect, description]
+[id, name, era, cost, prerequisites, goods_gate, effect, value, description]
 ```
 
 The catalog is split into chunks and exposed through `catalog_row_at`, so it can
-grow past one Diamond expression. A world stores its discoveries as a compact
-bitset `Text` (`world.tech`) indexed by catalog order; there is no schema change
-for each new tech. Discovery is generic: `tech_advance` repeatedly walks the
-catalog and unlocks every tech whose cost is met and whose prerequisites are
-already discovered. Catalog order is topological. Effects currently include
-`unlock_road`, `unlock_river`, and `unlock_rail`; route gating and construction
-speed ask the effect system instead of named flags.
+grow past one Diamond expression. Each town stores a packed hex bitset for
+discovered tech and another for goods exposure; `world.tech` is their union.
+Adding a tech is a catalog change rather than a schema change. Discovery is
+generic and topological; diffusion moves one tech per connected link per
+period. Effects include research, production, capacity, toll, food, growth, and
+the `unlock_road` / `unlock_river` / `unlock_rail` gates.
 
 Adding a tech is a data change: append a row, give it an effect and
 prerequisites, and the unlock, progress, era, summary, and route-gating code
-picks it up. The current implementation discovers techs automatically from the
-best town's research. Per-town research allocation and branching choices can be
-layered on the same catalog/state without changing storage again.
+picks it up. Discovery and diffusion are per settlement; the union is still the
+authoritative effect mask and UI summary. Per-town effects and
+endpoint-specific route gates can be layered on the same catalog/state without
+changing storage again.
 
 The current tree branches and meets production: **Roads** and **Carpentry** are
 independent era-2 openings, **River barges** requires both, **Metallurgy** opens

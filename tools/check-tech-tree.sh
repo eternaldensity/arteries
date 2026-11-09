@@ -14,9 +14,18 @@ import re
 import sys
 
 text = open(sys.argv[1], encoding='utf-8').read()
-rows = re.findall(r'\[([^\[\]]*)\]', text)
+rows = []
+for block in re.finditer(
+    r'export fn tech_rows_\d+\(\) -> List<List<Text>>:\s*\n\s*\[(.*?)\]\n',
+    text,
+    re.S,
+):
+    rows.extend(re.findall(r'\[([^\[\]]*)\]', block.group(1)))
 techs = []
 tech_values = []
+tech_costs = []
+tech_prereq_text = []
+tech_gate_text = []
 for row in rows:
     fields = re.findall(r'"([^"\n]*)"', row)
     if not fields:
@@ -43,6 +52,9 @@ for row in rows:
         raise SystemExit(f'tech {tech_id} has a non-unit unlock value')
     techs.append((tech_id, name, era, cost, prereq_ids, gate, effect))
     tech_values.append(value)
+    tech_costs.append(cost)
+    tech_prereq_text.append(prereqs)
+    tech_gate_text.append(gate)
 if not techs:
     raise SystemExit('tech catalog is empty')
 unlocks = [effect for _, _, _, _, _, _, effect in techs if effect.startswith('unlock_')]
@@ -63,6 +75,28 @@ for index, entry in enumerate(entries):
         raise SystemExit(
             f'effect table mismatch at {index}: {code}:{value} != {expected}:{expected_value}'
         )
+def companion(name, pattern):
+    match = re.search(r'export fn ' + name + r'\(\) -> List<(?:Int|Text)>:\s*\n\s*\[(.*?)\]', text, re.S)
+    if not match:
+        raise SystemExit(f'missing {name}')
+    return match.group(1)
+
+cost_text = companion('catalog_costs', r'')
+cost_values = [int(value) for value in re.findall(r'\d+', cost_text)]
+expected_costs = tech_costs
+if cost_values != expected_costs:
+    raise SystemExit('catalog_costs does not match the tech rows')
+
+prereq_values = re.findall(r'"([^"]*)"', companion('catalog_prereqs', r''))
+expected_prereqs = tech_prereq_text
+if prereq_values != expected_prereqs:
+    raise SystemExit('catalog_prereqs does not match the tech rows')
+
+gate_values = re.findall(r'"([^"]*)"', companion('catalog_gates', r''))
+expected_gates = tech_gate_text
+if gate_values != expected_gates:
+    raise SystemExit('catalog_gates does not match the tech rows')
+
 for name, unlock in (
     ('road_tech_id', 'unlock_road'),
     ('river_tech_id', 'unlock_river'),
@@ -173,6 +207,12 @@ with open(sys.argv[1], 'w', encoding='utf-8') as out:
     out.write('export fn catalog_era_values() -> List<Int>:\n')
     out.write('  [' + ', '.join('1' for _ in range(len(chunks) * 10)) + ']\n\n')
     out.write('export fn road_tech_id() -> Int:\n  0\n\nexport fn river_tech_id() -> Int:\n  1\n\nexport fn rail_tech_id() -> Int:\n  2\n\n')
+    out.write('export fn catalog_costs() -> List<Int>:\n')
+    out.write('  [' + ', '.join('0' for _ in range(len(chunks) * 10)) + ']\n\n')
+    out.write('export fn catalog_prereqs() -> List<Text>:\n')
+    out.write('  [' + ', '.join('""' for _ in range(len(chunks) * 10)) + ']\n\n')
+    out.write('export fn catalog_gates() -> List<Text>:\n')
+    out.write('  [' + ', '.join('"000000000000000000"' for _ in range(len(chunks) * 10)) + ']\n\n')
     out.write('export fn catalog_effect_table() -> Text:\n')
     out.write('  "' + '|'.join('bulk:0' for _ in range(len(chunks) * 10)) + '"\n\n')
     out.write('export fn catalog_chunks() -> List<List<List<Text>>>:\n')

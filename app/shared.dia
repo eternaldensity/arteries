@@ -641,6 +641,15 @@ export fn tech_row_count() -> Int:
 export fn tech_effect_table() -> Text:
   catalog_effect_table()
 
+export fn tech_cost_values() -> List<Int>:
+  catalog_costs()
+
+export fn tech_prereq_values() -> List<Text>:
+  catalog_prereqs()
+
+export fn tech_gate_values() -> List<Text>:
+  catalog_gates()
+
 export fn tech_row_at(i: Int) -> List<Text>:
   catalog_row_at(i)
 
@@ -4473,7 +4482,7 @@ export fn tech_summary(world: World) -> Text:
   tech_summary_at(tech_view(world.tech))
 
 
-fn nth_town(towns: List<Town>, i: Int) -> Town:
+export fn nth_town(towns: List<Town>, i: Int) -> Town:
   match list_get(towns, i):
     None => empty_town()
     Some(t) => t
@@ -5259,13 +5268,6 @@ export fn finish_period(world: World, days: Int, from: Int) -> World:
   match days <= 0:
     true => world
     false =>
-      let best = max_research(world.towns, 0)
-      let tech = match best <= 0:
-        true => world.tech
-        false => tech_advance_pass_stock(world.tech, best, best_research_stock(world.towns))
-      let msgs_tech = match tech == world.tech:
-        true => []
-        false => tech_discovery_messages(world.tech, tech)
       let start_day = from / hours_per_day()
       let ev1 = match boundary_in_period(start_day, days, 6):
         true => harvest(world.towns)
@@ -5280,8 +5282,7 @@ export fn finish_period(world: World, days: Int, from: Int) -> World:
         true => EventOutcome(towns: deplete_towns(ev3.towns), messages: ["Deposits thin across the frontier."])
         false => EventOutcome(towns: ev3.towns, messages: [])
       let log1 = append_messages(append_messages(append_messages(append_messages(world.log, ev1.messages, 0), ev2.messages, 0), ev3.messages, 0), ev4.messages, 0)
-      let log2 = append_messages(log1, msgs_tech, 0)
-      World(seed: world.seed, tick: world.tick, money: world.money, towns: ev4.towns, sites: world.sites, routes: world.routes, log: log2, history: append_history_values(world.history, ev4.towns), tech: tech)
+      World(seed: world.seed, tick: world.tick, money: world.money, towns: ev4.towns, sites: world.sites, routes: world.routes, log: log1, history: append_history_values(world.history, ev4.towns), tech: world.tech)
 
 export fn game_finish_period(game: Game, days: Int, from: Int) -> Game:
   let world_events = finish_period(game.world, days, from)
