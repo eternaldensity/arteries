@@ -104,13 +104,14 @@ either `webgpu` or `canvas2d` and prints the mode plus a route summary.
 
 The compact overlay for large worlds is documented in
 [`../docs/scale-overlay-plan.md`](../docs/scale-overlay-plan.md). Stage 1 is
-live through stage 3: it opens automatically for large or mid-cycle worlds,
+live through stage 4: it opens automatically for large or mid-cycle worlds,
 summarizes the compact frontier, runs market/trade/finish in bounded
 `advance_scale` chunks, supports step/day/week/month runs with a cooperative
 stop, shows a compact overview and forecast, switches worlds without loading a
-full Game, resumes from the server-owned cursor after a reload, and reloads the
-full map when leaving the overlay. The region/planet tools and strategic
-visuals remain.
+full Game, resumes from the server-owned cursor after a reload, and includes the
+planet summary, 30-face region map, sea-lane/region-trade planner, orthographic
+globe views, and terrain summary. The compact network pulse, alerts, and history
+sparklines remain.
 
 ## Migration boundary
 

@@ -1,10 +1,10 @@
 # Scale overlay design
 
-**Status:** stages 1-3 implemented. The external UI has the full-map, route,
+**Status:** stages 1-4 implemented. The external UI has the full-map, route,
 tech, production, and inspector panels, plus the compact shell, chunk runner,
-summary/overview tiles, forecast, compact world switching, and server-owned
-cursor resume. The region/planet tools remain stage 4; the strategic visuals
-are stage 5.
+summary/overview tiles, forecast, compact world switching, server-owned cursor
+resume, and the region/planet/globe/terrain tools. The strategic network pulse,
+alerts, and history sparklines remain stage 5.
 
 ## Context
 

@@ -327,7 +327,78 @@ function chooseFreeCells(markers, count) {
 
   const compactTickAfter = compactDone.scale.summary.tick;
 
-  // 9. Compact overview, forecast, and world switching.
+  // 9. Region tab: auto-loaded planet/map/globe, sea lanes, region trade, and
+  // terrain sampling.
+  await page.click('[data-scale-tab="region"]');
+  await page.waitForFunction(
+    () => {
+      const scale = window.__webui.getState().scale;
+      return scale.regionMap && scale.planet && scale.globe.length === 24;
+    },
+    undefined,
+    { timeout: 20000 }
+  );
+  const regionReady = await state(page);
+  assert(regionReady.scale.regionMap.tiles.length === 30, 'region map missed faces');
+  assert(regionReady.scale.planet.faces > 0, 'planet summary missed faces');
+  assert((await page.locator('#scale-region-grid [data-region-face]').count()) === 30, 'region grid is not 30 cells');
+  const waterCells = await page.locator('#scale-region-grid .region-water').count();
+  const landCells = await page
+    .locator(
+      '#scale-region-grid .region-plains, #scale-region-grid .region-forest, ' +
+        '#scale-region-grid .region-hills, #scale-region-grid .region-mountain, ' +
+        '#scale-region-grid .region-marsh'
+    )
+    .count();
+  assert(waterCells > 0 && landCells > 0, `region map needs land and water: ${landCells}/${waterCells}`);
+
+  await page.click('[data-region-face="0"]');
+  await page.click('[data-region-face="5"]');
+  await page.click('#scale-region-plan');
+  const planned = await waitForState(
+    page,
+    (current) => current.scale.regionPath.length > 0,
+    'sea lane plan'
+  );
+  assert((await page.locator('#scale-region-grid .region-path').count()) >= 2, 'sea lane path is not highlighted');
+
+  await page.click('#scale-region-add');
+  await page.click('[data-region-face="0"]');
+  await page.click('[data-region-face="8"]');
+  await page.click('#scale-region-add');
+  await page.click('[data-region-face="5"]');
+  await page.click('[data-region-face="12"]');
+  await page.click('#scale-region-add');
+  await page.click('#scale-region-trade');
+  const traded = await waitForState(
+    page,
+    (current) =>
+      current.scale.regionTrade &&
+      current.scale.regionTrade.lanes.length === 3 &&
+      current.scale.regionTrade.traffic > 0,
+    'region trade',
+    20000
+  );
+  assert(traded.scale.regionTrade.markets.length === 30, 'region trade missed markets');
+  assert((await page.locator('#scale-region-grid .region-lane').count()) >= 4, 'lane endpoints are not highlighted');
+
+  await page.click('#scale-globe-side');
+  await waitForState(page, (current) => current.scale.globeView === 2, 'globe side view');
+  await page.click('#scale-globe-pole');
+  await waitForState(page, (current) => current.scale.globeView === 4, 'globe pole view');
+  assert((await page.locator('#scale-globe .scale-globe-cell').count()) === 24 * 24, 'globe is not 24×24');
+
+  await page.click('#scale-worldgen');
+  const terrain = await waitForState(
+    page,
+    (current) => current.scale.worldgen && current.scale.worldgen.width === 16,
+    'terrain summary'
+  );
+  assert(terrain.scale.worldgen.valid, 'worldgen summary is invalid');
+
+  await page.click('[data-scale-tab="overview"]');
+
+  // 10. Compact overview, forecast, and world switching.
   await page.waitForFunction(
     () => window.__webui.getState().scale.overview,
     undefined,

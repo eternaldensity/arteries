@@ -280,6 +280,54 @@
       .scale-world-row.current { border-color: var(--accent2); background: rgba(105, 195, 179, .08); }
       .scale-world-row strong { font-size: 12px; }
       .scale-world-row span { color: var(--muted); font-size: 10px; }
+      .scale-region-grid {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 4px;
+        margin: 10px 0;
+      }
+      .scale-region-cell {
+        padding: 7px 0;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #081120;
+        color: var(--muted);
+        font-family: "SFMono-Regular", ui-monospace, monospace;
+        font-size: 10px;
+        cursor: pointer;
+      }
+      .scale-region-cell:hover { border-color: var(--accent); }
+      .scale-region-cell.region-water { background: #143b66; color: #b9d8ff; border-color: #245a91; }
+      .scale-region-cell.region-plains { background: #29452c; color: #c9e6bf; border-color: #3c6641; }
+      .scale-region-cell.region-forest { background: #1e3d2a; color: #bfe4c7; border-color: #2f5f3f; }
+      .scale-region-cell.region-hills { background: #4c4326; color: #e6dba9; border-color: #6b5d35; }
+      .scale-region-cell.region-mountain { background: #44464b; color: #e1e4ee; border-color: #666a72; }
+      .scale-region-cell.region-marsh { background: #2e4d42; color: #c1e5d9; border-color: #477063; }
+      .scale-region-cell.region-path { box-shadow: inset 0 0 0 2px #f2c14e; color: #fff1c8; }
+      .scale-region-cell.region-lane { box-shadow: inset 0 0 0 2px var(--accent2); }
+      .scale-region-cell.from { outline: 2px solid var(--accent); outline-offset: 1px; }
+      .scale-region-cell.to { outline: 2px solid var(--accent2); outline-offset: 1px; }
+      .scale-globe {
+        display: grid;
+        grid-template-columns: repeat(24, 1fr);
+        gap: 0;
+        width: min(100%, 264px);
+        margin: 8px auto 4px;
+        padding: 6px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: radial-gradient(circle at 50% 40%, rgba(56, 132, 255, .08), transparent 70%);
+      }
+      .scale-globe-cell { display: block; aspect-ratio: 1; }
+      .scale-globe-cell.globe-space { background: transparent; }
+      .scale-globe-cell.globe-water { background: #2f6fd0; }
+      .scale-globe-cell.globe-coast { background: #4f93d8; }
+      .scale-globe-cell.globe-plains { background: #8fbf6a; }
+      .scale-globe-cell.globe-forest { background: #3f8a4f; }
+      .scale-globe-cell.globe-hills { background: #b39a5b; }
+      .scale-globe-cell.globe-mountain { background: #d8d2c6; }
+      .scale-globe-cell.globe-marsh { background: #6f9a7a; }
+      .scale-globe-cell.globe-path { background: #f2c14e; box-shadow: 0 0 3px #f2c14e; }
       @media (max-width: 780px) {
         .scale-grid { grid-template-columns: 1fr; }
         .scale-header { flex-direction: column; }
@@ -388,7 +436,7 @@
         <nav class="scale-tabs" role="tablist" aria-label="Compact frontier views">
           <button class="scale-tab active" data-scale-tab="overview" type="button" role="tab">Overview</button>
           <button class="scale-tab" data-scale-tab="worlds" type="button" role="tab">Worlds</button>
-          <button class="scale-tab" data-scale-tab="region" type="button" role="tab" disabled>Region <span>stage 4</span></button>
+          <button class="scale-tab" data-scale-tab="region" type="button" role="tab">Region</button>
         </nav>
 
         <div id="scale-panel-overview" class="scale-panel">
@@ -441,10 +489,51 @@
         </div>
 
         <div id="scale-panel-region" class="scale-panel hidden">
-          <section class="scale-card">
-            <h2>Region and planet</h2>
-            <p class="scale-note">Region, globe, planet, and terrain tools arrive in stage 4.</p>
-          </section>
+          <div class="scale-grid">
+            <section class="scale-card">
+              <div class="scale-cycle-head">
+                <div>
+                  <h2>Planet</h2>
+                  <p id="scale-planet-summary" class="scale-note">Generate a planet summary.</p>
+                </div>
+                <button id="scale-planet-generate" type="button">Generate planet</button>
+              </div>
+              <div class="scale-cycle-head" style="margin-top:14px">
+                <div>
+                  <h2>Region map</h2>
+                  <p id="scale-region-summary" class="scale-note">Survey the 30-face region graph.</p>
+                </div>
+                <button id="scale-region-survey" type="button">Survey regions</button>
+              </div>
+              <div id="scale-region-grid" class="scale-region-grid"></div>
+              <div class="scale-actions">
+                <button id="scale-region-plan" type="button">Plan sea lane</button>
+                <button id="scale-region-add" type="button">Add lane</button>
+                <button id="scale-region-trade" type="button">Run region trade</button>
+                <button id="scale-region-clear" type="button">Clear lanes</button>
+              </div>
+              <p id="scale-region-status" class="scale-note"></p>
+              <p id="scale-region-path" class="scale-note"></p>
+              <p id="scale-region-trade-info" class="scale-note"></p>
+              <p id="scale-region-lanes" class="scale-note"></p>
+            </section>
+
+            <section class="scale-card">
+              <h2>Globe</h2>
+              <div class="scale-actions">
+                <button id="scale-globe-front" type="button">Equator</button>
+                <button id="scale-globe-side" type="button">Side</button>
+                <button id="scale-globe-pole" type="button">Pole</button>
+              </div>
+              <div id="scale-globe" class="scale-globe"></div>
+              <p id="scale-globe-note" class="scale-note"></p>
+              <h2 style="margin-top:18px">Terrain</h2>
+              <div class="scale-actions">
+                <button id="scale-worldgen" type="button">Generate terrain</button>
+              </div>
+              <p id="scale-worldgen-info" class="scale-note">Sample the worldgen stack.</p>
+            </section>
+          </div>
         </div>
       </div>
     </section>
