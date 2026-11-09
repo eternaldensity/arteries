@@ -9,11 +9,11 @@
 use arteries_core::town_tech::advance_town_tech_rows;
 use arteries_core::{
     encode_ints4, encode_link_rules, face_components, face_neighbors, face_path, face_summary, fbm,
-    finish_towns, generate_faces, generate_world, globe_raster, market_with_effects, pathfind,
+    finish_towns, generate_faces, generate_world, globe_raster, market_with_town_effects, pathfind,
     pathfind_features, region_text, region_trade, route_cost, route_cost_features,
-    tech_effect_mask, trade_with_effects, FeatureGrid, Grid, GridPoint, TechEffects, TickRoute,
-    TickState, TickTown, TravelMode, EFFECT_COUNT, GOOD_COUNT, MAP_H, MAP_W, MAX_SEED,
-    PIPELINE_LEN, TOWN_ROW_LEN,
+    tech_effect_mask, tech_effect_masks, trade_with_town_effects, FeatureGrid, Grid, GridPoint,
+    TechEffects, TickRoute, TickState, TickTown, TravelMode, EFFECT_COUNT, GOOD_COUNT, MAP_H,
+    MAP_W, MAX_SEED, PIPELINE_LEN, TOWN_ROW_LEN,
 };
 use diamond::{Compute, ComputeContext, ComputeError, RuntimeGrants};
 use serde_json::Value as Json;
@@ -211,12 +211,21 @@ impl Market {
         let pipeline_texts = text_list_arg(arguments, 3)?;
         let days = int_arg(arguments, 4)?;
         let scale = int_arg(arguments, 5)?;
-        let effects = int_list_arg(arguments, 6)?;
-        if effects.len() != EFFECT_COUNT {
+        let effect_rows = nested_int_list_arg(arguments, 6)?;
+        if effect_rows.len() != town_rows.len() {
             return Err(ComputeError::InvalidInput);
         }
+        let effects: Vec<TechEffects> = effect_rows
+            .iter()
+            .map(|row| {
+                if row.len() != EFFECT_COUNT {
+                    return Err(ComputeError::InvalidInput);
+                }
+                Ok(TechEffects::from_values(row))
+            })
+            .collect::<Result<_, _>>()?;
         let mut state = parse_tick_state(money, &town_rows, &route_rows, &pipeline_texts)?;
-        market_with_effects(&mut state, days, scale, TechEffects::from_values(&effects));
+        market_with_town_effects(&mut state, days, scale, &effects);
         Ok(tick_state_json(&state))
     }
 }
@@ -244,12 +253,21 @@ impl Trade {
         let pipeline_texts = text_list_arg(arguments, 3)?;
         let days = int_arg(arguments, 4)?;
         let scale = int_arg(arguments, 5)?;
-        let effects = int_list_arg(arguments, 6)?;
-        if effects.len() != EFFECT_COUNT {
+        let effect_rows = nested_int_list_arg(arguments, 6)?;
+        if effect_rows.len() != town_rows.len() {
             return Err(ComputeError::InvalidInput);
         }
+        let effects: Vec<TechEffects> = effect_rows
+            .iter()
+            .map(|row| {
+                if row.len() != EFFECT_COUNT {
+                    return Err(ComputeError::InvalidInput);
+                }
+                Ok(TechEffects::from_values(row))
+            })
+            .collect::<Result<_, _>>()?;
         let mut state = parse_tick_state(money, &town_rows, &route_rows, &pipeline_texts)?;
-        trade_with_effects(&mut state, days, scale, TechEffects::from_values(&effects));
+        trade_with_town_effects(&mut state, days, scale, &effects);
         Ok(tick_state_json(&state))
     }
 }
@@ -350,6 +368,39 @@ impl TechEffectMask {
 }
 
 impl Compute for TechEffectMask {
+    fn call(
+        &self,
+        _context: &ComputeContext<'_>,
+        arguments: &[Json],
+    ) -> Result<Json, ComputeError> {
+        Self::evaluate(arguments)
+    }
+}
+
+/// Pure-compute export `arteries.tech_effect_masks`.
+///
+/// Arguments: `(tech_states, effect_table)`. The states are packed tech
+/// bitsets, one per settlement. Reply: one 17-slot mask per settlement.
+pub struct TechEffectMasks;
+
+impl TechEffectMasks {
+    /// Validate arguments and decode one mask per settlement.
+    ///
+    /// # Errors
+    /// Returns [`ComputeError::InvalidInput`] for the wrong arity or non-text
+    /// arguments.
+    pub fn evaluate(arguments: &[Json]) -> Result<Json, ComputeError> {
+        if arguments.len() != 2 {
+            return Err(ComputeError::InvalidInput);
+        }
+        let states = text_list_arg(arguments, 0)?;
+        let table = text_arg(arguments, 1)?;
+        let masks = tech_effect_masks(&states, table);
+        Ok(Json::Array(masks.into_iter().map(int_list_json).collect()))
+    }
+}
+
+impl Compute for TechEffectMasks {
     fn call(
         &self,
         _context: &ComputeContext<'_>,
@@ -1335,7 +1386,7 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
             "List<Text>",
             "Int",
             "Int",
-            "List<Int>",
+            "List<List<Int>>",
         ],
         "List<List<Int>>",
         Market,
@@ -1350,7 +1401,7 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
             "List<Text>",
             "Int",
             "Int",
-            "List<Int>",
+            "List<List<Int>>",
         ],
         "List<List<Int>>",
         Trade,
@@ -1382,6 +1433,13 @@ pub fn register(grants: &mut RuntimeGrants) -> Result<(), diamond::Error> {
         &["Text", "Text"],
         "List<Int>",
         TechEffectMask,
+    )?;
+    grants.register_compute(
+        "arteries",
+        "tech_effect_masks",
+        &["List<Text>", "Text"],
+        "List<List<Int>>",
+        TechEffectMasks,
     )?;
     grants.register_compute(
         "arteries",

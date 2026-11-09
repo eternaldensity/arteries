@@ -245,6 +245,15 @@ pub fn tech_effect_mask(state: &str, table: &str) -> Vec<i64> {
     mask
 }
 
+/// Decode one effect mask per settlement.
+#[must_use]
+pub fn tech_effect_masks(states: &[String], table: &str) -> Vec<Vec<i64>> {
+    states
+        .iter()
+        .map(|state| tech_effect_mask(state, table))
+        .collect()
+}
+
 /// One town's mutable market state.
 ///
 /// `climate` is `0` temperate, `1` cold, or `2` dry/hot. It only changes trade
@@ -309,13 +318,25 @@ pub fn market(state: &mut TickState, days: i64, scale: i64) {
 
 /// Apply one market phase with technology bonuses.
 pub fn market_with_effects(state: &mut TickState, days: i64, scale: i64, effects: TechEffects) {
+    let town_effects = vec![effects; state.towns.len()];
+    market_with_town_effects(state, days, scale, &town_effects);
+}
+
+/// Apply one market phase with a separate effect mask per settlement.
+pub fn market_with_town_effects(
+    state: &mut TickState,
+    days: i64,
+    scale: i64,
+    effects: &[TechEffects],
+) {
     if days <= 0 {
         return;
     }
-    for town in &mut state.towns {
-        *town = advance_town_days_with_effects(town, days, effects);
+    for (index, town) in state.towns.iter_mut().enumerate() {
+        let effect = effects.get(index).copied().unwrap_or_default();
+        *town = advance_town_days_with_effects(town, days, effect);
     }
-    trade_with_effects(state, days, scale, effects);
+    trade_with_town_effects(state, days, scale, effects);
 }
 
 /// Apply network flow only, leaving production and growth untouched.
@@ -332,6 +353,20 @@ pub fn trade(state: &mut TickState, days: i64, scale: i64) {
 
 /// Apply network flow only with technology bonuses.
 pub fn trade_with_effects(state: &mut TickState, days: i64, scale: i64, effects: TechEffects) {
+    let town_effects = vec![effects; state.towns.len()];
+    trade_with_town_effects(state, days, scale, &town_effects);
+}
+
+/// Apply network flow with a separate effect mask per settlement.
+///
+/// Route capacity and tolls use the better endpoint, so a link benefits when
+/// either settlement has discovered the relevant transport technology.
+pub fn trade_with_town_effects(
+    state: &mut TickState,
+    days: i64,
+    scale: i64,
+    effects: &[TechEffects],
+) {
     if days <= 0 || state.towns.is_empty() {
         return;
     }
@@ -378,9 +413,11 @@ pub fn trade_with_effects(state: &mut TickState, days: i64, scale: i64, effects:
 
     let mut remaining: Vec<i64> = Vec::with_capacity(state.routes.len() * 2);
     for route in &state.routes {
-        let mut pct = effects.capacity_pct;
+        let ea = effects.get(route.a).copied().unwrap_or_default();
+        let eb = effects.get(route.b).copied().unwrap_or_default();
+        let mut pct = ea.capacity_pct.max(eb.capacity_pct);
         if route.mode == 4 {
-            pct = pct.saturating_mul(effects.rail_capacity_pct) / 100;
+            pct = pct.saturating_mul(ea.rail_capacity_pct.max(eb.rail_capacity_pct)) / 100;
         }
         let cap = (route.capacity.saturating_mul(scale) / 100).saturating_mul(pct) / 100;
         let cap = cap.saturating_mul(days).max(2);
@@ -422,10 +459,14 @@ pub fn trade_with_effects(state: &mut TickState, days: i64, scale: i64, effects:
                     let fee = flow_fee(&state.routes[slot / 2], good);
                     let dir = slot % 2;
                     let route = &mut state.routes[slot / 2];
+                    let ea = effects.get(route.a).copied().unwrap_or_default();
+                    let eb = effects.get(route.b).copied().unwrap_or_default();
+                    let toll_pct = ea.toll_pct.max(eb.toll_pct);
                     route.traffic = route.traffic.saturating_add(units);
                     route.flow[dir][good] = route.flow[dir][good].saturating_add(units);
                     remaining[slot] = (remaining[slot] - units).max(0);
-                    income = income.saturating_add(units.saturating_mul(fee));
+                    income = income
+                        .saturating_add(units.saturating_mul(fee).saturating_mul(toll_pct) / 100);
                 }
             }
             if let Some(last_slot) = last {
@@ -452,7 +493,6 @@ pub fn trade_with_effects(state: &mut TickState, days: i64, scale: i64, effects:
                 (state.towns[source.sender].stock[good] - units).max(0);
         }
     }
-    let income = income.saturating_mul(effects.toll_pct) / 100;
     state.money = state.money.saturating_add(income);
 }
 
@@ -1531,6 +1571,38 @@ mod tests {
         assert!(state.towns.iter().all(|t| t.pop >= 1));
         assert!(state.routes.iter().all(|r| r.traffic >= 0));
         assert!(state.money >= before.money);
+    }
+
+    #[test]
+    fn per_town_effects_are_local() {
+        let town = TickTown {
+            pop: 4,
+            prosperity: 6,
+            research: 0,
+            endow: [0; GOOD_COUNT],
+            stock: [0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            climate: 0,
+        };
+        let mut state = TickState {
+            money: 0,
+            towns: vec![town.clone(), town],
+            routes: vec![],
+        };
+        let boosted = TechEffects {
+            planks_pct: 200,
+            ..TechEffects::default()
+        };
+        let effects = [boosted, TechEffects::default()];
+        market_with_town_effects(&mut state, 4, 100, &effects);
+        assert!(state.towns[0].stock[PLANKS] > state.towns[1].stock[PLANKS]);
+    }
+
+    #[test]
+    fn effect_masks_decode_one_per_town() {
+        let masks = tech_effect_masks(&["1".into(), "2".into()], "planks:15|planks:25");
+        assert_eq!(masks[0][1], 115);
+        assert_eq!(masks[1][1], 125);
+        assert_eq!(masks[1][0], 100);
     }
 
     #[test]

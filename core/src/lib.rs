@@ -26,8 +26,9 @@ pub mod town_tech;
 
 pub use planet::{generate_faces, MAX_DETAIL, PLANET_SCALE};
 pub use tick::{
-    encode_ints4, encode_link_rules, finish_towns, market, market_with_effects, region_trade,
-    tech_effect_mask, trade, trade_with_effects, FinishPage, TechEffects, TickRoute, TickState,
+    encode_ints4, encode_link_rules, finish_towns, market, market_with_effects,
+    market_with_town_effects, region_trade, tech_effect_mask, tech_effect_masks, trade,
+    trade_with_effects, trade_with_town_effects, FinishPage, TechEffects, TickRoute, TickState,
     TickTown, BRICKS, CLAY, CLOTH, COAL, EFFECT_COUNT, ENGINES, FIBER, FISH, FLOUR, GOOD_COUNT,
     GRAIN, MACHINERY, ORE, PIPELINE_LEN, PLANKS, ROPE, ROUTE_ROW_LEN, SHIP_PARTS, STEEL, STONE,
     TIMBER, TOOLS, TOWN_ROW_LEN,

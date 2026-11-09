@@ -246,10 +246,11 @@ cost, topological prerequisites, an 18-good material gate, and one effect
 in its town row. Discovery checks that settlement's research, prerequisites,
 and stock. Diffusion copies one known technology per connected link per period.
 The Rust `town_tech` kernel runs both the live and compact finish paths. The
-world-level `world.tech` is the union of the towns and still feeds the effect
-mask into the market kernel; `world.tech` is also what the full-map UI shows.
-Effects and route gates are union-level for now; per-town effects and
-endpoint-specific route gates are the next step.
+world-level `world.tech` is the union of the towns and is what the full-map UI
+shows. Production and research bonuses are applied per settlement from that
+town's own tech. Route capacity and tolls use the better endpoint, and an
+upgrade requires the relevant transport technology at one of the route's
+endpoints.
 
 See [`docs/tech-production-tree.md`](docs/tech-production-tree.md) and
 [`docs/tech-production-tree.svg`](docs/tech-production-tree.svg) for the
@@ -276,10 +277,9 @@ the `unlock_road` / `unlock_river` / `unlock_rail` gates.
 
 Adding a tech is a data change: append a row, give it an effect and
 prerequisites, and the unlock, progress, era, summary, and route-gating code
-picks it up. Discovery and diffusion are per settlement; the union is still the
-authoritative effect mask and UI summary. Per-town effects and
-endpoint-specific route gates can be layered on the same catalog/state without
-changing storage again.
+picks it up. Discovery, diffusion, production, and research effects are per settlement.
+`world.tech` remains the union used by the header summary, while route
+capacity, tolls, and upgrades read the endpoints directly.
 
 The current tree branches and meets production: **Roads** and **Carpentry** are
 independent era-2 openings, **River barges** requires both, **Metallurgy** opens
@@ -471,7 +471,8 @@ forecast with a real re-simulation; `ui-saves.js` creates and switches worlds;
 `ui-production.js` runs a fresh week and requires Planks and Steel to appear from
 consumed inputs; and `ui-tech.js` requires the 0/33 start, at least one material-gated
 discovery, and reload persistence. They fail on page errors, console errors, missing UI state,
-or unexpected cycle failures.
+or unexpected cycle failures. `ui-upgrade-gate.js` requires a fresh pack route
+to refuse an upgrade until one endpoint has the transport technology.
 
 ## Scale and the Diamond evaluation budget
 

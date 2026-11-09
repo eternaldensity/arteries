@@ -1,0 +1,20 @@
+# Appended by tools/check-upgrade-gate.sh. Checks that route upgrades use the
+# endpoint towns' tech rather than the world-level union.
+
+fn gate_town(id: Text, x: Int) -> Town:
+  Town(id: id, name: id, x: x, y: 0, terrain: Plains, endow: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], state: TownState(pop: 2, prosperity: 6, research: 0, stock: [0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
+
+fn gate_world() -> World:
+  let a = gate_town("t0", 0)
+  let b = gate_town("t1", 1)
+  let route = Route(id: "r", a: "t0", b: "t1", a_name: "A", b_name: "B", a_ord: 0, b_ord: 1, mode: Path, plan: empty_plan(), fee: 1, traffic: 0, capacity: 3, upkeep: 1, rules: default_rules(), pipeline: "", flow: "")
+  World(seed: 7, tick: 0, money: 40, towns: [a, b], sites: [], routes: [route], log: [], history: [], tech: "")
+
+fn main() -> Text:
+  let world = gate_world()
+  let route = nth_route(world.routes, 0)
+  let at_a = can_upgrade(world, route, "02", "")
+  let neither = can_upgrade(world, route, "", "")
+  let at_b = can_upgrade(world, route, "", "02")
+  let wrong = can_upgrade(world, route, "01", "")
+  int_text(bool_int(at_a)) + "|" + int_text(bool_int(neither)) + "|" + int_text(bool_int(at_b)) + "|" + int_text(bool_int(wrong))

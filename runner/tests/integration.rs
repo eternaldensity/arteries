@@ -1,7 +1,7 @@
 use arteries_core::{MAP_H, MAP_W, MAX_SEED, WORLDGEN_VERSION};
 use arteries_runner::{
     Finish, Market, Noise, Pathfind, PathfindFeatures, Planet, PlanetSummaryKernel, RouteCost,
-    TerrainRegion, TownTechKernel, Worldgen, WorldgenSummary,
+    TechEffectMasks, TerrainRegion, TownTechKernel, Worldgen, WorldgenSummary,
 };
 use serde_json::{json, Value as Json};
 use std::path::Path;
@@ -669,6 +669,16 @@ fn unregistered_runtime_fails_validation() {
     assert!(project
         .validate_compute(&diamond::RuntimeGrants::default())
         .is_err());
+}
+
+#[test]
+fn tech_effect_masks_kernel_returns_one_per_town() {
+    let reply = TechEffectMasks::evaluate(&[json!(["1", "2"]), json!("planks:15|planks:25")])
+        .expect("masks");
+    let rows = reply.as_array().expect("nested masks");
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0][1], json!("115"));
+    assert_eq!(rows[1][1], json!("125"));
 }
 
 #[test]

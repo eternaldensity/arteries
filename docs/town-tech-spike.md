@@ -86,8 +86,9 @@ The backend now follows the spike:
   catalog companion lists, and returns per-town tech/exposure plus the union;
 - discovery and one-link diffusion run in both the live and compact finish
   paths;
-- `world.tech` remains the union used by effects, route gates, and the header;
-- per-town effects and endpoint-specific route gates are still future work;
+- `world.tech` remains the union used by the header summary;
+- production and research effects are applied per town;
+- route capacity, tolls, and upgrades read the endpoints directly;
 - the full-map UI still receives only `world.tech`, not per-town bits.
 
 ## UI direction

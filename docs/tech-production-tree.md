@@ -226,9 +226,10 @@ Catalog order is topological, so one pass per town unlocks a chain.
 
 Both the live and compact finish paths run the Rust `town_tech` kernel, which
 keeps the loops and row payload cheap. `world.tech` is the union of the town
-bitsets and feeds the `tech_effect_mask` kernel into the `market` and `trade`
-kernels. Effects and route gates are still union-level; per-town effects and
-endpoint-specific route gates are the next step.
+bitsets and feeds the header summary. Production and research effects are
+decoded per town with `tech_effect_masks` and applied locally by the `market`
+kernel. Route capacity and tolls use the better endpoint, and upgrades require
+the relevant transport tech at one endpoint.
 
 The browser receives `world.tech` (the union) and derives the header count with
 a nibble popcount, so every World copy stays small. Per-town tech and exposure

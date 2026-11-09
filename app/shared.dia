@@ -3876,7 +3876,7 @@ fn route_by_id_range(routes: List<Route>, id: Text, start: Int, count: Int) -> R
           true => route_by_id_range(routes, id, start + half, count - half)
           false => left
 
-fn route_by_id(routes: List<Route>, id: Text, i: Int) -> Route:
+export fn route_by_id(routes: List<Route>, id: Text, i: Int) -> Route:
   route_by_id_range(routes, id, i, len(routes) - i)
 
 export fn route_lookup(world: World, id: Text) -> Route:
@@ -3913,11 +3913,24 @@ export fn upgrade_steel(_world: World, mode: RouteMode) -> Int:
     River => 4
     _ => 0
 
-export fn can_upgrade(world: World, route: Route) -> Bool:
+export fn endpoint_unlocks(a_tech: Text, b_tech: Text, mode: RouteMode) -> Bool:
+  tech_unlocks_mode(a_tech, mode) or tech_unlocks_mode(b_tech, mode)
+
+fn upgrade_next_mode(route: Route) -> RouteMode:
   match route.mode:
-    Path => tech_unlocks_mode(world.tech, Road) and world.money >= 35 and combined_stock(world, route.a, route.b, Stone) >= 2 and combined_stock(world, route.a, route.b, Planks) >= upgrade_planks(world, Path)
-    Road => tech_unlocks_mode(world.tech, River) and world.money >= 60 and combined_stock(world, route.a, route.b, Timber) >= 4 and combined_stock(world, route.a, route.b, Planks) >= upgrade_planks(world, Road)
-    River => tech_unlocks_mode(world.tech, Rail) and world.money >= 90 and combined_stock(world, route.a, route.b, Steel) >= upgrade_steel(world, River) and combined_stock(world, route.a, route.b, Tools) >= 2
+    Path => Road
+    Road => River
+    River => Rail
+    _ => Rail
+
+fn upgrade_tech_ok(route: Route, a_tech: Text, b_tech: Text) -> Bool:
+  endpoint_unlocks(a_tech, b_tech, upgrade_next_mode(route))
+
+export fn can_upgrade(world: World, route: Route, a_tech: Text, b_tech: Text) -> Bool:
+  match route.mode:
+    Path => endpoint_unlocks(a_tech, b_tech, Road) and world.money >= 35 and combined_stock(world, route.a, route.b, Stone) >= 2 and combined_stock(world, route.a, route.b, Planks) >= upgrade_planks(world, Path)
+    Road => endpoint_unlocks(a_tech, b_tech, River) and world.money >= 60 and combined_stock(world, route.a, route.b, Timber) >= 4 and combined_stock(world, route.a, route.b, Planks) >= upgrade_planks(world, Road)
+    River => endpoint_unlocks(a_tech, b_tech, Rail) and world.money >= 90 and combined_stock(world, route.a, route.b, Steel) >= upgrade_steel(world, River) and combined_stock(world, route.a, route.b, Tools) >= 2
     _ => false
 
 export fn upgrade_cost_text(route: Route) -> Text:
@@ -3927,11 +3940,11 @@ export fn upgrade_cost_text(route: Route) -> Text:
     River => "90 crowns + 4 steel + 2 tools"
     _ => "fully upgraded"
 
-export fn upgrade_route(world: World, id: Text) -> BuildResult:
+export fn upgrade_route(world: World, id: Text, a_tech: Text, b_tech: Text) -> BuildResult:
   let r = route_by_id(world.routes, id, 0)
   match r.id == "":
     true => BuildResult(world: world, ok: false, message: "Route not found.", from: "", to: "")
-    false => match can_upgrade(world, r):
+    false => match can_upgrade(world, r, a_tech, b_tech):
       false => BuildResult(world: world, ok: false, message: "Not enough technology, crowns, or materials to upgrade " + r.a_name + " to " + r.b_name + ".", from: "", to: "")
       true => upgrade_apply(world, r)
 
@@ -4144,7 +4157,7 @@ export fn adjust_fee(world: World, id: Text, delta: Int) -> World:
       with_routes(world, replace_route(world.routes, changed))
 
 fn empty_project() -> Project:
-  empty_project()
+  Project(id: "", kind: "", a: "", b: "", a_name: "", b_name: "", mode: NoRoute, route_id: "", plan: empty_plan(), start_tick: 0, ready_tick: 0)
 
 fn mode_work(mode: RouteMode) -> Int:
   match mode:
@@ -4210,43 +4223,45 @@ fn begin_route(world: World, a: Text, b: Text, plan: RoutePlan) -> ProjectStart:
               let w3 = record(w2, message)
               ProjectStart(world: w3, project: project, ok: true, message: message, from: "", to: "")
 
-fn begin_upgrade(world: World, id: Text) -> ProjectStart:
+fn begin_upgrade(world: World, id: Text, a_tech: Text, b_tech: Text) -> ProjectStart:
   let r = route_by_id(world.routes, id, 0)
   match r.id == "":
     true => ProjectStart(world: world, project: empty_project(), ok: false, message: "Route not found.", from: "", to: "")
-    false => match can_upgrade(world, r):
-      false => ProjectStart(world: world, project: empty_project(), ok: false, message: "Not enough technology, crowns, or materials to upgrade " + r.a_name + " to " + r.b_name + ".", from: "", to: "")
-      true =>
-        let next_mode = match r.mode:
-          Path => Road
-          Road => River
-          River => Rail
-          _ => Rail
-        let cost = match r.mode:
-          Path => 35
-          Road => 60
-          River => 90
-          _ => 0
-        let pay_kind = match r.mode:
-          Path => Stone
-          Road => Timber
-          River => Stone
-          _ => Stone
-        let pay_amount = match r.mode:
-          Path => 2
-          Road => 4
-          River => 4
-          _ => 0
-        let paid = pay_good(world, r.a, r.b, pay_kind, pay_amount)
-        let w1 = with_towns(world, paid)
-        let w2 = match r.mode:
-          River => with_towns(w1, pay_good(w1, r.a, r.b, Tools, 2))
-          _ => w1
-        let time = construction_time(world, r.a, r.b, r.plan, next_mode)
-        let project = Project(id: r.id + "-upgrade", kind: "upgrade", a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: next_mode, route_id: r.id, plan: r.plan, start_tick: world.tick, ready_tick: world.tick + time)
-        let message = "Upgrade started: " + r.a_name + " to " + r.b_name + " as " + route_text(next_mode) + ", ready in " + duration_text(time) + "."
-        let w3 = record(w2, message)
-        ProjectStart(world: w3, project: project, ok: true, message: message, from: "", to: "")
+    false => match upgrade_tech_ok(r, a_tech, b_tech):
+      false => ProjectStart(world: world, project: empty_project(), ok: false, message: "The endpoints need the " + route_text(upgrade_next_mode(r)) + " technology before this upgrade.", from: "", to: "")
+      true => match can_upgrade(world, r, a_tech, b_tech):
+        false => ProjectStart(world: world, project: empty_project(), ok: false, message: "Not enough crowns or materials to upgrade " + r.a_name + " to " + r.b_name + ".", from: "", to: "")
+        true =>
+          let next_mode = match r.mode:
+            Path => Road
+            Road => River
+            River => Rail
+            _ => Rail
+          let cost = match r.mode:
+            Path => 35
+            Road => 60
+            River => 90
+            _ => 0
+          let pay_kind = match r.mode:
+            Path => Stone
+            Road => Timber
+            River => Stone
+            _ => Stone
+          let pay_amount = match r.mode:
+            Path => 2
+            Road => 4
+            River => 4
+            _ => 0
+          let paid = pay_good(world, r.a, r.b, pay_kind, pay_amount)
+          let w1 = with_towns(world, paid)
+          let w2 = match r.mode:
+            River => with_towns(w1, pay_good(w1, r.a, r.b, Tools, 2))
+            _ => w1
+          let time = construction_time(world, r.a, r.b, r.plan, next_mode)
+          let project = Project(id: r.id + "-upgrade", kind: "upgrade", a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, mode: next_mode, route_id: r.id, plan: r.plan, start_tick: world.tick, ready_tick: world.tick + time)
+          let message = "Upgrade started: " + r.a_name + " to " + r.b_name + " as " + route_text(next_mode) + ", ready in " + duration_text(time) + "."
+          let w3 = record(w2, message)
+          ProjectStart(world: w3, project: project, ok: true, message: message, from: "", to: "")
 
 fn complete_project(world: World, project: Project) -> World:
   match project.kind == "route":
@@ -4971,8 +4986,8 @@ export fn game_build(game: Game) -> Game:
       let next_sel = Selection(selected: game.sel.to, from: "", to: "", draft: empty_plan(), ready: false, routing: false, notice: "")
       Game(world: result.world, sel: next_sel, notice: result.message, last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: list_append(game.projects, result.project), inspect: empty_inspect_view())
 
-export fn game_upgrade(game: Game, id: Text) -> Game:
-  let result = begin_upgrade(game.world, id)
+export fn game_upgrade(game: Game, id: Text, a_tech: Text, b_tech: Text) -> Game:
+  let result = begin_upgrade(game.world, id, a_tech, b_tech)
   match result.ok:
     false => Game(world: game.world, sel: game.sel, notice: result.message, last_ok: false, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: game.projects, inspect: game.inspect)
     true => Game(world: result.world, sel: game.sel, notice: result.message, last_ok: true, route_groups: game.route_groups, auto_upkeep: game.auto_upkeep, last_paid_tick: game.last_paid_tick, upkeep_per_cycle: game.upkeep_per_cycle, projects: list_append(game.projects, result.project), inspect: empty_inspect_view())

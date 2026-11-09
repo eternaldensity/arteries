@@ -1203,7 +1203,9 @@ fn compact_with_row(row: WorldRow, hours: Int, cadence: Text) -> Result<List<Int
         route_state_row(r, town_row_index(town_rows, r.a), town_row_index(town_rows, r.b))
       let pipeline_values = for r in route_rows:
         r.pipeline
-      let effects = tech_effects_server(row_tech(row))?
+      let techs = for t in town_rows:
+        t.tech
+      let effects = tech_effect_masks_server(techs)?
       let result = host.compute<List<List<Int>>>("arteries", "market", row.money, town_values, route_values, pipeline_values, days, compact_scale(row), effects)?
       let money_row = match list_get(result, 0):
         Some(values) => values
@@ -1279,7 +1281,9 @@ fn trade_chunk_page(row: WorldRow, after: Text, limit: Int) -> Result<List<Text>
         town_state_row(t, row.seed)
       let pipeline_values = for r in route_rows:
         r.pipeline
-      let effects = tech_effects_server(row_tech(row))?
+      let techs = for t in page.towns:
+        t.tech
+      let effects = tech_effect_masks_server(techs)?
       let result = host.compute<List<List<Int>>>("arteries", "trade", row.money, town_values, page.routes, pipeline_values, row.settle_days, compact_scale_at(row, row.settle_from), effects)?
       let money_row = match list_get(result, 0):
         Some(values) => values
@@ -1309,7 +1313,9 @@ fn compact_chunk_page(row: WorldRow, after: Text, limit: Int) -> Result<List<Tex
         town_state_row(t, row.seed)
       let no_routes = []
       let no_pipelines = []
-      let effects = tech_effects_server(row_tech(row))?
+      let techs = for t in town_rows:
+        t.tech
+      let effects = tech_effect_masks_server(techs)?
       let result = host.compute<List<List<Int>>>("arteries", "market", row.money, town_values, no_routes, no_pipelines, row.settle_days, compact_scale_at(row, row.settle_from), effects)?
       let money_row = match list_get(result, 0):
         Some(values) => values
@@ -1702,8 +1708,14 @@ export fn advance_scale(hours: Int, cadence: Text, phase: Int, cursor: Text, pop
 fn encode_ints4(values: List<Int>) -> Result<Text, DataError>:
   host.compute<Text>("arteries", "encode_ints4", values)
 
-fn tech_effects_server(state: Text) -> Result<List<Int>, DataError>:
-  host.compute<List<Int>>("arteries", "tech_effect_mask", state, tech_effect_table())
+fn tech_effect_masks_server(states: List<Text>) -> Result<List<List<Int>>, DataError>:
+  host.compute<List<List<Int>>>("arteries", "tech_effect_masks", states, tech_effect_table())
+
+fn town_tech_states(world_id: WorldId) -> Result<List<Text>, DataError>:
+  let rows = towns.page(world: world_id, order: "ord", after: "", limit: 100)?
+  let techs = for r in rows:
+    r.tech
+  Ok(techs)
 
 fn flow_apply_routes_server(routes: List<Route>, result: List<List<Int>>, town_count: Int, i: Int, acc: List<Route>) -> Result<List<Route>, DataError>:
   match list_get(routes, i):
@@ -1719,7 +1731,7 @@ fn flow_apply_routes_server(routes: List<Route>, result: List<List<Int>>, town_c
       let route = Route(id: r.id, a: r.a, b: r.b, a_name: r.a_name, b_name: r.b_name, a_ord: r.a_ord, b_ord: r.b_ord, mode: r.mode, plan: r.plan, fee: r.fee, traffic: nth_int(values, 0), capacity: r.capacity, upkeep: r.upkeep, rules: r.rules, pipeline: pipeline, flow: flow)
       flow_apply_routes_server(routes, result, town_count, i + 1, list_append(acc, route))
 
-fn market_flow_period(world: World, days: Int, scale: Int) -> Result<World, DataError>:
+fn market_flow_period(world: World, days: Int, scale: Int, techs: List<Text>) -> Result<World, DataError>:
   let town_values = for t in world.towns:
     trade_town_row(t, world.seed)
   let route_values = for r in world.routes:
@@ -1728,7 +1740,7 @@ fn market_flow_period(world: World, days: Int, scale: Int) -> Result<World, Data
     r.pipeline
   # Run production and trade together in Rust. The interpreter only carries
   # the compact rows, so a larger goods list does not inflate managed values.
-  let effects = tech_effects_server(world.tech)?
+  let effects = tech_effect_masks_server(techs)?
   let result = host.compute<List<List<Int>>>("arteries", "market", world.money, town_values, route_values, pipeline_values, days, scale, effects)?
   let money_row = match list_get(result, 0):
     Some(values) => values
@@ -1752,7 +1764,8 @@ export fn forecast_market(hours: Int, cadence: Text) -> Result<Forecast, DataErr
         false => match neglect_ticks(current) >= 2:
           true => 50
           false => 100
-      let market = market_flow_period(ready.world, days, scale)?
+      let techs = town_tech_states(state.id)?
+      let market = market_flow_period(ready.world, days, scale, techs)?
       let traffic_before = for route in ready.world.routes:
         route.traffic
       let traffic_after = for route in market.routes:
@@ -1785,7 +1798,8 @@ export fn advance_market(hours: Int, cadence: Text) -> Result<Game, DataError>:
             false => match unpaid >= 2:
               true => 50
               false => 100
-          let market = market_flow_period(ready.world, days, scale)?
+          let techs = town_tech_states(state.id)?
+          let market = market_flow_period(ready.world, days, scale, techs)?
           let summary = notice + " Market settled for " + int_text(days) + " day" + match days == 1:
             true => ""
             false => "s"
@@ -1948,10 +1962,19 @@ export fn start_route_via(from: Text, to: Text, via: List<Int>) -> Result<Game, 
       let game = game_build(prepared)
       save_game(game, 0, state.epoch)
 
-export fn order_upgrade(route: Text) -> Result<Game, DataError>:
+fn town_tech_at(rows: List<TownRow>, key: Text) -> Text:
+  match list_get(rows, town_row_index(rows, key)):
+    Some(row) => row.tech
+    None => ""
+
+export fn order_upgrade(route_id: Text) -> Result<Game, DataError>:
   let state = load_state()?
   let current = state_game(state, "")
-  let game = game_upgrade(current, route)
+  let route = route_by_id(current.world.routes, route_id, 0)
+  let rows = towns.page(world: state.id, order: "ord", after: "", limit: 100)?
+  let a_tech = town_tech_at(rows, route.a)
+  let b_tech = town_tech_at(rows, route.b)
+  let game = game_upgrade(current, route_id, a_tech, b_tech)
   save_game(game, 0, state.epoch)
 
 export fn dismantle(route: Text) -> Result<Game, DataError>:
