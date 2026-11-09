@@ -80,5 +80,5 @@ const server = http.createServer(async (request, response) => {
 });
 
 server.listen(3010, '127.0.0.1', () => {
-  console.log('Arteries WebGPU spike: http://127.0.0.1:3010/');
+  console.log('Arteries external UI: http://127.0.0.1:3010/');
 });

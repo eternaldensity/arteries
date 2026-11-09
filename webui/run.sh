@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Start the WebGPU framework spike:
+# Start the external Arteries UI:
 #   - runner on 127.0.0.1:3011 with origin 127.0.0.1:3010
-#   - static spike page + RPC proxy on 127.0.0.1:3010
+#   - static UI + RPC proxy on 127.0.0.1:3010
 #
 # Build the app first if needed:
 #   diamond build app/diamond.toml --out .diamond/app-build
@@ -18,14 +18,14 @@ if [ ! -d .diamond/app-build ]; then
   exit 1
 fi
 
-BASE=${SPIKE_POSTGRES_BASE:-"host=/tmp/opencode/arteries-pg port=55432 dbname=postgres user=yria"}
-DB=${SPIKE_DB:-arteries_spike_webgpu}
+BASE=${WEBUI_POSTGRES_BASE:-"host=/tmp/opencode/arteries-pg port=55432 dbname=postgres user=yria"}
+DB=${WEBUI_DB:-arteries_webui}
 export DIAMOND_POSTGRES_URL=${DIAMOND_POSTGRES_URL:-"host=/tmp/opencode/arteries-pg port=55432 dbname=$DB user=yria"}
-USER_NAME=${SPIKE_USER:-yria}
-PASSWORD=${SPIKE_PASSWORD:-'Arteries password 42!'}
+USER_NAME=${WEBUI_USER:-yria}
+PASSWORD=${WEBUI_PASSWORD:-'Arteries password 42!'}
 
 pkill -x arteries-runner 2>/dev/null || true
-pkill -f "[s]pike-webgpu/serve.mjs" 2>/dev/null || true
+pkill -f "[w]ebui/serve.mjs" 2>/dev/null || true
 sleep 1
 
 psql "$BASE" -c "drop database if exists $DB" -c "create database $DB" >/dev/null
@@ -34,9 +34,9 @@ printf '%s\n' "$PASSWORD" | "$DIAMOND" project-user-add .diamond/app-build --pos
 
 mkdir -p .diamond/mailbox
 chmod 700 .diamond/mailbox
-./runner/target/debug/arteries-runner app/diamond.toml 127.0.0.1:3011 http://127.0.0.1:3010 --mailbox .diamond/mailbox > /tmp/opencode/spike-webgpu-runner.log 2>&1 &
+./runner/target/debug/arteries-runner app/diamond.toml 127.0.0.1:3011 http://127.0.0.1:3010 --mailbox .diamond/mailbox > /tmp/opencode/webui-runner.log 2>&1 &
 RUNNER=$!
-node spike-webgpu/serve.mjs &
+node webui/serve.mjs &
 PROXY=$!
 trap 'kill "$RUNNER" "$PROXY" 2>/dev/null || true' EXIT INT TERM
 
@@ -44,6 +44,6 @@ for _ in $(seq 1 30); do
   curl -sf http://127.0.0.1:3010/ >/dev/null && break
   sleep 1
 done
-echo "Arteries WebGPU spike: http://127.0.0.1:3010/"
+echo "Arteries external UI: http://127.0.0.1:3010/"
 echo "Account: $USER_NAME"
 wait

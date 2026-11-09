@@ -44,6 +44,20 @@ topology into a compact 30-face, detail-8 summary using bounded kernel calls.
 Its **Generate terrain** button runs the M2 worldgen stack and reports rivers,
 passes, fords, harbors, biome counts, validity, and a checksum.
 
+## External UI
+
+[`webui/`](webui/README.md) is a standalone frontend that runs beside the
+Diamond server. It uses a contract-driven RPC adapter, an explicit store, a
+declarative scene, pure picking, and a renderer interface with a WebGPU backend
+and a Canvas2D fallback. It currently covers the map, route desk, network list,
+inspector, and cycle control, and is the seed for moving the full-map UI off the
+Diamond browser component tree.
+
+```sh
+./webui/run.sh   # http://127.0.0.1:3010/
+./webui/test.sh  # Playwright acceptance test
+```
+
 ## What is in the prototype
 
 ### Procedural geography
