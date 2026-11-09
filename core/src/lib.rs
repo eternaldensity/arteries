@@ -22,6 +22,8 @@ pub use path::{
     pathfind, pathfind_features, route_cost, route_cost_features, FeatureGrid, Grid, GridPoint,
     RouteStats, TravelMode, MAX_GRID_CELLS, MAX_GRID_SIDE, MAX_PATH_POINTS,
 };
+pub mod town_tech;
+
 pub use planet::{generate_faces, MAX_DETAIL, PLANET_SCALE};
 pub use tick::{
     encode_ints4, encode_link_rules, finish_towns, market, market_with_effects, region_trade,
