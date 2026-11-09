@@ -60,6 +60,9 @@ production so the external UI does not need the Diamond browser runtime.
 ./webui/test.sh  # Playwright acceptance test
 ```
 
+The planned compact overlay for large worlds is described in
+[`docs/scale-overlay-plan.md`](docs/scale-overlay-plan.md).
+
 ## What is in the prototype
 
 ### Procedural geography

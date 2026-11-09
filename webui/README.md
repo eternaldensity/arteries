@@ -100,6 +100,14 @@ adds a waypoint, drags it to another cell, verifies the surveyed length and
 preview stats, then advances one day and checks the tick moved. It accepts
 either `webgpu` or `canvas2d` and prints the mode plus a route summary.
 
+## Scale overlay
+
+The planned compact overlay for large worlds is documented in
+[`../docs/scale-overlay-plan.md`](../docs/scale-overlay-plan.md). It keeps the
+full frontier out of the browser, runs market/trade/finish in bounded chunks,
+and keeps forecasts, worlds, planet, region, and globe tools in one strategic
+view.
+
 ## Migration boundary
 
 This app currently covers the map, route desk, network list, inspector, tech
