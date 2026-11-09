@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Arteries map spike</title>
+    <style>
+      :root {
+        --bg: #07101b;
+        --panel: #0d1828;
+        --panel2: #122238;
+        --line: #29415f;
+        --text: #e7effa;
+        --muted: #8ea4c2;
+        --accent: #e0ac5c;
+        --accent2: #69c3b3;
+        --danger: #e07a8a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at 15% 10%, #173252 0, var(--bg) 48%);
+        color: var(--text);
+        font: 14px/1.45 Inter, "Segoe UI", system-ui, sans-serif;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        padding: 14px 22px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(7, 16, 27, 0.82);
+        backdrop-filter: blur(10px);
+      }
+      header h1 { margin: 0; font-size: 16px; letter-spacing: .04em; }
+      header .sub { color: var(--muted); font-size: 12px; }
+      header form { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+      input {
+        background: #081321;
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 7px 9px;
+        font: inherit;
+      }
+      button {
+        background: var(--panel2);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 7px 11px;
+        font: inherit;
+        cursor: pointer;
+      }
+      button.primary { background: var(--accent); color: #1a1206; border-color: var(--accent); font-weight: 650; }
+      button.danger { border-color: #6a3040; color: #ffc2cc; }
+      button:disabled { opacity: .45; cursor: default; }
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 330px;
+        gap: 16px;
+        padding: 16px;
+        max-width: 1480px;
+        margin: 0 auto;
+      }
+      .map-card, .side-card {
+        background: linear-gradient(180deg, rgba(18, 34, 56, .95), rgba(9, 20, 34, .96));
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, .28);
+      }
+      .map-card { padding: 12px; position: relative; overflow: hidden; }
+      #map { width: 100%; height: auto; display: block; border-radius: 8px; background: #071321; touch-action: none; user-select: none; }
+      .side { display: flex; flex-direction: column; gap: 12px; }
+      .side-card { padding: 12px; }
+      h2 { margin: 0 0 8px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+      .row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
+      .row span:last-child { font-family: "SFMono-Regular", ui-monospace, monospace; color: #d7e6fb; }
+      .muted { color: var(--muted); }
+      .status { min-height: 36px; padding: 8px 10px; border-radius: 8px; background: #08131f; border: 1px solid #1d3149; color: #c7d7eb; }
+      .status.error { border-color: #6a3040; color: #ffc2cc; }
+      .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; color: var(--muted); font-size: 12px; }
+      .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+      .town-label { font-size: 11px; fill: #eaf2ff; paint-order: stroke; stroke: #06101c; stroke-width: 3px; stroke-linejoin: round; }
+      .cell { stroke: #17283d; stroke-width: 1; }
+      .town-dot { fill: var(--accent); stroke: #3b2a11; stroke-width: 2; cursor: pointer; }
+      .town-dot.selected { fill: #fff1c7; stroke: var(--accent); stroke-width: 4; }
+      .site { fill: #69c3b3; stroke: #153a36; stroke-width: 2; cursor: pointer; }
+      .route-line { fill: none; stroke: #7fd0c0; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; opacity: .92; }
+      .route-halo { fill: none; stroke: #071321; stroke-width: 10; stroke-linecap: round; stroke-linejoin: round; opacity: .7; }
+      .draft-line { fill: none; stroke: var(--accent); stroke-width: 5; stroke-dasharray: 11 7; stroke-linecap: round; stroke-linejoin: round; opacity: .95; }
+      .waypoint { fill: #e0ac5c; stroke: #1a1206; stroke-width: 3; cursor: grab; }
+      .waypoint:active { cursor: grabbing; }
+      .waypoint-num { font-size: 11px; fill: #1a1206; font-weight: 700; pointer-events: none; }
+      .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+      .hidden { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Arteries · map and waypoint spike</h1>
+        <div class="sub">external frontend · real RPCs · draggable corridor waypoints</div>
+      </div>
+      <form id="login-form">
+        <input id="username" name="username" value="yria" autocomplete="username" aria-label="Account">
+        <input id="password" name="password" type="password" placeholder="Password" autocomplete="current-password" aria-label="Password">
+        <button class="primary" type="submit">Sign in</button>
+      </form>
+    </header>
+
+    <main id="app" class="hidden">
+      <section class="map-card">
+        <svg id="map" viewBox="0 0 1000 600" role="img" aria-label="Frontier map"></svg>
+        <div class="legend" id="legend"></div>
+        <div class="hint">Click a town to set the origin. Click a second town to set the destination. Click any cell to add a waypoint, then drag the orange handles.</div>
+      </section>
+
+      <aside class="side">
+        <section class="side-card">
+          <h2>Status</h2>
+          <div id="status" class="status">Sign in to load the frontier.</div>
+        </section>
+
+        <section class="side-card">
+          <h2>World</h2>
+          <div id="world-info"></div>
+        </section>
+
+        <section class="side-card">
+          <h2>Route</h2>
+          <div id="route-info"></div>
+          <div class="actions">
+            <button id="start-route" class="primary" disabled>Start construction</button>
+            <button id="reset-route" class="danger">Reset route</button>
+          </div>
+        </section>
+
+        <section class="side-card">
+          <h2>Controls</h2>
+          <div class="row"><span>Origin</span><span id="origin-name">—</span></div>
+          <div class="row"><span>Destination</span><span id="destination-name">—</span></div>
+          <div class="row"><span>Waypoints</span><span id="waypoint-count">0</span></div>
+        </section>
+      </aside>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
