@@ -34,6 +34,10 @@ const el = {
   world: document.getElementById('world-info'),
   route: document.getElementById('route-info'),
   preview: document.getElementById('preview-info'),
+  corridorOptions: document.getElementById('corridor-options'),
+  bendLeft: document.getElementById('bend-left'),
+  bendRight: document.getElementById('bend-right'),
+  shapeAuto: document.getElementById('shape-auto'),
   routes: document.getElementById('route-list'),
   inspector: document.getElementById('inspector'),
   tech: document.getElementById('tech-info'),
@@ -78,6 +82,7 @@ const store = createStore({
   via: [],
   plan: null,
   preview: null,
+  options: [],
   surveySeq: 0,
   inspect: null,
   tech: null,
@@ -86,6 +91,7 @@ const store = createStore({
   selected: '',
   selectedRoute: '',
   rulesOpen: '',
+  pendingDismantle: '',
   worlds: [],
   worldsOpen: false,
   timeBusy: false,
@@ -299,6 +305,13 @@ function renderNetwork() {
             <button class="mini" type="button" data-route-action="upgrade">Upgrade</button>
             <button class="mini danger" type="button" data-route-action="dismantle">Remove</button>
           </div>
+          ${state.pendingDismantle === route.id ? `
+            <div class="route-confirm" style="flex-basis:100%">
+              <span>Remove ${escapeHtml(route.a_name)} ↔ ${escapeHtml(route.b_name)}? This cannot be undone.</span>
+              <button class="mini danger" type="button" data-confirm-remove="${escapeHtml(route.id)}">Confirm remove</button>
+              <button class="mini" type="button" data-cancel-remove="${escapeHtml(route.id)}">Cancel</button>
+            </div>
+          ` : ''}
           ${rulesOpen ? renderRules(route) : ''}
         </div>
       `;
@@ -557,6 +570,29 @@ function renderWorldsList() {
     .join('');
 }
 
+function renderCorridors() {
+  const state = store.get();
+  if (!el.corridorOptions) return;
+  const options = state.options || [];
+  if (!state.plan || options.length === 0) {
+    el.corridorOptions.innerHTML = '<span class="muted">Survey a corridor to compare routes.</span>';
+    el.bendLeft.disabled = !state.plan;
+    el.bendRight.disabled = !state.plan;
+    el.shapeAuto.disabled = !state.plan;
+    return;
+  }
+  el.corridorOptions.innerHTML = options
+    .map((option) => `
+      <button class="corridor-option ${state.plan.bend === option.bend ? 'active' : ''}" type="button" data-corridor-bend="${option.bend}">
+        ${escapeHtml(option.label)}
+      </button>
+    `)
+    .join('');
+  el.bendLeft.disabled = false;
+  el.bendRight.disabled = false;
+  el.shapeAuto.disabled = false;
+}
+
 function render() {
   if (rendering) return;
   if (store.get().scale?.active) return;
@@ -566,6 +602,7 @@ function render() {
     renderWorld();
     renderRoute();
     renderPreview();
+    renderCorridors();
     renderNetwork();
     renderTech();
     renderProduction();
@@ -687,6 +724,7 @@ async function adoptGame(game, status, { reset = false } = {}) {
           via: [],
           plan: null,
           preview: null,
+          options: [],
           selectedRoute: '',
           rulesOpen: '',
           worldsOpen: false,
@@ -773,7 +811,10 @@ async function refreshPlan() {
   const state = store.get();
   if (!state.from || !state.to || !rpc) return;
   try {
-    const plan = await rpc.call('survey_path_plan', [state.from, state.to]);
+    const [plan, options] = await Promise.all([
+      rpc.call('survey_path_plan', [state.from, state.to]),
+      rpc.call('survey_options', [state.from, state.to]),
+    ]);
     const preview = plan.length > 0
       ? await rpc.call('survey_preview', [state.from, state.to, AUTO_BEND])
       : null;
@@ -782,6 +823,7 @@ async function refreshPlan() {
       via: [],
       plan,
       preview,
+      options,
       surveySeq: current.surveySeq + 1,
       status: plan.length > 0 ? 'Corridor surveyed.' : 'No corridor found.',
       error: plan.length === 0,
@@ -805,6 +847,7 @@ async function applyWaypoints() {
       via: result.via,
       plan: result.plan,
       preview,
+      options: [],
       surveySeq: current.surveySeq + 1,
       status: result.ok
         ? `Corridor updated with ${result.count} waypoint(s).`
@@ -844,6 +887,7 @@ async function pickMarker(marker) {
       via: [],
       plan: null,
       preview: null,
+      options: [],
       status: marker.kind === 'town'
         ? `${name} selected. Choose a destination.`
         : `${name} selected. Choose a settlement as the origin.`,
@@ -862,6 +906,7 @@ async function pickMarker(marker) {
       via: [],
       plan: null,
       preview: null,
+      options: [],
       status: 'Route selection cleared.',
       error: false,
     }));
@@ -911,6 +956,7 @@ async function startRoute() {
             via: [],
             plan: null,
             preview: null,
+            options: [],
             drag: null,
           }
         : {}),
@@ -923,7 +969,7 @@ async function startRoute() {
 }
 
 function resetRoute() {
-  store.update((state) => ({ ...state, via: [], plan: null, preview: null, drag: null }));
+  store.update((state) => ({ ...state, via: [], plan: null, preview: null, options: [], drag: null }));
   if (store.get().from && store.get().to) void refreshPlan();
   else render();
 }
@@ -936,6 +982,45 @@ function setTimeBusy(busy) {
   ]) {
     button.disabled = busy;
   }
+}
+
+async function chooseCorridor(bend) {
+  const state = store.get();
+  if (!state.from || !state.to || !rpc) return;
+  try {
+    const plan = await rpc.call('survey_corridor_plan', [state.from, state.to, bend]);
+    const preview = plan.length > 0
+      ? await rpc.call('survey_preview', [state.from, state.to, bend])
+      : null;
+    store.update((current) => ({
+      ...current,
+      via: [],
+      plan,
+      preview,
+      surveySeq: current.surveySeq + 1,
+      status: plan.length > 0
+        ? `Corridor ${bend} selected: ${plan.length} leagues, ${plan.money} crowns.`
+        : 'That corridor is not available.',
+      error: plan.length === 0,
+    }));
+    render();
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+async function bendShape(delta) {
+  const state = store.get();
+  const plan = state.plan;
+  if (!plan) return;
+  const base = plan.bend >= AUTO_BEND ? 0 : plan.bend;
+  const next = Math.max(-5, Math.min(5, base + delta));
+  if (next === plan.bend) return;
+  await chooseCorridor(next);
+}
+
+function autoShape() {
+  void refreshPlan();
 }
 
 async function advanceTime(hours) {
@@ -1014,6 +1099,7 @@ async function routeAction(routeId, action) {
         : state.selectedRoute,
       status: game.notice || (action === 'upgrade' ? 'Upgrade ordered.' : 'Route removed.'),
       error: !game.last_ok,
+      pendingDismantle: '',
     }));
     render();
     void loadAlerts();
@@ -1189,6 +1275,13 @@ el.canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 el.scaleOpen.addEventListener('click', () => void scaleView.enter());
 el.reset.addEventListener('click', resetRoute);
 el.start.addEventListener('click', () => void startRoute());
+el.bendLeft.addEventListener('click', () => void bendShape(-1));
+el.bendRight.addEventListener('click', () => void bendShape(1));
+el.shapeAuto.addEventListener('click', autoShape);
+el.corridorOptions.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-corridor-bend]');
+  if (button) void chooseCorridor(Number(button.dataset.corridorBend));
+});
 el.advanceHour.addEventListener('click', () => void advanceTime(1));
 el.advanceSix.addEventListener('click', () => void advanceTime(6));
 el.advance.addEventListener('click', () => void advanceDay());
@@ -1228,8 +1321,22 @@ el.routes.addEventListener('click', (event) => {
       toggleRules(routeId);
       return;
     }
-    if (button.dataset.routeAction === 'upgrade' || button.dataset.routeAction === 'dismantle') {
-      void routeAction(routeId, button.dataset.routeAction);
+    if (button.dataset.routeAction === 'upgrade') {
+      void routeAction(routeId, 'upgrade');
+      return;
+    }
+    if (button.dataset.routeAction === 'dismantle') {
+      store.update((state) => ({ ...state, pendingDismantle: routeId, rulesOpen: '' }));
+      render();
+      return;
+    }
+    if (button.dataset.confirmRemove !== undefined) {
+      void routeAction(routeId, 'dismantle');
+      return;
+    }
+    if (button.dataset.cancelRemove !== undefined) {
+      store.update((state) => ({ ...state, pendingDismantle: '' }));
+      render();
       return;
     }
     if (button.dataset.routeFee !== undefined) {

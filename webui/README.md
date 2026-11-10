@@ -56,6 +56,8 @@ path automatically.
   click free cells to add up to six waypoints;
 - drag waypoint handles, re-query `survey_waypoint_edit`, and show the returned
   plan plus `survey_preview` capacity, upkeep, trade, material, and warnings;
+- compare `survey_options` corridors, choose one, bend it left/right, or reset
+  to the automatic shape;
 - start construction through the persisted route draft (`start_route`);
 - control time in 1-hour, 6-hour, 1-day, 3-day, 1-week, and 1-month steps;
 - manage upkeep with `pay_upkeep` and `toggle_auto`;
@@ -65,8 +67,9 @@ path automatically.
   tech;
 - browse production with `production_snapshot`: chains, per-town stock, needs,
   endowments, shortages, and insights;
+- read the terrain/route/town legend under the map;
 - select a route, adjust its base toll, edit its per-good allow list and
-  surcharges, upgrade it, or remove it;
+  surcharges, upgrade it, or remove it with an inline confirmation;
 - cancel queued projects and read the construction queue and chronicle;
 - open the full-map Worlds drawer, switch worlds, create a new seed, or sign
   out.

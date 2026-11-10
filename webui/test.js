@@ -269,7 +269,29 @@ function chooseFreeCells(markers, count) {
   assert((await page.textContent('#destination-name')) === toTown.name, 'destination label does not match');
   assert((await page.textContent('#waypoint-count')) === '1', 'waypoint counter is not 1');
 
-  // 7. Advance the authoritative cycle.
+  // 7. Corridor alternatives and shape controls.
+  await page.click('#shape-auto');
+  const autoCorridor = await waitForState(
+    page,
+    (current) => current.via.length === 0 && current.options.length > 1,
+    'auto corridor alternatives'
+  );
+  assert(autoCorridor.options.length > 1, 'corridor alternatives did not load');
+  const optionBend = autoCorridor.options[0].bend;
+  await page.click(`[data-corridor-bend="${optionBend}"]`);
+  const chosen = await waitForState(
+    page,
+    (current) => current.plan && current.plan.bend === optionBend,
+    'corridor choice'
+  );
+  await page.click('#bend-right');
+  await waitForState(
+    page,
+    (current) => current.plan && current.plan.bend === Math.min(5, chosen.plan.bend + 1),
+    'bend right'
+  );
+
+  // 8. Advance the authoritative cycle.
   const tickBefore = dragged.game.world.tick;
   await page.click('#advance-day');
   const advanced = await waitForState(
@@ -524,6 +546,15 @@ function chooseFreeCells(markers, count) {
     postRoute = advanced2.game.world.routes.length > 0;
   }
   assert(postRoute, 'post-compact route did not finish');
+
+  await page.click('[data-route-id] [data-route-action="dismantle"]');
+  await page.waitForSelector('[data-cancel-remove]', { timeout: 10000 });
+  await page.click('[data-cancel-remove]');
+  await page.waitForFunction(
+    () => !document.querySelector('[data-cancel-remove]'),
+    undefined,
+    { timeout: 10000 }
+  );
 
   await page.click('[data-route-id] [data-route-action="rules"]');
   await page.waitForSelector('.rules-panel', { timeout: 10000 });

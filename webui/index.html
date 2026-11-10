@@ -201,6 +201,8 @@
       .project-row strong { display: block; font-size: 12px; }
       .project-row span { color: var(--muted); font-size: 10px; }
       .project-row button { padding: 3px 7px; font-size: 10px; }
+      .route-confirm { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-top: 7px; padding: 7px 8px; border: 1px solid #6a3040; border-radius: 7px; color: #ffc2cc; font-size: 11px; }
+      .route-confirm button { padding: 3px 7px; font-size: 10px; }
       .rules-panel { margin-top: 7px; padding: 8px; border: 1px solid #1d3149; border-radius: 7px; background: #07111d; }
       .rules-panel h3 { margin: 0 0 6px; color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
       .rules-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 4px; }
@@ -209,6 +211,25 @@
       .rule-row button.off { opacity: .45; }
       .chronicle { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
       .chronicle li { color: var(--muted); font-size: 11px; border-left: 2px solid #1d3149; padding-left: 7px; }
+      .corridor-options { display: grid; gap: 5px; margin-top: 6px; }
+      .corridor-option {
+        text-align: left;
+        padding: 6px 8px;
+        font-size: 11px;
+        border: 1px solid #1d3149;
+        background: rgba(8, 18, 31, .6);
+      }
+      .corridor-option.active { border-color: var(--accent); color: #ffe7b8; }
+      .map-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; color: var(--muted); font-size: 10px; }
+      .map-legend span { display: inline-flex; align-items: center; gap: 4px; }
+      .legend-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; border: 1px solid rgba(255,255,255,.12); }
+      .legend-plains { background: #29452c; } .legend-forest { background: #1e3d2a; }
+      .legend-hills { background: #4c4326; } .legend-mountain { background: #44464b; }
+      .legend-water { background: #143b66; } .legend-coast { background: #245a91; }
+      .legend-marsh { background: #2e4d42; } .legend-path { background: #8fb3db; }
+      .legend-road { background: #61c2b3; } .legend-river { background: #6da0e5; }
+      .legend-rail { background: #e0ac5c; } .legend-town { background: #e0ac5c; border-radius: 50%; }
+      .legend-site { background: #69c3b3; transform: rotate(45deg); }
       /* Compact scale overlay */
       .scale-overlay {
         position: fixed;
@@ -446,6 +467,21 @@
           </div>
         </div>
         <div class="hint">Click a settlement to set the origin, a second to set the destination, then click empty cells to add waypoints and drag the orange handles. Wheel zooms; middle- or right-drag pans.</div>
+        <div class="map-legend">
+          <span><i class="legend-swatch legend-plains"></i>Plains</span>
+          <span><i class="legend-swatch legend-forest"></i>Forest</span>
+          <span><i class="legend-swatch legend-hills"></i>Hills</span>
+          <span><i class="legend-swatch legend-mountain"></i>Mountain</span>
+          <span><i class="legend-swatch legend-water"></i>Water</span>
+          <span><i class="legend-swatch legend-coast"></i>Coast</span>
+          <span><i class="legend-swatch legend-marsh"></i>Marsh</span>
+          <span><i class="legend-swatch legend-path"></i>Pack</span>
+          <span><i class="legend-swatch legend-road"></i>Road</span>
+          <span><i class="legend-swatch legend-river"></i>River</span>
+          <span><i class="legend-swatch legend-rail"></i>Rail</span>
+          <span><i class="legend-swatch legend-town"></i>Town</span>
+          <span><i class="legend-swatch legend-site"></i>Site</span>
+        </div>
       </section>
 
       <aside class="side">
@@ -498,6 +534,16 @@
         <section class="side-card">
           <h2>Preview</h2>
           <div id="preview-info" class="muted">Survey a corridor to see capacity, upkeep, and trade.</div>
+        </section>
+
+        <section class="side-card">
+          <h2>Corridors</h2>
+          <div id="corridor-options" class="corridor-options"><span class="muted">Survey a corridor to compare routes.</span></div>
+          <div class="actions">
+            <button id="bend-left" type="button">Bend left</button>
+            <button id="bend-right" type="button">Bend right</button>
+            <button id="shape-auto" type="button">Auto shape</button>
+          </div>
         </section>
 
         <section class="side-card">
