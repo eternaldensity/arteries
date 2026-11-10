@@ -278,6 +278,10 @@ function chooseFreeCells(markers, count) {
     'one-day cycle'
   );
   assert(advanced.game.last_ok, `cycle returned an error: ${advanced.status}`);
+  await page.click('#toggle-auto');
+  await waitForState(page, (current) => current.game.auto_upkeep, 'auto upkeep on');
+  await page.click('#toggle-auto');
+  await waitForState(page, (current) => !current.game.auto_upkeep, 'auto upkeep off');
 
   // 8. Compact scale overlay: one step, then a run-to-completion span, then a
   // full-game reload when returning to the map.
@@ -484,6 +488,74 @@ function chooseFreeCells(markers, count) {
   assert(returned.game.world.tick >= compactTickAfter, 'full map did not refresh after compact cycle');
   await page.waitForSelector('#app:not(.hidden)', { timeout: 10000 });
 
+  // 12. Full-map management after the compact round trip.
+  const afterRect = await canvasRect(page);
+  await page.mouse.click(clientPoint(afterRect, fromTown.x, fromTown.y).x, clientPoint(afterRect, fromTown.x, fromTown.y).y);
+  await waitForState(page, (current) => current.from === fromTown.id, 'post-compact origin');
+  const postTo = clientPoint(afterRect, toTown.x, toTown.y);
+  await page.mouse.click(postTo.x, postTo.y);
+  await waitForState(page, (current) => current.to === toTown.id && current.plan, 'post-compact survey');
+
+  const postSeq = (await state(page)).surveySeq;
+  await page.click('#reset-route');
+  await waitForState(
+    page,
+    (current) => current.surveySeq > postSeq && current.via.length === 0,
+    'post-compact auto route'
+  );
+  await page.click('#start-route');
+  const postProject = await waitForState(
+    page,
+    (current) => current.game.projects.length > 0,
+    'post-compact project start'
+  );
+  assert(postProject.game.projects.length === 1, 'post-compact project did not start');
+  assert((await page.textContent('#project-list')).includes('→'), 'post-compact project panel is empty');
+
+  let postRoute = false;
+  for (let attempt = 0; attempt < 4 && !postRoute; attempt += 1) {
+    const before = (await state(page)).game.world.tick;
+    await page.click('#advance-day');
+    const advanced2 = await waitForState(
+      page,
+      (current) => current.game.world.tick > before,
+      'post-compact project advance'
+    );
+    postRoute = advanced2.game.world.routes.length > 0;
+  }
+  assert(postRoute, 'post-compact route did not finish');
+
+  await page.click('[data-route-id] [data-route-action="rules"]');
+  await page.waitForSelector('.rules-panel', { timeout: 10000 });
+  const ruleBefore2 = await page.evaluate(() => window.__webui.getState().game.world.routes[0].rules.allow[0]);
+  await page.click('.rules-panel [data-rule-toggle][data-good="0"]');
+  await page.waitForFunction(
+    (before) => window.__webui.getState().game.world.routes[0].rules.allow[0] !== before,
+    ruleBefore2,
+    { timeout: 10000 }
+  );
+
+  const hourBefore = (await state(page)).game.world.tick;
+  await page.click('#advance-hour');
+  const hourAfter = await waitForState(page, (current) => current.game.world.tick > hourBefore, 'post-compact hour');
+  const weekBefore = hourAfter.game.world.tick;
+  await page.click('#advance-week');
+  await waitForState(page, (current) => current.game.world.tick >= weekBefore + 168, 'post-compact week');
+  const maint = await page.textContent('#maintenance-info');
+  assert(maint.includes('Due'), 'post-compact maintenance missed upkeep');
+  assert(!(await page.locator('#pay-upkeep').isDisabled()), 'post-compact pay upkeep should be enabled');
+
+  await page.click('#worlds-open');
+  await page.waitForSelector('#worlds-overlay:not(.hidden)', { timeout: 10000 });
+  const fullWorlds = await waitForState(
+    page,
+    (current) => current.worlds.length >= 1,
+    'post-compact world list'
+  );
+  const currentFull = fullWorlds.worlds.find((entry) => entry.current);
+  assert(currentFull, 'post-compact world list has no current world');
+  await page.click('#worlds-close');
+
   assert(errors.length === 0, 'browser errors: ' + errors.join('; '));
 
   const summary = {
@@ -504,7 +576,7 @@ function chooseFreeCells(markers, count) {
     compactTickAfter,
     compactChunks: compactDone.scale.chunkCount,
   };
-  console.log('PASS: external UI exercised map, route edits, cycle, and compact overlay');
+  console.log('PASS: external UI exercised map, route editor, full-map management, and compact overlay');
   console.log(JSON.stringify(summary));
   await browser.close();
 })().catch((error) => {

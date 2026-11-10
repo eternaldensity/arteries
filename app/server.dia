@@ -578,9 +578,12 @@ fn packed_terrain(world: World) -> Text:
 # A kernel-planned corridor is a pure function of the world and endpoints, so
 # persisted rows only need the sentinel bend; loading recomputes the same path.
 fn concat_ints(xs: List<Int>, ys: List<Int>) -> List<Int>:
-  match len(ys) == 0:
-    true => xs
-    false => concat_ints(list_append(xs, nth_int(ys, 0)), list_slice(ys, 1, len(ys) - 1))
+  let left = len(xs)
+  let total = left + len(ys)
+  for i in indices(total):
+    match i < left:
+      true => nth_int(xs, i)
+      false => nth_int(ys, i - left)
 
 # One A* leg between two consecutive waypoints. An unreachable or malformed leg
 # falls back to the straight segment between the pair, so the surveyed corridor
@@ -1019,7 +1022,17 @@ fn town_state_row(row: TownRow, seed: Int) -> List<Int>:
 fn route_state_row(row: RouteRow, a: Int, b: Int) -> List<Int>:
   let rules = decode_link_rules(row.rules)
   let base = [a, b, row.fee, row.traffic, row.capacity, row.upkeep, route_mode_code(row.mode)]
-  concat_ints(concat_ints(concat_ints(base, rules.allow), rules.fee), decode_pipeline(row.pipeline))
+  let pipeline = decode_pipeline(row.pipeline)
+  let gc = good_count()
+  let total = 7 + gc * 2 + len(pipeline)
+  for i in indices(total):
+    match i < 7:
+      true => nth_int(base, i)
+      false => match i < 7 + gc:
+        true => nth_int(rules.allow, i - 7)
+        false => match i < 7 + gc * 2:
+          true => nth_int(rules.fee, i - 7 - gc)
+          false => nth_int(pipeline, i - 7 - gc * 2)
 
 fn compact_town_edit(row: TownRow, values: List<Int>) -> EditTownRow:
   let has_endow = len(values) > 21
@@ -1303,6 +1316,11 @@ export fn advance_compact(hours: Int, cadence: Text) -> Result<List<Int>, DataEr
       match list_get(current_world_rows()?, 0):
         Some(row) => compact_with_row(row, hours, cadence)
         None => Ok([loaded.world.tick, loaded.world.money, total_pop(loaded.world), total_prosperity(loaded.world), 0])
+
+fn pad_tech_states(states: List<Text>, count: Int) -> List<Text>:
+  match count <= 0:
+    true => states
+    false => pad_tech_states(list_append(states, ""), count - 1)
 
 fn max_research_rows(rows: List<TownRow>, i: Int, best: Int) -> Int:
   match list_get(rows, i):
@@ -2036,7 +2054,8 @@ export fn advance_market(hours: Int, cadence: Text) -> Result<Game, DataError>:
             false => match unpaid >= 2:
               true => 50
               false => 100
-          let techs = town_tech_states(state.id)?
+          let stored_techs = town_tech_states(state.id)?
+          let techs = pad_tech_states(stored_techs, len(ready.world.towns) - len(stored_techs))
           let market = market_flow_period(ready.world, days, scale, techs)?
           let summary = notice + " Market settled for " + int_text(days) + " day" + match days == 1:
             true => ""

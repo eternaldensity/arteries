@@ -49,11 +49,12 @@ passes, fords, harbors, biome counts, validity, and a checksum.
 [`webui/`](webui/README.md) is a standalone frontend that runs beside the
 Diamond server. It uses a contract-driven RPC adapter, an explicit store, a
 declarative scene, pure picking, and a renderer interface with a WebGPU backend
-and a Canvas2D fallback. It currently covers the map, route desk, network list,
-inspector, technology catalog, production summaries, and cycle control, and is
-the seed for moving the full-map UI off the Diamond browser component tree. The
-server exposes narrow reads for marker inspection, paged technology, and
-production so the external UI does not need the Diamond browser runtime.
+and a Canvas2D fallback. It covers the map, route desk, route fees/rules, network list, project queue,
+maintenance, signals, chronicle, inspector, technology catalog, production
+summaries, worlds/new seed, and cycle control, and is the seed for moving the
+full-map UI off the Diamond browser component tree. The server exposes narrow
+reads for marker inspection, paged technology, and production so the external
+UI does not need the Diamond browser runtime.
 
 ```sh
 ./webui/run.sh   # http://127.0.0.1:3010/

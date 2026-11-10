@@ -60,3 +60,13 @@ export async function fetchContract(fetchImpl = fetch) {
   if (!response.ok) throw new Error('contract unavailable');
   return response.json();
 }
+
+export async function logout(csrf, fetchImpl = fetch) {
+  const response = await fetchImpl('/_diamond/logout', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-Diamond-CSRF': csrf },
+    body: '{}',
+  });
+  if (!response.ok) throw new Error('logout failed');
+}

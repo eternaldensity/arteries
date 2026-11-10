@@ -1,5 +1,5 @@
 import { createStore } from '../framework/store.js';
-import { fetchContract, fetchSession, login, createRpc } from '../framework/rpc.js';
+import { fetchContract, fetchSession, login, logout, createRpc } from '../framework/rpc.js';
 import {
   MAP,
   buildScene,
@@ -48,6 +48,25 @@ const el = {
   zoomOut: document.getElementById('zoom-out'),
   zoomFit: document.getElementById('zoom-fit'),
   scaleOpen: document.getElementById('scale-open'),
+  fullmapActions: document.getElementById('fullmap-actions'),
+  worldsOpen: document.getElementById('worlds-open'),
+  newWorld: document.getElementById('new-world'),
+  signOut: document.getElementById('sign-out'),
+  worldsOverlay: document.getElementById('worlds-overlay'),
+  worldsList: document.getElementById('worlds-list'),
+  worldsClose: document.getElementById('worlds-close'),
+  signals: document.getElementById('signals-info'),
+  maintenance: document.getElementById('maintenance-info'),
+  payUpkeep: document.getElementById('pay-upkeep'),
+  toggleAuto: document.getElementById('toggle-auto'),
+  projectList: document.getElementById('project-list'),
+  chronicle: document.getElementById('chronicle'),
+  advanceHour: document.getElementById('advance-hour'),
+  advanceSix: document.getElementById('advance-six'),
+  advanceThree: document.getElementById('advance-three'),
+  advanceWeek: document.getElementById('advance-week'),
+  advanceMonth: document.getElementById('advance-month'),
+  runCycle: document.getElementById('run-cycle'),
 };
 
 const store = createStore({
@@ -63,8 +82,13 @@ const store = createStore({
   inspect: null,
   tech: null,
   production: null,
+  alerts: [],
   selected: '',
   selectedRoute: '',
+  rulesOpen: '',
+  worlds: [],
+  worldsOpen: false,
+  timeBusy: false,
   camera: fitCamera(),
   drag: null,
   pan: null,
@@ -78,6 +102,8 @@ let renderer = null;
 let rpc = null;
 let pending = null;
 let rendering = false;
+let panelsTimer = null;
+let lastCaptureAt = 0;
 const scaleView = createScale({
   store,
   getRpc: () => rpc,
@@ -220,6 +246,35 @@ function renderPreview() {
   }
 }
 
+function routeRuleData(route) {
+  const allow = Array.from({ length: GOODS.length }, (_, index) => route.rules?.allow?.[index] ?? 1);
+  const fee = Array.from({ length: GOODS.length }, (_, index) => route.rules?.fee?.[index] ?? 0);
+  return { allow, fee };
+}
+
+function renderRules(route) {
+  const { allow, fee } = routeRuleData(route);
+  return `
+    <div class="rules-panel" style="flex-basis:100%">
+      <h3>Allow goods and surcharges</h3>
+      <div class="rules-grid">
+        ${GOODS.map((good, index) => `
+          <div class="rule-row">
+            <button class="${allow[index] ? '' : 'off'}" type="button" data-rule-toggle="${escapeHtml(route.id)}" data-good="${index}">
+              ${allow[index] ? '✓' : '×'} ${escapeHtml(good)}
+            </button>
+            <span>
+              <button type="button" data-rule-fee="${escapeHtml(route.id)}" data-good="${index}" data-delta="-1">−</button>
+              ${fee[index]}
+              <button type="button" data-rule-fee="${escapeHtml(route.id)}" data-good="${index}" data-delta="1">+</button>
+            </span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
 function renderNetwork() {
   const state = store.get();
   const world = worldOf(state);
@@ -230,15 +285,21 @@ function renderNetwork() {
   el.routes.innerHTML = world.routes
     .map((route) => {
       const selected = route.id === state.selectedRoute ? ' selected' : '';
+      const rulesOpen = state.rulesOpen === route.id;
       return `
-        <div class="route-row${selected}" data-route-id="${escapeHtml(route.id)}">
+        <div class="route-row${selected}" data-route-id="${escapeHtml(route.id)}" style="flex-wrap:wrap">
           <div class="names">
             <b>${escapeHtml(route.a_name)} → ${escapeHtml(route.b_name)}</b>
-            <span>${escapeHtml(route.mode)} · ${escapeHtml(route.id)}</span>
+            <span>${escapeHtml(route.mode)} · toll ${route.fee} · ${route.traffic}/${route.capacity}</span>
           </div>
-          <span class="traffic">${route.traffic}/${route.capacity}</span>
-          <button class="mini" type="button" data-action="upgrade">Upgrade</button>
-          <button class="mini danger" type="button" data-action="dismantle">Remove</button>
+          <div class="actions" style="margin:0">
+            <button class="mini" type="button" data-route-fee="${escapeHtml(route.id)}" data-delta="-1" aria-label="Lower toll">−</button>
+            <button class="mini" type="button" data-route-fee="${escapeHtml(route.id)}" data-delta="1" aria-label="Raise toll">+</button>
+            <button class="mini" type="button" data-route-action="rules">Rules</button>
+            <button class="mini" type="button" data-route-action="upgrade">Upgrade</button>
+            <button class="mini danger" type="button" data-route-action="dismantle">Remove</button>
+          </div>
+          ${rulesOpen ? renderRules(route) : ''}
         </div>
       `;
     })
@@ -402,6 +463,100 @@ function renderProduction() {
   `;
 }
 
+function renderSignals() {
+  const state = store.get();
+  if (!el.signals) return;
+  if (!state.alerts.length) {
+    el.signals.innerHTML = '<div class="muted">No alerts.</div>';
+    return;
+  }
+  el.signals.innerHTML = state.alerts
+    .map((alert) => `<div class="scale-alert ${escapeHtml(alert.tone)}">${escapeHtml(alert.text)}</div>`)
+    .join('');
+}
+
+function renderMaintenance() {
+  const state = store.get();
+  const game = state.game;
+  const world = worldOf(state);
+  if (!el.maintenance || !game || !world) return;
+  const weeks = Math.max(
+    0,
+    Math.floor(world.tick / 168) - Math.floor(game.last_paid_tick / 168)
+  );
+  const due = game.auto_upkeep ? 0 : weeks * game.upkeep_per_cycle;
+  const condition = game.auto_upkeep
+    ? 'automatic'
+    : weeks >= 2
+      ? 'degraded'
+      : due > 0
+        ? 'due'
+        : 'maintained';
+  el.maintenance.innerHTML = `
+    <div class="maintenance-grid">
+      <div><span>Due</span><strong>${due}</strong></div>
+      <div><span>Condition</span><strong>${condition}</strong></div>
+      <div><span>Per week</span><strong>${game.upkeep_per_cycle}</strong></div>
+    </div>
+  `;
+  el.payUpkeep.disabled = due <= 0;
+  el.toggleAuto.textContent = `Auto upkeep: ${game.auto_upkeep ? 'on' : 'off'}`;
+}
+
+function renderProjects() {
+  const state = store.get();
+  const game = state.game;
+  const world = worldOf(state);
+  if (!el.projectList) return;
+  if (!game || !world || game.projects.length === 0) {
+    el.projectList.innerHTML = '';
+    return;
+  }
+  el.projectList.innerHTML = `
+    <div class="small" style="margin-top:10px">Under construction</div>
+    ${game.projects.map((project, index) => {
+      const remaining = Math.max(0, project.ready_tick - world.tick);
+      const kind = project.kind === 'route' ? 'new' : 'upgrade';
+      return `
+        <div class="project-row">
+          <div>
+            <strong>${escapeHtml(project.a_name)} → ${escapeHtml(project.b_name)}</strong>
+            <span>${kind} ${escapeHtml(project.mode)} · queue ${index + 1} · ${remaining}h left</span>
+          </div>
+          <button class="danger" type="button" data-cancel-project="${escapeHtml(project.id)}">Cancel</button>
+        </div>
+      `;
+    }).join('')}
+  `;
+}
+
+function renderChronicle() {
+  const state = store.get();
+  const world = worldOf(state);
+  if (!el.chronicle || !world) return;
+  const lines = (world.log || []).slice(-8).reverse();
+  el.chronicle.innerHTML = lines.length
+    ? lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('')
+    : '<li>No chronicle entries yet.</li>';
+}
+
+function renderWorldsList() {
+  const state = store.get();
+  if (!el.worldsList) return;
+  if (!state.worlds.length) {
+    el.worldsList.innerHTML = '<div class="muted">No saved worlds.</div>';
+    return;
+  }
+  el.worldsList.innerHTML = state.worlds
+    .map((world) => `
+      <button class="${world.current ? 'current' : ''}" type="button" data-world-id="${escapeHtml(world.id)}">
+        <strong>Seed ${world.seed}${world.current ? ' · current' : ''}</strong>
+        <span>day ${Math.floor(world.tick / 24) + 1} · ${world.towns} settlements · ${world.money} crowns</span>
+      </button>
+    `)
+    .join('');
+}
+
 function render() {
   if (rendering) return;
   if (store.get().scale?.active) return;
@@ -415,6 +570,10 @@ function render() {
     renderTech();
     renderProduction();
     renderInspector();
+    renderSignals();
+    renderMaintenance();
+    renderProjects();
+    renderChronicle();
     updateLabels();
     if (renderer) renderer.setScene(buildScene(store.get()));
   } finally {
@@ -462,18 +621,36 @@ async function fetchTechPanel() {
   return { ...first, next: first.total, entries };
 }
 
+function schedulePanels(selectedId = store.get().selected) {
+  if (panelsTimer) clearTimeout(panelsTimer);
+  panelsTimer = setTimeout(() => {
+    panelsTimer = null;
+    void loadPanels(selectedId);
+  }, 800);
+}
+
+function captureSnapshot() {
+  if (!rpc) return;
+  const now = Date.now();
+  if (now - lastCaptureAt < 2000) return;
+  lastCaptureAt = now;
+  void rpc.call('compact_capture', []).catch(() => {});
+}
+
 async function loadPanels(selectedId = store.get().selected) {
   if (!rpc) return;
   try {
-    const [inspect, tech, production] = await Promise.all([
+    const [inspect, tech, production, alerts] = await Promise.all([
       selectedId ? rpc.call('inspect_marker', [selectedId]) : Promise.resolve(null),
       fetchTechPanel(),
       rpc.call('production_snapshot', []),
+      rpc.call('compact_alerts', []),
     ]);
     store.update((state) => ({
       ...state,
       tech,
       production,
+      alerts,
       inspect: state.selected === selectedId ? inspect : state.inspect,
     }));
     render();
@@ -482,22 +659,107 @@ async function loadPanels(selectedId = store.get().selected) {
   }
 }
 
+async function loadAlerts() {
+  if (!rpc) return;
+  try {
+    const alerts = await rpc.call('compact_alerts', []);
+    store.update((state) => ({ ...state, alerts }));
+    renderSignals();
+  } catch {
+    // Signals are advisory; a failed refresh should not block the map.
+  }
+}
+
+async function adoptGame(game, status, { reset = false } = {}) {
+  const terrainText = await rpc.call('terrain_region', [
+    game.world.seed, 0, 0, MAP.cols, MAP.rows,
+  ]);
+  const terrain = terrainText.split(';').map((row) => row.split(',').map(Number));
+  store.update((state) => ({
+    ...state,
+    game,
+    terrain,
+    selected: reset ? game.sel?.selected || '' : state.selected,
+    ...(reset
+      ? {
+          from: '',
+          to: '',
+          via: [],
+          plan: null,
+          preview: null,
+          selectedRoute: '',
+          rulesOpen: '',
+          worldsOpen: false,
+        }
+      : {}),
+    status,
+    error: !game.last_ok,
+  }));
+  el.login.classList.add('hidden');
+  el.app.classList.remove('hidden');
+  el.fullmapActions.classList.remove('hidden');
+  el.worldsOverlay.classList.add('hidden');
+  render();
+  void loadPanels(store.get().selected);
+  void loadAlerts();
+}
+
 async function refreshFullGame() {
   if (!rpc) return;
   try {
     const game = await rpc.call('load_game', []);
-    store.update((state) => ({
-      ...state,
-      game,
-      selected: game.sel?.selected || '',
-      status: 'World refreshed after the compact cycle.',
-      error: false,
-    }));
-    el.login.classList.add('hidden');
-    el.app.classList.remove('hidden');
-    el.scaleOpen.classList.remove('hidden');
-    render();
-    void loadPanels(store.get().selected);
+    await adoptGame(game, 'World refreshed after the compact cycle.');
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+async function loadWorlds() {
+  if (!rpc) return;
+  try {
+    const worlds = await rpc.call('list_worlds', []);
+    store.update((state) => ({ ...state, worlds }));
+    renderWorldsList();
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+async function openWorlds() {
+  store.update((state) => ({ ...state, worldsOpen: true }));
+  el.worldsOverlay.classList.remove('hidden');
+  await loadWorlds();
+}
+
+function closeWorlds() {
+  store.update((state) => ({ ...state, worldsOpen: false }));
+  el.worldsOverlay.classList.add('hidden');
+}
+
+async function switchWorldFull(id) {
+  if (!rpc) return;
+  try {
+    const game = await rpc.call('switch_world', [id]);
+    await adoptGame(game, 'World switched.', { reset: true });
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+async function newWorldFull() {
+  if (!rpc) return;
+  try {
+    const game = await rpc.call('new_seed', []);
+    await adoptGame(game, 'New world generated.', { reset: true });
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+async function signOut() {
+  try {
+    await logout(store.get().csrf);
+    window.location.reload();
   } catch (error) {
     setStatus(error.message, true);
   }
@@ -634,7 +896,7 @@ async function startRoute() {
   const state = store.get();
   if (!state.from || !state.to || !rpc) return;
   try {
-    const game = await rpc.call('start_route_via', [state.from, state.to, state.via]);
+    const game = await rpc.call('start_route', [state.from, state.to, AUTO_BEND]);
     store.update((current) => ({
       ...current,
       game,
@@ -654,7 +916,7 @@ async function startRoute() {
         : {}),
     }));
     render();
-    void loadPanels(store.get().selected);
+    void loadAlerts();
   } catch (error) {
     setStatus(error.message, true);
   }
@@ -666,24 +928,77 @@ function resetRoute() {
   else render();
 }
 
-async function advanceDay() {
-  if (!rpc) return;
-  el.advance.disabled = true;
+function setTimeBusy(busy) {
+  store.update((state) => ({ ...state, timeBusy: busy }));
+  for (const button of [
+    el.advanceHour, el.advanceSix, el.advance, el.advanceThree,
+    el.advanceWeek, el.advanceMonth, el.runCycle,
+  ]) {
+    button.disabled = busy;
+  }
+}
+
+async function advanceTime(hours) {
+  if (!rpc || store.get().timeBusy) return;
+  const cadence = hours >= 672 ? 'monthly' : hours >= 168 ? 'weekly' : 'daily';
+  setTimeBusy(true);
   try {
-    const game = await rpc.call('run_cycle', [24, 'daily']);
+    const staged = await rpc.call('advance_market', [hours, cadence]);
+    const game = staged.phase === 0 ? staged : await rpc.call('advance_finish', []);
     store.update((state) => ({
       ...state,
       game,
-      status: game.notice || 'Advanced one day.',
+      status: game.notice || `Advanced ${hours}h.`,
       error: !game.last_ok,
     }));
     render();
-    void rpc.call('compact_capture', []).catch(() => {});
-    void loadPanels(store.get().selected);
+    captureSnapshot();
+    schedulePanels(store.get().selected);
+    void loadAlerts();
   } catch (error) {
     setStatus(error.message, true);
   } finally {
-    el.advance.disabled = false;
+    setTimeBusy(false);
+  }
+}
+
+function advanceDay() {
+  return advanceTime(24);
+}
+
+async function payUpkeep() {
+  if (!rpc) return;
+  try {
+    const game = await rpc.call('pay_upkeep', []);
+    store.update((state) => ({ ...state, game, status: game.notice || 'Upkeep paid.', error: !game.last_ok }));
+    render();
+    void loadAlerts();
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+async function toggleAuto() {
+  if (!rpc) return;
+  try {
+    const game = await rpc.call('toggle_auto', []);
+    store.update((state) => ({ ...state, game, status: game.notice || 'Upkeep mode changed.', error: !game.last_ok }));
+    render();
+    void loadAlerts();
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+async function cancelProject(id) {
+  if (!rpc) return;
+  try {
+    const game = await rpc.call('cancel_project', [id]);
+    store.update((state) => ({ ...state, game, status: game.notice || 'Project cancelled.', error: !game.last_ok }));
+    render();
+    void loadAlerts();
+  } catch (error) {
+    setStatus(error.message, true);
   }
 }
 
@@ -701,10 +1016,58 @@ async function routeAction(routeId, action) {
       error: !game.last_ok,
     }));
     render();
-    void loadPanels(store.get().selected);
+    void loadAlerts();
   } catch (error) {
     setStatus(error.message, true);
   }
+}
+
+async function setRouteFee(routeId, delta) {
+  if (!rpc) return;
+  try {
+    const game = await rpc.call('set_fee', [routeId, delta]);
+    store.update((state) => ({ ...state, game, status: game.notice || 'Toll adjusted.', error: !game.last_ok }));
+    render();
+    void loadAlerts();
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+async function setRouteRules(routeId, allow, fee) {
+  if (!rpc) return;
+  try {
+    const game = await rpc.call('set_route_rules', [routeId, allow, fee]);
+    store.update((state) => ({ ...state, game, status: game.notice || 'Route rules saved.', error: !game.last_ok }));
+    render();
+    void loadAlerts();
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+function toggleRules(routeId) {
+  store.update((state) => ({
+    ...state,
+    rulesOpen: state.rulesOpen === routeId ? '' : routeId,
+  }));
+  render();
+}
+
+async function toggleRule(routeId, good) {
+  const route = worldOf(store.get())?.routes.find((candidate) => candidate.id === routeId);
+  if (!route) return;
+  const { allow, fee } = routeRuleData(route);
+  allow[good] = allow[good] ? 0 : 1;
+  await setRouteRules(routeId, allow, fee);
+}
+
+async function adjustRuleFee(routeId, good, delta) {
+  const route = worldOf(store.get())?.routes.find((candidate) => candidate.id === routeId);
+  if (!route) return;
+  const { allow, fee } = routeRuleData(route);
+  fee[good] = Math.max(0, fee[good] + delta);
+  await setRouteRules(routeId, allow, fee);
 }
 
 function zoom(factor, at) {
@@ -826,7 +1189,27 @@ el.canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 el.scaleOpen.addEventListener('click', () => void scaleView.enter());
 el.reset.addEventListener('click', resetRoute);
 el.start.addEventListener('click', () => void startRoute());
+el.advanceHour.addEventListener('click', () => void advanceTime(1));
+el.advanceSix.addEventListener('click', () => void advanceTime(6));
 el.advance.addEventListener('click', () => void advanceDay());
+el.advanceThree.addEventListener('click', () => void advanceTime(72));
+el.advanceWeek.addEventListener('click', () => void advanceTime(168));
+el.advanceMonth.addEventListener('click', () => void advanceTime(672));
+el.runCycle.addEventListener('click', () => void advanceTime(168));
+el.payUpkeep.addEventListener('click', () => void payUpkeep());
+el.toggleAuto.addEventListener('click', () => void toggleAuto());
+el.worldsOpen.addEventListener('click', () => void openWorlds());
+el.newWorld.addEventListener('click', () => void newWorldFull());
+el.signOut.addEventListener('click', () => void signOut());
+el.worldsClose.addEventListener('click', closeWorlds);
+el.worldsList.addEventListener('click', (event) => {
+  const row = event.target.closest('[data-world-id]');
+  if (row) void switchWorldFull(row.dataset.worldId);
+});
+el.projectList.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-cancel-project]');
+  if (button) void cancelProject(button.dataset.cancelProject);
+});
 el.zoomIn.addEventListener('click', () => zoom(1.25));
 el.zoomOut.addEventListener('click', () => zoom(0.8));
 el.zoomFit.addEventListener('click', () => {
@@ -835,14 +1218,32 @@ el.zoomFit.addEventListener('click', () => {
 });
 
 el.routes.addEventListener('click', (event) => {
-  const button = event.target.closest('button[data-action]');
   const row = event.target.closest('[data-route-id]');
   if (!row) return;
   const routeId = row.dataset.routeId;
+  const button = event.target.closest('button');
   if (button) {
     event.stopPropagation();
-    void routeAction(routeId, button.dataset.action);
-    return;
+    if (button.dataset.routeAction === 'rules') {
+      toggleRules(routeId);
+      return;
+    }
+    if (button.dataset.routeAction === 'upgrade' || button.dataset.routeAction === 'dismantle') {
+      void routeAction(routeId, button.dataset.routeAction);
+      return;
+    }
+    if (button.dataset.routeFee !== undefined) {
+      void setRouteFee(routeId, Number(button.dataset.delta));
+      return;
+    }
+    if (button.dataset.ruleToggle !== undefined) {
+      void toggleRule(routeId, Number(button.dataset.good));
+      return;
+    }
+    if (button.dataset.ruleFee !== undefined) {
+      void adjustRuleFee(routeId, Number(button.dataset.good), Number(button.dataset.delta));
+      return;
+    }
   }
   const world = worldOf(store.get());
   const route = world?.routes.find((candidate) => candidate.id === routeId);
@@ -858,7 +1259,7 @@ async function startApp(csrf) {
   if (compact.towns > COMPACT_THRESHOLD || compact.phase !== 0) {
     el.login.classList.add('hidden');
     el.app.classList.add('hidden');
-    el.scaleOpen.classList.add('hidden');
+    el.fullmapActions.classList.add('hidden');
     await scaleView.open(compact);
     return;
   }
@@ -879,7 +1280,7 @@ async function startApp(csrf) {
   }));
   el.login.classList.add('hidden');
   el.app.classList.remove('hidden');
-  el.scaleOpen.classList.remove('hidden');
+  el.fullmapActions.classList.remove('hidden');
   render();
   void loadPanels(game.sel?.selected || '');
 }

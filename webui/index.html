@@ -154,6 +154,61 @@
       .good-chip.short { border-color: #6a3040; color: #ffc2cc; }
       .small { color: var(--muted); font-size: 11px; margin-top: 6px; }
 
+      .header-actions { display: flex; align-items: center; gap: 7px; }
+      .header-actions button { padding: 6px 9px; font-size: 12px; }
+      .worlds-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 900;
+        display: grid;
+        place-items: center;
+        padding: 20px;
+        background: rgba(2, 7, 13, .72);
+        backdrop-filter: blur(4px);
+      }
+      .worlds-panel {
+        width: min(560px, 100%);
+        max-height: min(70vh, 640px);
+        overflow: auto;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(17, 34, 58, .98), rgba(8, 18, 31, .99));
+        box-shadow: 0 24px 80px rgba(0, 0, 0, .4);
+      }
+      .worlds-panel header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+      .worlds-panel h2 { margin: 0; }
+      .worlds-list { display: grid; gap: 7px; }
+      .worlds-list button {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        text-align: left;
+        padding: 9px 11px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: rgba(8, 18, 31, .55);
+      }
+      .worlds-list button:hover { border-color: var(--accent); }
+      .worlds-list button.current { border-color: var(--accent2); background: rgba(105, 195, 179, .08); }
+      .worlds-list button span { color: var(--muted); font-size: 10px; }
+      .maintenance-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0; }
+      .maintenance-grid div { padding: 7px 8px; border: 1px solid #1d3149; border-radius: 7px; background: rgba(8, 18, 31, .55); }
+      .maintenance-grid span { display: block; color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .1em; }
+      .maintenance-grid strong { font-family: "SFMono-Regular", ui-monospace, monospace; font-size: 13px; }
+      .project-row { display: flex; justify-content: space-between; gap: 10px; padding: 7px 8px; border: 1px solid #1d3149; border-radius: 7px; background: rgba(8, 18, 31, .55); margin-top: 6px; }
+      .project-row strong { display: block; font-size: 12px; }
+      .project-row span { color: var(--muted); font-size: 10px; }
+      .project-row button { padding: 3px 7px; font-size: 10px; }
+      .rules-panel { margin-top: 7px; padding: 8px; border: 1px solid #1d3149; border-radius: 7px; background: #07111d; }
+      .rules-panel h3 { margin: 0 0 6px; color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+      .rules-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 4px; }
+      .rule-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 10px; color: #c7d7eb; }
+      .rule-row button { padding: 1px 5px; font-size: 10px; }
+      .rule-row button.off { opacity: .45; }
+      .chronicle { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+      .chronicle li { color: var(--muted); font-size: 11px; border-left: 2px solid #1d3149; padding-left: 7px; }
       /* Compact scale overlay */
       .scale-overlay {
         position: fixed;
@@ -366,7 +421,12 @@
         <h1>Arteries · external UI</h1>
         <div class="sub">contract-driven scene · WebGPU map layer · route desk</div>
       </div>
-      <button id="scale-open" class="hidden" type="button">Scale view</button>
+      <div id="fullmap-actions" class="header-actions hidden">
+        <button id="scale-open" type="button">Scale view</button>
+        <button id="worlds-open" type="button">Worlds</button>
+        <button id="new-world" type="button">New world</button>
+        <button id="sign-out" type="button">Sign out</button>
+      </div>
       <form id="login-form">
         <input id="username" name="username" value="yria" autocomplete="username" aria-label="Account">
         <input id="password" name="password" type="password" placeholder="Password" autocomplete="current-password" aria-label="Password">
@@ -399,7 +459,27 @@
           <h2>World</h2>
           <div id="world-info"></div>
           <div class="actions">
-            <button id="advance-day" type="button">Advance one day</button>
+            <button id="advance-hour" type="button">1h</button>
+            <button id="advance-six" type="button">6h</button>
+            <button id="advance-day" type="button">1 day</button>
+            <button id="advance-three" type="button">3 days</button>
+            <button id="advance-week" type="button">1 week</button>
+            <button id="advance-month" type="button">1 month</button>
+            <button id="run-cycle" class="primary" type="button">Run cycle</button>
+          </div>
+        </section>
+
+        <section class="side-card">
+          <h2>Signals</h2>
+          <div id="signals-info"></div>
+        </section>
+
+        <section class="side-card">
+          <h2>Maintenance</h2>
+          <div id="maintenance-info"></div>
+          <div class="actions">
+            <button id="pay-upkeep" type="button">Pay upkeep</button>
+            <button id="toggle-auto" type="button">Auto upkeep</button>
           </div>
         </section>
 
@@ -433,14 +513,30 @@
         <section class="side-card">
           <h2>Network</h2>
           <div id="route-list"></div>
+          <div id="project-list"></div>
         </section>
 
         <section class="side-card">
           <h2>Inspector</h2>
           <div id="inspector" class="muted">Click a settlement or site.</div>
         </section>
+
+        <section class="side-card">
+          <h2>Chronicle</h2>
+          <ul id="chronicle" class="chronicle"></ul>
+        </section>
       </aside>
     </main>
+
+    <div id="worlds-overlay" class="worlds-overlay hidden" role="dialog" aria-label="Saved worlds">
+      <section class="worlds-panel">
+        <header>
+          <h2>Saved worlds</h2>
+          <button id="worlds-close" type="button">Close</button>
+        </header>
+        <div id="worlds-list" class="worlds-list"></div>
+      </section>
+    </div>
 
     <section id="scale-overlay" class="scale-overlay hidden" aria-label="Compact frontier">
       <div class="scale-shell">

@@ -56,15 +56,20 @@ path automatically.
   click free cells to add up to six waypoints;
 - drag waypoint handles, re-query `survey_waypoint_edit`, and show the returned
   plan plus `survey_preview` capacity, upkeep, trade, material, and warnings;
-- start construction through `start_route_via`;
+- start construction through the persisted route draft (`start_route`);
+- control time in 1-hour, 6-hour, 1-day, 3-day, 1-week, and 1-month steps;
+- manage upkeep with `pay_upkeep` and `toggle_auto`;
 - inspect settlements and sites with `inspect_marker`;
 - browse the technology catalog in bounded `tech_page` chunks, including
   prerequisites, material gates, effects, and which settlements discovered each
   tech;
 - browse production with `production_snapshot`: chains, per-town stock, needs,
   endowments, shortages, and insights;
-- select a route, upgrade it or remove it, and advance one day through
-  `run_cycle`.
+- select a route, adjust its base toll, edit its per-good allow list and
+  surcharges, upgrade it, or remove it;
+- cancel queued projects and read the construction queue and chronicle;
+- open the full-map Worlds drawer, switch worlds, create a new seed, or sign
+  out.
 
 The route desk always sends the whole staged waypoint list, matching the server
 contract: a stale draft can never partially merge with a new edit.
@@ -97,8 +102,10 @@ script (`yria` / `Arteries password 42!` by default). The script recreates the
 The Playwright test signs in, waits for the renderer, checks wheel zoom,
 right-drag pan, fit, and scene picking, selects two settlements on the canvas,
 adds a waypoint, drags it to another cell, verifies the surveyed length and
-preview stats, then advances one day and checks the tick moved. It accepts
-either `webgpu` or `canvas2d` and prints the mode plus a route summary.
+preview stats, toggles upkeep, runs the compact overlay through reload/resume,
+then builds a full-map route, edits its rules, steps time, checks maintenance,
+opens the Worlds drawer, and verifies the compact network/alerts/history. It
+accepts either `webgpu` or `canvas2d` and prints the mode plus a route summary.
 
 ## Scale overlay
 
