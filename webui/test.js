@@ -157,6 +157,12 @@ function chooseFreeCells(markers, count) {
   const productionText = await page.textContent('#production-info');
   assert(productionText.includes(fromTown.name), 'production panel missed the origin town');
   assert(productionText.includes('Grain'), 'production panel missed the good list');
+  assert(
+    (await page.locator('#settlement-list [data-settlement-id]').count()) === world.towns.length,
+    'settlement list missed towns'
+  );
+  assert((await page.locator('.map-compass').count()) === 1, 'map compass is missing');
+  assert((await page.locator('#labels .map-label.site').count()) > 0, 'site labels are missing');
   const markers = [
     ...world.towns.map((town) => ({ x: town.x, y: town.y })),
     ...world.sites.filter((site) => !site.founded).map((site) => ({ x: site.x, y: site.y })),
@@ -546,6 +552,8 @@ function chooseFreeCells(markers, count) {
     postRoute = advanced2.game.world.routes.length > 0;
   }
   assert(postRoute, 'post-compact route did not finish');
+  assert((await page.textContent('#route-list')).includes('Flow:'), 'route card missed cargo detail');
+  assert((await page.textContent('#route-list')).includes('in transit'), 'route card missed in-transit detail');
 
   await page.click('[data-route-id] [data-route-action="dismantle"]');
   await page.waitForSelector('[data-cancel-remove]', { timeout: 10000 });

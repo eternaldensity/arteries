@@ -67,9 +67,12 @@ path automatically.
   tech;
 - browse production with `production_snapshot`: chains, per-town stock, needs,
   endowments, shortages, and insights;
-- read the terrain/route/town legend under the map;
-- select a route, adjust its base toll, edit its per-good allow list and
-  surcharges, upgrade it, or remove it with an inline confirmation;
+- use the dedicated settlement list to inspect a town;
+- read the terrain/route/town legend, compass, and site resource labels on the
+  map;
+- select a route, see its carried goods and in-transit units, adjust its base
+  toll, edit its per-good allow list and surcharges, upgrade it, or remove it
+  with an inline confirmation;
 - cancel queued projects and read the construction queue and chronicle;
 - open the full-map Worlds drawer, switch worlds, create a new seed, or sign
   out.

@@ -211,6 +211,48 @@
       .rule-row button.off { opacity: .45; }
       .chronicle { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
       .chronicle li { color: var(--muted); font-size: 11px; border-left: 2px solid #1d3149; padding-left: 7px; }
+      .map-compass {
+        position: absolute;
+        left: 12px;
+        top: 12px;
+        display: grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border: 1px solid var(--line);
+        border-radius: 50%;
+        background: rgba(8, 18, 31, .82);
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 700;
+        pointer-events: none;
+      }
+      .map-compass::after {
+        content: "";
+        position: absolute;
+        top: 3px;
+        border-left: 4px solid transparent;
+        border-right: 4px solid transparent;
+        border-bottom: 7px solid var(--accent);
+      }
+      .settlement-list { display: grid; gap: 4px; }
+      .settlement-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: center;
+        text-align: left;
+        padding: 6px 8px;
+        border: 1px solid #1d3149;
+        border-radius: 7px;
+        background: rgba(8, 18, 31, .55);
+        font-size: 11px;
+      }
+      .settlement-row:hover { border-color: var(--accent); }
+      .settlement-row.selected { border-color: var(--accent2); background: rgba(105, 195, 179, .08); }
+      .settlement-row span { color: var(--muted); font-size: 10px; }
+      .settlement-row strong { color: var(--text); font-weight: 600; }
+      .route-cargo { color: var(--muted); font-size: 10px; }
       .corridor-options { display: grid; gap: 5px; margin-top: 6px; }
       .corridor-option {
         text-align: left;
@@ -460,6 +502,7 @@
         <div class="map-wrap">
           <canvas id="map"></canvas>
           <div id="labels"></div>
+          <div class="map-compass" aria-label="North">N</div>
           <div class="map-controls">
             <button id="zoom-out" type="button" title="Zoom out">−</button>
             <button id="zoom-fit" type="button" title="Fit the world">Fit</button>
@@ -534,6 +577,11 @@
         <section class="side-card">
           <h2>Preview</h2>
           <div id="preview-info" class="muted">Survey a corridor to see capacity, upkeep, and trade.</div>
+        </section>
+
+        <section class="side-card">
+          <h2>Settlements</h2>
+          <div id="settlement-list" class="settlement-list"></div>
         </section>
 
         <section class="side-card">

@@ -35,6 +35,7 @@ const el = {
   route: document.getElementById('route-info'),
   preview: document.getElementById('preview-info'),
   corridorOptions: document.getElementById('corridor-options'),
+  settlementList: document.getElementById('settlement-list'),
   bendLeft: document.getElementById('bend-left'),
   bendRight: document.getElementById('bend-right'),
   shapeAuto: document.getElementById('shape-auto'),
@@ -162,7 +163,7 @@ function updateLabels() {
   el.labels.replaceChildren();
   if (!world) return;
   const margin = 40;
-  const add = (marker, className) => {
+  const add = (marker, className, text, title) => {
     const point = worldToScreen(state.camera, cellCenter(marker.x, marker.y));
     if (
       point.x < -margin ||
@@ -174,14 +175,29 @@ function updateLabels() {
     }
     const label = document.createElement('div');
     label.className = `map-label ${className}`;
-    label.textContent = marker.name;
+    label.textContent = text || marker.name;
+    label.title = title || marker.name;
     label.style.left = `${(point.x / MAP.width) * 100}%`;
     label.style.top = `${(point.y / MAP.height) * 100}%`;
     el.labels.appendChild(label);
   };
-  for (const town of world.towns) add(town, 'town');
+  for (const town of world.towns) {
+    add(
+      town,
+      'town',
+      town.name,
+      `${town.name} · ${town.state.pop} pop · ${town.state.prosperity} prosperity`
+    );
+  }
   for (const site of world.sites) {
-    if (!site.founded) add(site, 'site');
+    if (!site.founded) {
+      add(
+        site,
+        'site',
+        `${site.name} · ${site.resource}`,
+        `${site.name} · ${site.resource} site · richness ${site.richness}`
+      );
+    }
   }
 }
 
@@ -281,6 +297,29 @@ function renderRules(route) {
   `;
 }
 
+function decodeChunks(text, width = 4) {
+  if (!text || typeof text !== 'string') return [];
+  const values = [];
+  for (let index = 0; index + width <= text.length; index += width) {
+    values.push(Number(text.slice(index, index + width)) || 0);
+  }
+  return values;
+}
+
+function routeCargoText(route) {
+  const flow = decodeChunks(route.flow, 4);
+  const carried = flow
+    .map((units, index) => (units > 0 ? `${GOODS[index]} ${units}` : ''))
+    .filter(Boolean);
+  return carried.length
+    ? carried.slice(0, 5).join(' · ') + (carried.length > 5 ? ' · …' : '')
+    : 'idle';
+}
+
+function routeInTransit(route) {
+  return decodeChunks(route.pipeline, 4).reduce((sum, value) => sum + value, 0);
+}
+
 function renderNetwork() {
   const state = store.get();
   const world = worldOf(state);
@@ -297,6 +336,7 @@ function renderNetwork() {
           <div class="names">
             <b>${escapeHtml(route.a_name)} → ${escapeHtml(route.b_name)}</b>
             <span>${escapeHtml(route.mode)} · toll ${route.fee} · ${route.traffic}/${route.capacity}</span>
+            <span class="route-cargo">Flow: ${escapeHtml(routeCargoText(route))} · ${routeInTransit(route)} in transit</span>
           </div>
           <div class="actions" style="margin:0">
             <button class="mini" type="button" data-route-fee="${escapeHtml(route.id)}" data-delta="-1" aria-label="Lower toll">−</button>
@@ -476,6 +516,20 @@ function renderProduction() {
   `;
 }
 
+function renderSettlementList() {
+  const state = store.get();
+  const world = worldOf(state);
+  if (!el.settlementList || !world) return;
+  el.settlementList.innerHTML = world.towns
+    .map((town) => `
+      <button class="settlement-row${state.selected === town.id ? ' selected' : ''}" type="button" data-settlement-id="${escapeHtml(town.id)}">
+        <strong>${escapeHtml(town.name)}</strong>
+        <span>${town.state.pop} pop · ${town.state.prosperity} pros</span>
+      </button>
+    `)
+    .join('');
+}
+
 function renderSignals() {
   const state = store.get();
   if (!el.signals) return;
@@ -608,6 +662,7 @@ function render() {
     renderProduction();
     renderInspector();
     renderSignals();
+    renderSettlementList();
     renderMaintenance();
     renderProjects();
     renderChronicle();
@@ -645,6 +700,19 @@ async function refreshInspect(id) {
   } catch (error) {
     setStatus(error.message, true);
   }
+}
+
+function inspectTown(id) {
+  const name = markerById(id)?.name || id;
+  store.update((state) => ({
+    ...state,
+    selected: id,
+    selectedRoute: '',
+    status: `${name} selected.`,
+    error: false,
+  }));
+  render();
+  void refreshInspect(id);
 }
 
 async function fetchTechPanel() {
@@ -1302,6 +1370,10 @@ el.worldsList.addEventListener('click', (event) => {
 el.projectList.addEventListener('click', (event) => {
   const button = event.target.closest('[data-cancel-project]');
   if (button) void cancelProject(button.dataset.cancelProject);
+});
+el.settlementList.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-settlement-id]');
+  if (button) inspectTown(button.dataset.settlementId);
 });
 el.zoomIn.addEventListener('click', () => zoom(1.25));
 el.zoomOut.addEventListener('click', () => zoom(0.8));
